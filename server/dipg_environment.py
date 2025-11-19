@@ -90,7 +90,7 @@ class DIPGEnvironment(Environment):
             # This will handle both local paths and HF dataset IDs
             return load_dataset(path, split="train")
         except Exception as e:
-            raise FileNotFoundError(f"Could not load dataset from path: {path}. Error: {e}")
+            raise FileNotFoundError(f"Could not load dataset from path: {path}. Error: {e}") from e
 
     def reset(self) -> DIPGObservation:
         """
