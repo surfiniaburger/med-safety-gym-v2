@@ -3,11 +3,13 @@
 import json
 import random
 from pathlib import Path
-from core.http_env_client import StepResult
-from core.env_server import Environment
+from openenv_core.http_env_client import StepResult
+from openenv_core.env_server import Environment
 from models import DIPGAction, DIPGObservation, DIPGState
 import re
 import logging
+from datasets import load_dataset, Dataset
+
 logger = logging.getLogger(__name__)
 
 class DIPGEnvironment(Environment):
@@ -78,64 +80,59 @@ class DIPGEnvironment(Environment):
 
         # Load data from the provided path
         self.dataset = self._load_dataset(dataset_path)
-        self._shuffled_dataset = self.dataset.copy()
-        random.shuffle(self._shuffled_dataset)
+        self._shuffled_indices = list(range(len(self.dataset)))
+        random.shuffle(self._shuffled_indices)
         self._dataset_index = 0
 
-    def _load_dataset(self, path: str) -> list:
-        """Loads the dataset from the specified file path."""
-        if not Path(path).is_file():
-            raise FileNotFoundError(f"Dataset file not found at path: {path}")
-        with open(path, "r") as f:
-            return [json.loads(line) for line in f]
+    def _load_dataset(self, path: str) -> Dataset:
+        """Loads a dataset from a local path or the Hugging Face Hub."""
+        try:
+            # This will handle both local paths and HF dataset IDs
+            return load_dataset(path, split="train")
+        except Exception as e:
+            raise FileNotFoundError(f"Could not load dataset from path: {path}. Error: {e}") from e
 
     def reset(self) -> DIPGObservation:
         """
         Picks the next challenge from the shuffled dataset.
-        This version is robust and will not crash if a dataset entry is malformed.
         """
-        max_attempts = len(self._shuffled_dataset)
-        if max_attempts == 0:
-            self._state = DIPGState(
-                current_context="dummy context",
-                current_question="dummy question",
-                expected_answer={}
-            )
-            return DIPGObservation(context="dummy context", question="dummy question")
+        max_attempts = len(self._shuffled_indices)
+        if not max_attempts:
+            raise RuntimeError("Dataset is empty, cannot reset.")
 
         for _ in range(max_attempts):
-            if self._dataset_index >= len(self._shuffled_dataset):
-                random.shuffle(self._shuffled_dataset)
+            if self._dataset_index >= len(self._shuffled_indices):
+                random.shuffle(self._shuffled_indices)
                 self._dataset_index = 0
 
-            challenge = self._shuffled_dataset[self._dataset_index]
+            idx = self._shuffled_indices[self._dataset_index]
+            challenge = self.dataset[idx]
             self._dataset_index += 1
 
             try:
-                user_content = challenge['messages'][1]['content']
-                expected_answer_str = challenge['messages'][2]['content']
-                parts = user_content.rsplit('\n\n', 1)
+                user_content = challenge['messages'][0]['content']
+                assistant_content = challenge['messages'][1]['content']
 
-                if len(parts) == 2:
-                    context, question = parts
-                    
-                    try:
-                        expected_answer = json.loads(expected_answer_str)
-                    except (json.JSONDecodeError, TypeError):
-                        # Fallback for simple string ground truth
-                        expected_answer = {"final": expected_answer_str, "proof": ""}
+                # Parse user_content to get context and question
+                context_match = re.search(r"\*\*CONTEXT:\*\*\n(.*?)\n\n\*\*REQUEST:\*\*", user_content, re.DOTALL)
+                question_match = re.search(r"\*\*REQUEST:\*\*\n(.*?)\n\n\*\*REASONING STEPS:\*\*", user_content, re.DOTALL)
+                proof_match = re.search(r"PROOF:\n(.*)", user_content, re.DOTALL)
 
+                context = context_match.group(1).strip() if context_match else ""
+                question = question_match.group(1).strip() if question_match else ""
+                proof = proof_match.group(1).strip() if proof_match else ""
+
+                if context and question:
                     self._state = DIPGState(
                         current_context=context,
                         current_question=question,
-                        expected_answer=expected_answer
+                        expected_answer={"final": assistant_content, "proof": proof}
                     )
                     return DIPGObservation(context=context, question=question)
-                else:
-                    logger.warning(f"Malformed dataset entry (content split), skipping. Content: {user_content[:100]}...")
 
+                logger.warning("Could not parse context or question from dataset entry. Skipping.")
             except (KeyError, IndexError) as e:
-                logger.warning(f"Malformed message structure, skipping. Error: {e}, Challenge: {challenge}")
+                logger.warning(f"Malformed message structure in dataset, skipping. Error: {e}")
 
         raise RuntimeError(f"Could not find a valid entry in the dataset after {max_attempts} attempts.")
     

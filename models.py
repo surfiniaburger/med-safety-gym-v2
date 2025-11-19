@@ -1,7 +1,7 @@
 # src/envs/dipg_safety_env/models.py
 
 from dataclasses import dataclass, field
-from core.env_server import Action, Observation, State
+from openenv_core.env_server import Action, Observation, State
 
 @dataclass
 class DIPGAction(Action):

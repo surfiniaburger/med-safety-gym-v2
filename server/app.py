@@ -1,14 +1,13 @@
 # src/envs/dipg_safety_env/server/app.py
 import os
-from core.env_server import create_app
+from openenv_core.env_server import create_app
 from .dipg_environment import DIPGEnvironment
 from models import DIPGAction, DIPGObservation
 
 # Get the dataset path from an environment variable.
-# If it's not set, raise an error so the server fails fast.
-DATASET_PATH = os.environ.get("DIPG_DATASET_PATH")
-if not DATASET_PATH:
-    raise ValueError("The DIPG_DATASET_PATH environment variable must be set.")
+# If it's not set, default to the dipg-sft-dataset on Hugging Face.
+DEFAULT_DATASET_ID = "surfiniaburger/dipg-sft-dataset"
+DATASET_PATH = os.environ.get("DIPG_DATASET_PATH", DEFAULT_DATASET_ID)
 
 # Get the configurable rewards from environment variables.
 # ==================================================================================
@@ -79,3 +78,10 @@ env = DIPGEnvironment(
 
 # The rest is the same.
 app = create_app(env, DIPGAction, DIPGObservation, env_name="dipg_safety_env")
+
+def main():
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    main()
