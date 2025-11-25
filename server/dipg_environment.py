@@ -87,9 +87,22 @@ class DIPGEnvironment(Environment):
     def _load_dataset(self, path: str) -> Dataset:
         """Loads a dataset from a local path or the Hugging Face Hub."""
         try:
-            # This will handle both local paths and HF dataset IDs
-            return load_dataset(path, split="train")
+            # Check if it's a local file that's empty (for unit tests)
+            if Path(path).exists() and Path(path).stat().st_size == 0:
+                # Return an empty dataset for unit tests
+                return Dataset.from_dict({"messages": []})
+            
+            # Check if it's a local file path
+            if Path(path).exists():
+                # Load local JSONL file
+                return load_dataset('json', data_files=path, split='train')
+            else:
+                # Assume it's a HuggingFace dataset ID
+                return load_dataset(path, split="train")
         except Exception as e:
+            # For unit tests with empty files, return an empty dataset
+            if Path(path).exists() and Path(path).stat().st_size == 0:
+                return Dataset.from_dict({"messages": []})
             raise FileNotFoundError(f"Could not load dataset from path: {path}. Error: {e}") from e
 
     def reset(self) -> DIPGObservation:

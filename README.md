@@ -146,14 +146,19 @@ You must have `pytest` installed (included in the development dependencies).
 
 ### How to Run
 
-From the root directory of the project, run the following command:
+From the root directory of the project, run the following commands:
 
 ```bash
-# Activate your virtual environment if you have one
-# e.g., source .venv/bin/activate
+# Install dev dependencies (includes pytest)
+uv pip install -e ".[dev]"
 
 # Run all tests
-pytest
+uv run pytest -v
+
+# Run specific test files
+uv run pytest -v tests/test_dipg_client.py
+uv run pytest -v tests/test_dipg_environment.py
+uv run pytest -v tests/test_dipg_reward_functions.py
 ```
 
 A successful run will show an output indicating that all tests passed.

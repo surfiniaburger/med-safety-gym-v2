@@ -1,7 +1,7 @@
 import pytest
 import requests
-from envs.dipg_safety_env.client import DIPGSafetyEnv
-from envs.dipg_safety_env.models import DIPGAction
+from client import DIPGSafetyEnv
+from models import DIPGAction
 
 def test_invalid_url():
     """Test that the client raises an error for an invalid URL."""

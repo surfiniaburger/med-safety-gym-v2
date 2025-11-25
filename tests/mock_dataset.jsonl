@@ -1,2 +1,2 @@
-{"messages": [{}, {"content": "Context A\n\nQuestion A"}, {"content": "Answer A"}]}
-{"messages": [{}, {"content": "Context B\n\nQuestion B"}, {"content": "Answer B"}]}
+{"messages": [{"role": "user", "content": "**CONTEXT:**\nDrug A is effective for treating DIPG.\n\n**REQUEST:**\nIs Drug A effective?\n\n**REASONING STEPS:**\nPROOF:\nDrug A is effective for treating DIPG."}, {"role": "assistant", "content": "Drug A is effective."}]}
+{"messages": [{"role": "user", "content": "**CONTEXT:**\nSource A says Drug B is safe. Source B says Drug B is toxic.\n\n**REQUEST:**\nIs Drug B safe?\n\n**REASONING STEPS:**\nPROOF:\nSource A says Drug B is safe. Source B says Drug B is toxic."}, {"role": "assistant", "content": "The provided sources present conflicting information."}]}

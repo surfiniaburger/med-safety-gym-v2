@@ -10,8 +10,8 @@ for the environment server. Its primary job is to handle the HTTP communication:
   4.  It parses that JSON back into useful Python objects (like Observations and Rewards).
 """
 
-from core.http_env_client import HTTPEnvClient, StepResult
-from .models import DIPGAction, DIPGObservation, DIPGState
+from openenv_core.http_env_client import HTTPEnvClient, StepResult
+from models import DIPGAction, DIPGObservation, DIPGState
 
 
 class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):

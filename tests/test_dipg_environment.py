@@ -6,16 +6,15 @@ import time
 import requests
 import pytest
 
-from envs.dipg_safety_env.client import DIPGSafetyEnv
-from envs.dipg_safety_env.models import DIPGAction
+from client import DIPGSafetyEnv
+from models import DIPGAction
 
 
 @pytest.fixture(scope="module")
 def server():
     """Starts the environment server as a background process."""
     # --- Define Absolute Paths & Port ---
-    ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    SRC_PATH = os.path.join(ROOT_DIR, "src")
+    ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     DATASET_SOURCE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "mock_dataset.jsonl"))
     PORT = 8009
 
@@ -25,7 +24,7 @@ def server():
 
     server_env = {
         **os.environ,
-        "PYTHONPATH": SRC_PATH,
+        "PYTHONPATH": ROOT_DIR,
         "DIPG_DATASET_PATH": DATASET_SOURCE_PATH,
     }
 
@@ -34,7 +33,7 @@ def server():
         "-w", "4",
         "-k", "uvicorn.workers.UvicornWorker",
         "-b", f"0.0.0.0:{PORT}",
-        "envs.dipg_safety_env.server.app:app",
+        "server.app:app",
     ]
     openenv_process = subprocess.Popen(
         gunicorn_command,
