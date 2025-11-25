@@ -1,0 +1,195 @@
+"""
+Format parser for DIPG Safety Gym responses.
+
+Supports multiple input formats (JSON, XML, YAML, custom tags) and normalizes
+them to a common internal representation for evaluation.
+
+The V3 hierarchical curriculum reward logic remains unchanged - this is purely
+a normalization layer.
+"""
+
+from typing import Optional, Literal
+from pydantic import BaseModel, Field, field_validator
+import json
+import yaml
+import xml.etree.ElementTree as ET
+import re
+from enum import Enum
+
+
+class ResponseFormat(str, Enum):
+    """Supported response formats"""
+    JSON = "json"
+    XML = "xml"
+    YAML = "yaml"
+    CUSTOM_TAGS = "custom_tags"
+    AUTO = "auto"
+
+
+class DIPGResponse(BaseModel):
+    """
+    Normalized internal representation of a DIPG Safety response.
+    
+    This is format-agnostic - the same structure is used regardless of
+    whether the input was JSON, XML, YAML, or custom tags.
+    """
+    analysis: str = Field(..., min_length=1, description="Reasoning about the medical context")
+    proof: str = Field(..., min_length=1, description="Direct quote from context")
+    final: str = Field(..., min_length=1, description="Final answer to the question")
+    
+    @field_validator('analysis', 'proof', 'final')
+    @classmethod
+    def not_empty_or_whitespace(cls, v: str) -> str:
+        if not v or v.isspace():
+            raise ValueError(f"Field cannot be empty or whitespace")
+        return v.strip()
+
+
+class FormatParser:
+    """
+    Parses DIPG Safety responses in multiple formats.
+    
+    Supports:
+    - JSON: {"analysis": "...", "proof": "...", "final": "..."}
+    - XML: <dipg_response><analysis>...</analysis>...</dipg_response>
+    - YAML: analysis: ...\nproof: ...\nfinal: ...
+    - Custom Tags: <|channel|>analysis<|message|>...<|end|>...
+    """
+    
+    def __init__(self):
+        # Regex pattern for custom tag format
+        self.custom_tag_pattern = re.compile(
+            r'<\|channel\|>(\w+)<\|message\|>(.*?)<\|end\|>',
+            re.DOTALL
+        )
+    
+    def parse(
+        self,
+        response: str,
+        format_type: ResponseFormat = ResponseFormat.AUTO
+    ) -> DIPGResponse:
+        """
+        Parse response in any supported format.
+        
+        Args:
+            response: The LLM-generated response string
+            format_type: Expected format (or AUTO to detect)
+            
+        Returns:
+            Normalized DIPGResponse object
+            
+        Raises:
+            ValueError: If format is invalid or required fields missing
+        """
+        if not response or not response.strip():
+            raise ValueError("Response cannot be empty")
+        
+        if format_type == ResponseFormat.AUTO:
+            format_type = self._detect_format(response)
+        
+        if format_type == ResponseFormat.JSON:
+            return self._parse_json(response)
+        elif format_type == ResponseFormat.XML:
+            return self._parse_xml(response)
+        elif format_type == ResponseFormat.YAML:
+            return self._parse_yaml(response)
+        elif format_type == ResponseFormat.CUSTOM_TAGS:
+            return self._parse_custom_tags(response)
+        else:
+            raise ValueError(f"Unsupported format: {format_type}")
+    
+    def _detect_format(self, response: str) -> ResponseFormat:
+        """Auto-detect the format of the response"""
+        response_stripped = response.strip()
+        
+        # Check for JSON (starts with {)
+        if response_stripped.startswith('{'):
+            return ResponseFormat.JSON
+        
+        # Check for XML (starts with < and contains dipg_response or xml declaration)
+        if response_stripped.startswith('<'):
+            if '<?xml' in response_stripped or '<dipg_response' in response_stripped:
+                return ResponseFormat.XML
+        
+        # Check for custom tags (contains channel markers)
+        if '<|channel|>' in response:
+            return ResponseFormat.CUSTOM_TAGS
+        
+        # Check for YAML (has key: value structure for required fields)
+        if all(field in response for field in ['analysis:', 'proof:', 'final:']):
+            return ResponseFormat.YAML
+        
+        # Default to custom tags for backward compatibility
+        return ResponseFormat.CUSTOM_TAGS
+    
+    def _parse_json(self, response: str) -> DIPGResponse:
+        """Parse JSON format"""
+        try:
+            data = json.loads(response.strip())
+            return DIPGResponse(**data)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON format: {e}")
+        except Exception as e:
+            raise ValueError(f"JSON validation failed: {e}")
+    
+    def _parse_xml(self, response: str) -> DIPGResponse:
+        """Parse XML format"""
+        try:
+            root = ET.fromstring(response.strip())
+            
+            # Handle both with and without root element
+            if root.tag == 'dipg_response':
+                analysis_elem = root.find('analysis')
+                proof_elem = root.find('proof')
+                final_elem = root.find('final')
+            else:
+                # Try to find elements at root level
+                analysis_elem = root if root.tag == 'analysis' else root.find('.//analysis')
+                proof_elem = root.find('.//proof')
+                final_elem = root.find('.//final')
+            
+            data = {
+                "analysis": analysis_elem.text or "" if analysis_elem is not None else "",
+                "proof": proof_elem.text or "" if proof_elem is not None else "",
+                "final": final_elem.text or "" if final_elem is not None else ""
+            }
+            
+            return DIPGResponse(**data)
+        except ET.ParseError as e:
+            raise ValueError(f"Invalid XML format: {e}")
+        except Exception as e:
+            raise ValueError(f"XML validation failed: {e}")
+    
+    def _parse_yaml(self, response: str) -> DIPGResponse:
+        """Parse YAML format"""
+        try:
+            data = yaml.safe_load(response.strip())
+            if not isinstance(data, dict):
+                raise ValueError("YAML must be a dictionary")
+            return DIPGResponse(**data)
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML format: {e}")
+        except Exception as e:
+            raise ValueError(f"YAML validation failed: {e}")
+    
+    def _parse_custom_tags(self, response: str) -> DIPGResponse:
+        """Parse custom tag format (backward compatibility)"""
+        channels = {}
+        
+        # Extract all channels
+        for match in self.custom_tag_pattern.finditer(response):
+            channel_name = match.group(1)
+            content = match.group(2).strip()
+            channels[channel_name] = content
+        
+        # Map to expected fields
+        data = {
+            "analysis": channels.get("analysis", ""),
+            "proof": channels.get("proof", ""),
+            "final": channels.get("final", "")
+        }
+        
+        try:
+            return DIPGResponse(**data)
+        except Exception as e:
+            raise ValueError(f"Custom tag validation failed: {e}. Found channels: {list(channels.keys())}")
