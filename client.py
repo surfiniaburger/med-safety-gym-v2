@@ -30,6 +30,9 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
             base_url: The URL of the running environment server.
             timeout: The number of seconds to wait for a server response.
         """
+        # Store base_url and timeout for use in evaluation methods
+        self.base_url = base_url
+        self.request_timeout_s = timeout
         # This correctly calls the parent initializer with the expected
         # 'request_timeout_s' keyword argument.
         super().__init__(base_url=base_url, request_timeout_s=timeout)
@@ -110,3 +113,78 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
             A structured `DIPGState` object.
         """
         return DIPGState(**payload)
+    
+    # ==================================================================================
+    # EVALUATION HELPER METHODS (NEW - Phase 5)
+    # ==================================================================================
+    
+    def evaluate_model(
+        self,
+        responses: list[str],
+        response_format: str = "auto",
+        save_path: str | None = None
+    ) -> dict:
+        """
+        Evaluate a batch of model responses using the evaluation service.
+        
+        This is a convenience method that calls the `/evaluate` endpoint
+        to get aggregate metrics for a list of responses.
+        
+        Args:
+            responses: List of model-generated responses to evaluate
+            response_format: Expected format ("json", "xml", "yaml", "custom_tags", or "auto")
+            save_path: Optional path to save detailed evaluation results
+            
+        Returns:
+            Dictionary with evaluation results including mean_reward, median_reward, etc.
+            
+        Example:
+            ```python
+            client = DIPGSafetyEnv("http://localhost:8000")
+            responses = ['{"analysis": "...", "proof": "...", "final": "..."}']
+            results = client.evaluate_model(responses, response_format="json")
+            print(f"Mean reward: {results['mean_reward']}")
+            ```
+        """
+        import requests
+        
+        payload = {
+            "responses": responses,
+            "format": response_format
+        }
+        
+        if save_path:
+            payload["save_path"] = save_path
+        
+        response = requests.post(
+            f"{self.base_url}/evaluate",
+            json=payload,
+            timeout=self.request_timeout_s
+        )
+        response.raise_for_status()
+        
+        return response.json()
+    
+    def get_metrics_summary(self) -> dict:
+        """
+        Get summary of environment metrics and configuration.
+        
+        Returns:
+            Dictionary with environment configuration
+            
+        Example:
+            ```python
+            client = DIPGSafetyEnv("http://localhost:8000")
+            summary = client.get_metrics_summary()
+            print(f"Current format: {summary['response_format']}")
+            ```
+        """
+        import requests
+        
+        response = requests.get(
+            f"{self.base_url}/metrics/summary",
+            timeout=self.request_timeout_s
+        )
+        response.raise_for_status()
+        
+        return response.json()
