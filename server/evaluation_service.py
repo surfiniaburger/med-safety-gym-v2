@@ -171,8 +171,19 @@ class EvaluationManager:
         Returns:
             Actual path where results were saved
         """
-        # Create output directory if needed
-        output_path = Path(save_path)
+        # Security check: Prevent path traversal
+        # 1. Must not be absolute
+        if Path(save_path).is_absolute():
+            raise ValueError(f"Invalid save_path: Absolute paths are not allowed ({save_path})")
+            
+        # 2. Must resolve to a path inside the current working directory
+        safe_base = Path.cwd().resolve()
+        requested_path = (safe_base / save_path).resolve()
+        
+        if not str(requested_path).startswith(str(safe_base)):
+            raise ValueError(f"Invalid save_path: Path traversal detected ({save_path})")
+            
+        output_path = requested_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Prepare output data

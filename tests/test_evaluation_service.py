@@ -77,27 +77,33 @@ def test_evaluate_batch_json(eval_manager):
 
 def test_evaluate_batch_with_save(eval_manager, tmp_path):
     """Test batch evaluation with save to file"""
+    from unittest.mock import patch
+    
     responses = [
         "<|channel|>analysis<|message|>Test<|end|><|channel|>proof<|message|>Test<|end|><|channel|>final<|message|>Test<|end|>"
     ]
     
-    save_path = tmp_path / "eval_results.json"
-    result = eval_manager.evaluate_batch(
-        responses,
-        ResponseFormat.CUSTOM_TAGS,
-        save_path=str(save_path)
-    )
+    # Use relative path and mock cwd to point to tmp_path
+    relative_path = "eval_results.json"
     
-    assert result.saved_to == str(save_path)
-    assert save_path.exists()
-    
-    # Verify saved content
-    with open(save_path) as f:
-        saved_data = json.load(f)
-    
-    assert "summary" in saved_data
-    assert "detailed_results" in saved_data
-    assert "timestamp" in saved_data
+    with patch('pathlib.Path.cwd', return_value=tmp_path):
+        result = eval_manager.evaluate_batch(
+            responses,
+            ResponseFormat.CUSTOM_TAGS,
+            save_path=relative_path
+        )
+        
+        expected_path = tmp_path / relative_path
+        assert result.saved_to == str(expected_path)
+        assert expected_path.exists()
+        
+        # Verify saved content
+        with open(expected_path) as f:
+            saved_data = json.load(f)
+        
+        assert "summary" in saved_data
+        assert "detailed_results" in saved_data
+        assert "timestamp" in saved_data
 
 
 def test_evaluate_batch_handles_errors(eval_manager):
