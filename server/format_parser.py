@@ -145,9 +145,9 @@ class FormatParser:
                 final_elem = root.find('final')
             else:
                 # Try to find elements at root level
-                analysis_elem = root.find('analysis')
-                proof_elem = root.find('proof')
-                final_elem = root.find('final')
+                analysis_elem = root if root.tag == 'analysis' else root.find('analysis')
+                proof_elem = root if root.tag == 'proof' else root.find('proof')
+                final_elem = root if root.tag == 'final' else root.find('final')
             
             data = {
                 "analysis": analysis_elem.text or "" if analysis_elem is not None else "",
