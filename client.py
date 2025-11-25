@@ -10,7 +10,7 @@ for the environment server. Its primary job is to handle the HTTP communication:
   4.  It parses that JSON back into useful Python objects (like Observations and Rewards).
 """
 
-import httpx
+import requests
 from openenv_core.http_env_client import HTTPEnvClient, StepResult
 from models import DIPGAction, DIPGObservation, DIPGState
 
@@ -152,7 +152,7 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
         if save_path:
             payload["save_path"] = save_path
         
-        response = httpx.post(
+        response = requests.post(
             f"{self._base}/evaluate",
             json=payload,
             timeout=self._timeout
@@ -175,7 +175,7 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
             print(f"Current format: {summary['response_format']}")
             ```
         """
-        response = httpx.get(
+        response = requests.get(
             f"{self._base}/metrics/summary",
             timeout=self._timeout
         )
