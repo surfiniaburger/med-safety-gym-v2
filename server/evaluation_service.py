@@ -117,12 +117,17 @@ class EvaluationManager:
                     logger.error(f"Error evaluating response {idx}: {e}")
                     # Assign minimum penalty for failed evaluations
                     rewards.append(self.environment.missing_answer_penalty)
-                    detailed_results.append({
+                    
+                    error_entry = {
                         "index": idx,
                         "response": response,
                         "reward": self.environment.missing_answer_penalty,
                         "error": str(e)
-                    })
+                    }
+                    if 'observation' in locals():
+                        error_entry["context"] = observation.context
+                        error_entry["question"] = observation.question
+                    detailed_results.append(error_entry)
             
             # Calculate aggregate metrics
             result = EvaluationResult(

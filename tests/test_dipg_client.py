@@ -29,7 +29,7 @@ def test_client_timeout():
 # TESTS FOR NEW EVALUATION METHODS (Phase 5)
 # ==================================================================================
 
-@patch('requests.post')
+@patch('httpx.post')
 def test_evaluate_model(mock_post):
     """Test evaluate_model method"""
     # Mock the response
@@ -61,7 +61,7 @@ def test_evaluate_model(mock_post):
     assert result['mean_reward'] == 5.0
 
 
-@patch('requests.post')
+@patch('httpx.post')
 def test_evaluate_model_with_save_path(mock_post):
     """Test evaluate_model with save_path parameter"""
     mock_response = Mock()
@@ -85,7 +85,7 @@ def test_evaluate_model_with_save_path(mock_post):
     assert result['saved_to'] == "/tmp/results.json"
 
 
-@patch('requests.get')
+@patch('httpx.get')
 def test_get_metrics_summary(mock_get):
     """Test get_metrics_summary method"""
     # Mock the response

@@ -10,6 +10,7 @@ for the environment server. Its primary job is to handle the HTTP communication:
   4.  It parses that JSON back into useful Python objects (like Observations and Rewards).
 """
 
+import httpx
 from openenv_core.http_env_client import HTTPEnvClient, StepResult
 from models import DIPGAction, DIPGObservation, DIPGState
 
@@ -30,9 +31,6 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
             base_url: The URL of the running environment server.
             timeout: The number of seconds to wait for a server response.
         """
-        # Store base_url and timeout for use in evaluation methods
-        self.base_url = base_url
-        self.request_timeout_s = timeout
         # This correctly calls the parent initializer with the expected
         # 'request_timeout_s' keyword argument.
         super().__init__(base_url=base_url, request_timeout_s=timeout)
@@ -146,8 +144,6 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
             print(f"Mean reward: {results['mean_reward']}")
             ```
         """
-        import requests
-        
         payload = {
             "responses": responses,
             "format": response_format
@@ -156,10 +152,10 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
         if save_path:
             payload["save_path"] = save_path
         
-        response = requests.post(
-            f"{self.base_url}/evaluate",
+        response = httpx.post(
+            f"{self._base}/evaluate",
             json=payload,
-            timeout=self.request_timeout_s
+            timeout=self._timeout
         )
         response.raise_for_status()
         
@@ -179,11 +175,9 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
             print(f"Current format: {summary['response_format']}")
             ```
         """
-        import requests
-        
-        response = requests.get(
-            f"{self.base_url}/metrics/summary",
-            timeout=self.request_timeout_s
+        response = httpx.get(
+            f"{self._base}/metrics/summary",
+            timeout=self._timeout
         )
         response.raise_for_status()
         
