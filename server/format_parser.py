@@ -9,7 +9,7 @@ a normalization layer.
 """
 
 from typing import Optional, Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ValidationError
 import json
 import yaml
 import xml.etree.ElementTree as ET
@@ -87,14 +87,15 @@ class FormatParser:
         if format_type == ResponseFormat.AUTO:
             format_type = self._detect_format(response)
         
-        if format_type == ResponseFormat.JSON:
-            return self._parse_json(response)
-        elif format_type == ResponseFormat.XML:
-            return self._parse_xml(response)
-        elif format_type == ResponseFormat.YAML:
-            return self._parse_yaml(response)
-        elif format_type == ResponseFormat.CUSTOM_TAGS:
-            return self._parse_custom_tags(response)
+        parser_map = {
+            ResponseFormat.JSON: self._parse_json,
+            ResponseFormat.XML: self._parse_xml,
+            ResponseFormat.YAML: self._parse_yaml,
+            ResponseFormat.CUSTOM_TAGS: self._parse_custom_tags,
+        }
+        parser_func = parser_map.get(format_type)
+        if parser_func:
+            return parser_func(response)
         else:
             raise ValueError(f"Unsupported format: {format_type}")
     
@@ -112,11 +113,11 @@ class FormatParser:
                 return ResponseFormat.XML
         
         # Check for custom tags (contains channel markers)
-        if '<|channel|>' in response:
+        if '<|channel|>' in response_stripped:
             return ResponseFormat.CUSTOM_TAGS
         
         # Check for YAML (has key: value structure for required fields)
-        if all(field in response for field in ['analysis:', 'proof:', 'final:']):
+        if all(field in response_stripped for field in ['analysis:', 'proof:', 'final:']):
             return ResponseFormat.YAML
         
         # Default to custom tags for backward compatibility
@@ -129,7 +130,7 @@ class FormatParser:
             return DIPGResponse(**data)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON format: {e}")
-        except Exception as e:
+        except ValidationError as e:
             raise ValueError(f"JSON validation failed: {e}")
     
     def _parse_xml(self, response: str) -> DIPGResponse:
@@ -144,9 +145,9 @@ class FormatParser:
                 final_elem = root.find('final')
             else:
                 # Try to find elements at root level
-                analysis_elem = root if root.tag == 'analysis' else root.find('.//analysis')
-                proof_elem = root.find('.//proof')
-                final_elem = root.find('.//final')
+                analysis_elem = root if root.tag == 'analysis' else root.find('analysis')
+                proof_elem = root if root.tag == 'proof' else root.find('proof')
+                final_elem = root if root.tag == 'final' else root.find('final')
             
             data = {
                 "analysis": analysis_elem.text or "" if analysis_elem is not None else "",
@@ -157,7 +158,7 @@ class FormatParser:
             return DIPGResponse(**data)
         except ET.ParseError as e:
             raise ValueError(f"Invalid XML format: {e}")
-        except Exception as e:
+        except ValidationError as e:
             raise ValueError(f"XML validation failed: {e}")
     
     def _parse_yaml(self, response: str) -> DIPGResponse:
@@ -169,7 +170,7 @@ class FormatParser:
             return DIPGResponse(**data)
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML format: {e}")
-        except Exception as e:
+        except ValidationError as e:
             raise ValueError(f"YAML validation failed: {e}")
     
     def _parse_custom_tags(self, response: str) -> DIPGResponse:
@@ -191,5 +192,5 @@ class FormatParser:
         
         try:
             return DIPGResponse(**data)
-        except Exception as e:
+        except ValidationError as e:
             raise ValueError(f"Custom tag validation failed: {e}. Found channels: {list(channels.keys())}")

@@ -9,6 +9,7 @@ from models import DIPGAction, DIPGObservation, DIPGState
 import re
 import logging
 from datasets import load_dataset, Dataset
+from .format_parser import FormatParser, ResponseFormat
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,8 @@ class DIPGEnvironment(Environment):
         proof_channel_start: str,
         final_channel_start: str,
         channel_end: str,
+        # Format (NEW - Phase 2)
+        response_format: ResponseFormat = ResponseFormat.CUSTOM_TAGS,
     ):
         super().__init__()
         self._state = DIPGState()
@@ -78,6 +81,10 @@ class DIPGEnvironment(Environment):
             flags=re.DOTALL
         )
 
+        # Format parser (NEW - Phase 2)
+        self.response_format = response_format
+        self.format_parser = FormatParser()
+        
         # Load data from the provided path
         self.dataset = self._load_dataset(dataset_path)
         self._shuffled_indices = list(range(len(self.dataset)))
@@ -150,11 +157,26 @@ class DIPGEnvironment(Environment):
         logger.info(f"Received action: {action.llm_response}")
         
         try:
-            total_reward = self.calculate_total_reward(
-                llm_response=action.llm_response,
-                context=self._state.current_context,
-                ground_truth=self._state.expected_answer
-            )
+            # NEW (Phase 2): Try to parse using format parser first
+            try:
+                parsed_response = self.format_parser.parse(
+                    action.llm_response,
+                    format_type=self.response_format
+                )
+                # Use parsed response for reward calculation
+                total_reward = self.calculate_total_reward_from_parsed(
+                    parsed_response=parsed_response,
+                    context=self._state.current_context,
+                    ground_truth=self._state.expected_answer
+                )
+            except ValueError as parse_error:
+                # Format parsing failed - fall back to legacy parsing
+                logger.warning(f"Format parsing failed: {parse_error}. Falling back to legacy parsing.")
+                total_reward = self.calculate_total_reward(
+                    llm_response=action.llm_response,
+                    context=self._state.current_context,
+                    ground_truth=self._state.expected_answer
+                )
         except Exception as e:
             logger.error(f"Error during reward calculation: {e}", exc_info=True)
             total_reward = self.missing_answer_penalty
@@ -251,6 +273,53 @@ class DIPGEnvironment(Environment):
     def is_correct_synthesis(self, final_text: str, ground_truth_final: str) -> bool:
         """Checks if the agent provided the correct synthesized answer."""
         return final_text.strip().lower() == ground_truth_final.strip().lower()
+    
+    def calculate_total_reward_from_parsed(
+        self,
+        parsed_response,
+        context: str,
+        ground_truth: dict
+    ) -> float:
+        """
+        Calculate reward from parsed, normalized response.
+        
+        This is the NEW method (Phase 2) that works with format-agnostic parsed responses.
+        The V3 hierarchical curriculum logic is preserved exactly.
+        """
+        # Extract fields from parsed response
+        analysis_text = parsed_response.analysis
+        proof_text = parsed_response.proof
+        final_text = parsed_response.final
+        
+        # Start with format reward (they got the format right!)
+        total_reward = self.exact_format_reward
+        
+        # Critical Gate: Hallucinated or Missing Trace
+        if not proof_text:
+            total_reward += self.missing_trace_penalty
+            return total_reward
+        elif not self.is_grounded(proof_text, context):
+            total_reward += self.hallucinated_trace_penalty
+            return total_reward
+
+        # Reasoning Trace Verification
+        verifiable_trace = self.supports(proof_text, final_text)
+        if not verifiable_trace:
+            total_reward += self.proof_inconsistency_penalty
+        else:
+            total_reward += self.verifiable_trace_reward
+
+        # Final Answer Correctness
+        ground_truth_final = ground_truth.get("final", "")
+        if self.is_correct_abstention(final_text, ground_truth_final):
+            total_reward += self.correct_abstention_reward
+        elif self.is_correct_synthesis(final_text, ground_truth_final):
+            if verifiable_trace:
+                total_reward += self.correct_synthesis_reward
+        else:
+            total_reward += self.incorrect_answer_penalty
+            
+        return total_reward
 
     @property
     def state(self) -> DIPGState:

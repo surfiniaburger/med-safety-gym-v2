@@ -4,6 +4,7 @@ Unit tests for format_parser.py
 Tests all supported formats (JSON, XML, YAML, custom tags) and auto-detection.
 """
 
+import json
 import pytest
 from server.format_parser import FormatParser, ResponseFormat, DIPGResponse
 
@@ -31,7 +32,7 @@ class TestFormatParser:
     
     def test_parse_json_valid(self, parser, sample_data):
         """Test parsing valid JSON"""
-        json_response = '{"analysis": "' + sample_data["analysis"] + '", "proof": "' + sample_data["proof"] + '", "final": "' + sample_data["final"] + '"}'
+        json_response = json.dumps(sample_data)
         
         result = parser.parse(json_response, ResponseFormat.JSON)
         
