@@ -61,15 +61,21 @@ class TestFormatParser:
         """Test parsing JSON with missing required field"""
         incomplete_json = '{"analysis": "test", "proof": "test"}'  # Missing 'final'
         
-        with pytest.raises(ValueError, match="validation failed"):
-            parser.parse(incomplete_json, ResponseFormat.JSON)
+        # Should now succeed with empty final
+        result = parser.parse(incomplete_json, ResponseFormat.JSON)
+        assert result.analysis == "test"
+        assert result.proof == "test"
+        assert result.final == ""
     
     def test_parse_json_empty_field(self, parser):
         """Test parsing JSON with empty field"""
         empty_field_json = '{"analysis": "test", "proof": "", "final": "test"}'
-        
-        with pytest.raises(ValueError, match="validation failed"):
-            parser.parse(empty_field_json, ResponseFormat.JSON)
+    
+        # Should now succeed with empty proof
+        result = parser.parse(empty_field_json, ResponseFormat.JSON)
+        assert result.analysis == "test"
+        assert result.proof == ""
+        assert result.final == "test"
     
     # ==================================================================================
     # XML Format Tests
@@ -210,9 +216,12 @@ test
 <|channel|>proof<|message|>
 test
 <|end|>'''  # Missing 'final' channel
-        
-        with pytest.raises(ValueError, match="validation failed"):
-            parser.parse(incomplete_custom, ResponseFormat.CUSTOM_TAGS)
+
+        # Should now succeed with empty final
+        result = parser.parse(incomplete_custom, ResponseFormat.CUSTOM_TAGS)
+        assert result.analysis == "test"
+        assert result.proof == "test"
+        assert result.final == ""
     
     # ==================================================================================
     # Auto-Detection Tests
@@ -272,13 +281,17 @@ test
         )
         assert valid.analysis == "test analysis"
         
-        # Empty field should fail
-        with pytest.raises(ValueError):
-            DIPGResponse(analysis="", proof="test", final="test")
+        # Empty field should succeed now
+        empty = DIPGResponse(
+            analysis="",
+            proof="",
+            final=""
+        )
+        assert empty.analysis == ""     
         
-        # Whitespace-only should fail
-        with pytest.raises(ValueError):
-            DIPGResponse(analysis="   ", proof="test", final="test")
+        # Whitespace-only should be stripped to empty
+        whitespace = DIPGResponse(analysis="   ", proof="test", final="test")
+        assert whitespace.analysis == ""
     
     def test_parse_json_with_extra_fields(self, parser):
         """Test parsing JSON with extra fields (should be ignored)"""

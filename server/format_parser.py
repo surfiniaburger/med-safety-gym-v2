@@ -33,15 +33,15 @@ class DIPGResponse(BaseModel):
     This is format-agnostic - the same structure is used regardless of
     whether the input was JSON, XML, YAML, or custom tags.
     """
-    analysis: str = Field(..., min_length=1, description="Reasoning about the medical context")
-    proof: str = Field(..., min_length=1, description="Direct quote from context")
-    final: str = Field(..., min_length=1, description="Final answer to the question")
+    analysis: str = Field(default="", description="Reasoning about the medical context")
+    proof: str = Field(default="", description="Direct quote from context")
+    final: str = Field(default="", description="Final answer to the question")
     
     @field_validator('analysis', 'proof', 'final')
     @classmethod
-    def not_empty_or_whitespace(cls, v: str) -> str:
-        if not v or v.isspace():
-            raise ValueError(f"Field cannot be empty or whitespace")
+    def strip_whitespace(cls, v: str) -> str:
+        if v is None:
+            return ""
         return v.strip()
 
 
@@ -103,12 +103,12 @@ class FormatParser:
         """Auto-detect the format of the response"""
         response_stripped = response.strip()
         
-        # Check for JSON (starts with {)
-        if response_stripped.startswith('{'):
+        # Check for JSON (starts with { or wrapped in markdown)
+        if response_stripped.startswith('{') or '```json' in response_stripped.lower() or (response_stripped.startswith('```') and '{' in response_stripped):
             return ResponseFormat.JSON
         
         # Check for XML (starts with < and contains dipg_response or xml declaration)
-        if response_stripped.startswith('<'):
+        if response_stripped.startswith('<') or '```xml' in response_stripped.lower():
             if '<?xml' in response_stripped or '<dipg_response' in response_stripped:
                 return ResponseFormat.XML
         
@@ -117,17 +117,48 @@ class FormatParser:
             return ResponseFormat.CUSTOM_TAGS
         
         # Check for YAML (has key: value structure for required fields)
-        if all(field in response_stripped for field in ['analysis:', 'proof:', 'final:']):
+        if all(field in response_stripped for field in ['analysis:', 'proof:', 'final:']) or '```yaml' in response_stripped.lower():
             return ResponseFormat.YAML
         
         # Default to custom tags for backward compatibility
         return ResponseFormat.CUSTOM_TAGS
     
     def _parse_json(self, response: str) -> DIPGResponse:
-        """Parse JSON format"""
+        """Parse JSON format with robustness improvements"""
+        cleaned_response = response.strip()
+        
+        # 1. Strip markdown code blocks
+        if '```' in cleaned_response:
+            # Remove ```json or ``` at start
+            cleaned_response = re.sub(r'^```\w*\s*', '', cleaned_response)
+            # Remove ``` at end
+            cleaned_response = re.sub(r'\s*```$', '', cleaned_response)
+            cleaned_response = cleaned_response.strip()
+            
         try:
-            data = json.loads(response.strip())
-            return DIPGResponse(**data)
+            data = json.loads(cleaned_response)
+            
+            # 2. Normalize field aliases
+            normalized_data = {}
+            
+            # Define aliases
+            aliases = {
+                'analysis': ['reasoning', 'thought', 'thoughts', 'explanation', 'analysis'],
+                'proof': ['evidence', 'quote', 'reference', 'source', 'proof'],
+                'final': ['answer', 'conclusion', 'result', 'final_answer', 'final']
+            }
+            
+            # Map fields
+            for target_field, source_fields in aliases.items():
+                for source in source_fields:
+                    if source in data:
+                        normalized_data[target_field] = data[source]
+                        break
+                # If not found, default to empty string (handled by DIPGResponse default)
+                if target_field not in normalized_data:
+                     normalized_data[target_field] = ""
+            
+            return DIPGResponse(**normalized_data)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON format: {e}")
         except ValidationError as e:

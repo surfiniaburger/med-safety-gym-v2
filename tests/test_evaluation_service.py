@@ -109,16 +109,16 @@ def test_evaluate_batch_with_save(eval_manager, tmp_path):
 def test_evaluate_batch_handles_errors(eval_manager):
     """Test that batch evaluation handles malformed responses gracefully"""
     responses = [
-        "invalid response",  # Will fail parsing
-        "<|channel|>analysis<|message|>Valid<|end|><|channel|>proof<|message|>Valid<|end|><|channel|>final<|message|>Valid<|end|>"
+        '{"malformed": "json"',  # Will fail parsing (ValueError) -> fallback -> format penalty
+        '{"analysis": "Valid", "proof": "Valid", "final": "Valid"}'
     ]
     
-    result = eval_manager.evaluate_batch(responses, ResponseFormat.CUSTOM_TAGS)
+    result = eval_manager.evaluate_batch(responses, ResponseFormat.JSON)
     
     # Should still return results for all responses
     assert result.total_responses == 2
     assert len(result.rewards) == 2
-    # First response should get penalty for format error (falls back to legacy parsing which gives format_mismatch_penalty)
+    # First response should get penalty for format error
     assert result.rewards[0] == eval_manager.environment.format_mismatch_penalty
 
 
