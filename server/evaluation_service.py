@@ -20,9 +20,45 @@ from models import DIPGAction
 logger = logging.getLogger(__name__)
 
 
+class GroundTruth(BaseModel):
+    """Ground truth data for evaluation"""
+    context: str = Field(..., description="Context/background information")
+    question: str = Field(..., description="The question being asked")
+    expected_answer: Dict[str, str] = Field(
+        ...,
+        description="Expected answer with 'final' and 'proof' fields"
+    )
+
+
+class EvaluationItem(BaseModel):
+    """Single evaluation item with response and ground truth"""
+    response: str = Field(..., description="Model response to evaluate")
+    ground_truth: Optional[GroundTruth] = Field(
+        default=None,
+        description="Ground truth for this specific response (optional)"
+    )
+
+
 class EvaluationRequest(BaseModel):
-    """Request model for batch evaluation"""
-    responses: List[str] = Field(..., description="List of model responses to evaluate")
+    """
+    Request model for batch evaluation.
+    
+    Supports two modes:
+    1. Simple mode: Just responses (uses server's dataset for ground truth)
+    2. Stateless mode: Responses + ground truth (self-contained, cloud-native)
+    """
+    # Simple mode (backward compatible)
+    responses: Optional[List[str]] = Field(
+        default=None,
+        description="List of model responses (simple mode)"
+    )
+    
+    # Stateless mode (recommended)
+    evaluations: Optional[List[EvaluationItem]] = Field(
+        default=None,
+        description="List of evaluation items with ground truth (stateless mode)"
+    )
+    
     format: ResponseFormat = Field(
         default=ResponseFormat.AUTO,
         description="Expected format of responses (auto-detect by default)"
@@ -31,6 +67,13 @@ class EvaluationRequest(BaseModel):
         default=None,
         description="Optional path to save evaluation results"
     )
+    
+    def model_post_init(self, __context):
+        """Validate that at least one mode is provided"""
+        if self.responses is None and self.evaluations is None:
+            raise ValueError("Must provide either 'responses' or 'evaluations'")
+        if self.responses is not None and self.evaluations is not None:
+            raise ValueError("Cannot provide both 'responses' and 'evaluations'")
 
 
 class EvaluationResult(BaseModel):
@@ -148,6 +191,106 @@ class EvaluationManager:
                 logger.info(f"Saved detailed results to {saved_path}")
             
             logger.info(f"Evaluation complete. Mean reward: {result.mean_reward:.2f}")
+            return result
+            
+        finally:
+            # Restore original format setting
+            self.environment.response_format = original_format
+    
+    def evaluate_with_ground_truth(
+        self,
+        evaluations: List[EvaluationItem],
+        response_format: ResponseFormat = ResponseFormat.AUTO,
+        save_path: Optional[str] = None
+    ) -> EvaluationResult:
+        """
+        Evaluate responses with provided ground truth (stateless mode).
+        
+        This is the recommended cloud-native approach following AWS SageMaker
+        and Google Vertex AI best practices for stateless batch evaluation.
+        
+        Args:
+            evaluations: List of evaluation items with responses and ground truth
+            response_format: Expected format (or AUTO to detect)
+            save_path: Optional path to save detailed results
+            
+        Returns:
+            EvaluationResult with aggregated metrics
+        """
+        logger.info(f"Evaluating batch of {len(evaluations)} items with ground truth (stateless mode)")
+        
+        # Store original format setting
+        original_format = self.environment.response_format
+        
+        try:
+            # Temporarily set the format for this evaluation
+            self.environment.response_format = response_format
+            
+            # Evaluate each item
+            rewards = []
+            detailed_results = []
+            
+            for idx, item in enumerate(evaluations):
+                try:
+                    # Set up the environment state with the provided ground truth
+                    from models import DIPGState
+                    self.environment._state = DIPGState(
+                        current_context=item.ground_truth.context,
+                        current_question=item.ground_truth.question,
+                        expected_answer=item.ground_truth.expected_answer
+                    )
+                    
+                    # Create action with the response
+                    action = DIPGAction(llm_response=item.response)
+                    
+                    # Get reward using the provided ground truth
+                    step_result = self.environment.step(action)
+                    reward = step_result.reward
+                    
+                    rewards.append(reward)
+                    detailed_results.append({
+                        "index": idx,
+                        "response": item.response,
+                        "reward": reward,
+                        "context": item.ground_truth.context,
+                        "question": item.ground_truth.question,
+                        "expected_answer": item.ground_truth.expected_answer
+                    })
+                    
+                except Exception as e:
+                    logger.error(f"Error evaluating item {idx}: {e}")
+                    # Assign minimum penalty for failed evaluations
+                    rewards.append(self.environment.missing_answer_penalty)
+                    
+                    error_entry = {
+                        "index": idx,
+                        "response": item.response,
+                        "reward": self.environment.missing_answer_penalty,
+                        "error": str(e)
+                    }
+                    if item.ground_truth:
+                        error_entry["context"] = item.ground_truth.context
+                        error_entry["question"] = item.ground_truth.question
+                    detailed_results.append(error_entry)
+            
+            # Calculate aggregate metrics
+            result = EvaluationResult(
+                total_responses=len(evaluations),
+                mean_reward=statistics.mean(rewards) if rewards else 0.0,
+                median_reward=statistics.median(rewards) if rewards else 0.0,
+                std_reward=statistics.stdev(rewards) if len(rewards) > 1 else 0.0,
+                min_reward=min(rewards) if rewards else 0.0,
+                max_reward=max(rewards) if rewards else 0.0,
+                rewards=rewards
+            )
+            
+            # Save detailed results if requested
+            if save_path:
+                saved_path = self._save_results(detailed_results, result, save_path)
+                result.saved_to = saved_path
+                logger.info(f"Saved detailed results to {saved_path}")
+            
+            logger.info(f"Stateless evaluation complete. Mean reward: {result.mean_reward:.2f}")
             return result
             
         finally:

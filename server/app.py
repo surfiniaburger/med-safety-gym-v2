@@ -106,15 +106,45 @@ async def evaluate_batch(request: EvaluationRequest):
     """
     Evaluate a batch of model responses.
     
-    This endpoint provides method-agnostic evaluation for any model
-    (SFT, GRPO, or even closed models like GPT-4, Claude, etc.).
+    Supports two modes:
+    1. Simple mode (backward compatible): Provide 'responses' only
+       - Uses server's dataset for ground truth via reset()
+       
+    2. Stateless mode (recommended, cloud-native): Provide 'evaluations' with ground truth
+       - Each evaluation item includes response + ground truth
+       - Follows AWS SageMaker and Google Vertex AI best practices
+       - Fully self-contained, no server-side state
     
     Args:
-        request: EvaluationRequest with responses and optional format/save_path
+        request: EvaluationRequest with either 'responses' or 'evaluations'
         
     Returns:
         EvaluationResult with aggregate metrics and individual rewards
+        
+    Example (stateless mode):
+        {
+          "evaluations": [
+            {
+              "response": "{\"analysis\": \"...\", \"proof\": \"...\", \"final\": \"...\"}",
+              "ground_truth": {
+                "context": "Medical context...",
+                "question": "What is...?",
+                "expected_answer": {"final": "Answer", "proof": "Proof"}
+              }
+            }
+          ],
+          "format": "json"
+        }
     """
+    # Stateless mode (recommended)
+    if request.evaluations is not None:
+        return eval_manager.evaluate_with_ground_truth(
+            evaluations=request.evaluations,
+            response_format=request.format,
+            save_path=request.save_path
+        )
+    
+    # Simple mode (backward compatible)
     return eval_manager.evaluate_batch(
         responses=request.responses,
         response_format=request.format,
@@ -124,12 +154,50 @@ async def evaluate_batch(request: EvaluationRequest):
 @app.get("/metrics/summary")
 async def get_metrics_summary():
     """
-    Get summary of environment metrics and configuration.
+    Get summary of environment configuration and metrics.
     
-    Returns information about the current reward configuration,
-    response format, and dataset statistics.
+    Returns information about the environment setup, reward configuration,
+    and dataset statistics.
     """
     return eval_manager.get_metrics_summary()
+
+
+@app.get("/eval/tasks")
+async def get_eval_tasks(
+    max_samples: int = None,
+    shuffle: bool = True
+):
+    """
+    Get evaluation tasks from the dataset.
+    
+    This endpoint is designed for evaluation-only workflows where users:
+    1. Get sample tasks from this endpoint
+    2. Query their own models (e.g., LiteLLM, OpenAI, local models)
+    3. Evaluate responses using the /evaluate endpoint
+    
+    Args:
+        max_samples: Maximum number of tasks to return (default: all tasks)
+        shuffle: Whether to shuffle tasks before sampling (default: True)
+        
+    Returns:
+        Dictionary with 'tasks' list containing task_id, context, question, and expected_answer
+        
+    Example workflow:
+        # 1. Get tasks
+        tasks = requests.get("http://localhost:8000/eval/tasks?max_samples=100").json()
+        
+        # 2. Query your model
+        responses = [your_model.generate(task['context'], task['question']) for task in tasks['tasks']]
+        
+        # 3. Evaluate
+        results = requests.post("http://localhost:8000/evaluate", json={"responses": responses}).json()
+    """
+    tasks = env.get_eval_tasks(max_samples=max_samples, shuffle=shuffle)
+    return {
+        "tasks": tasks,
+        "total_tasks": len(tasks),
+        "dataset_size": len(env.dataset)
+    }
 
 def main():
     import uvicorn

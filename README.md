@@ -272,6 +272,47 @@ print(f"Mean Reward: {results['mean_reward']:.2f}")
 print(f"Total Evaluated: {results['total_responses']}")
 ```
 
+### Stateless Evaluation (Recommended)
+
+For production workflows, use the **stateless evaluation** endpoint. This follows AWS SageMaker and Google Vertex AI best practices by making each evaluation request self-contained (Response + Ground Truth), eliminating the need for server-side session management.
+
+1.  **Fetch Tasks**: Get evaluation tasks from the server.
+    ```bash
+    GET /eval/tasks?max_samples=100
+    ```
+2.  **Generate Responses**: Use your model (LiteLLM, OpenAI, etc.) to answer the questions.
+3.  **Evaluate**: Send responses *with* their ground truth back to the server.
+
+```python
+import requests
+
+# 1. Get tasks
+tasks = requests.get("http://localhost:8000/eval/tasks").json()["tasks"]
+
+# 2. Generate responses (pseudo-code)
+evaluations = []
+for task in tasks:
+    response = my_model.generate(task["context"], task["question"])
+    
+    # 3. Prepare stateless evaluation item
+    evaluations.append({
+        "response": response,
+        "ground_truth": {
+            "context": task["context"],
+            "question": task["question"],
+            "expected_answer": task["expected_answer"]
+        }
+    })
+
+# 4. Evaluate
+results = requests.post(
+    "http://localhost:8000/evaluate",
+    json={"evaluations": evaluations, "format": "json"}
+).json()
+```
+
+See `examples/eval_with_litellm.py` for a complete, working example using LiteLLM.
+
 For detailed examples, see [Evaluation Use Cases](docs/evaluation_use_cases.md).
 
 ## Core Components

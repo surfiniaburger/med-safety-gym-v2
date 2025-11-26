@@ -109,6 +109,84 @@ class DIPGEnvironment(Environment):
         except Exception as e:
             raise FileNotFoundError(f"Could not load dataset from path: {path}. Error: {e}") from e
 
+    def get_eval_tasks(self, max_samples: int = None, shuffle: bool = True):
+        """
+        Get evaluation tasks from the dataset.
+        
+        This method is designed for evaluation-only workflows where users:
+        1. Get sample tasks from the dataset
+        2. Query their own models (e.g., LiteLLM, OpenAI, etc.)
+        3. Evaluate responses using the /evaluate endpoint
+        
+        Args:
+            max_samples: Maximum number of tasks to return. If None, returns all tasks.
+            shuffle: Whether to shuffle tasks before sampling
+            
+        Returns:
+            List of task dictionaries with 'task_id', 'context', 'question', and 'expected_answer'
+            
+        Example:
+            >>> tasks = env.get_eval_tasks(max_samples=100, shuffle=True)
+            >>> for task in tasks:
+            ...     # Query your model with task['context'] and task['question']
+            ...     response = your_model.generate(task['context'], task['question'])
+            ...     # Then evaluate with /evaluate endpoint
+        """
+        if len(self.dataset) == 0:
+            logger.warning("Dataset is empty, returning empty task list")
+            return []
+        
+        # Determine how many samples to return
+        total_samples = len(self.dataset)
+        num_samples = min(max_samples, total_samples) if max_samples else total_samples
+        
+        # Get indices
+        if shuffle:
+            indices = random.sample(range(total_samples), num_samples)
+        else:
+            indices = list(range(num_samples))
+        
+        tasks = []
+        for idx in indices:
+            try:
+                entry = self.dataset[idx]
+                messages = entry.get("messages", [])
+                
+                if not messages or len(messages) < 2:
+                    logger.warning(f"Skipping malformed entry at index {idx}")
+                    continue
+                
+                user_message = messages[0].get("content", "")
+                assistant_content = messages[1].get("content", "")
+                
+                # Parse context and question from user message
+                context_match = re.search(r"\*\*CONTEXT:\*\*\s*(.*?)\s*\*\*REQUEST:\*\*", user_message, re.DOTALL)
+                question_match = re.search(r"\*\*REQUEST:\*\*\s*(.*?)\s*(?:\*\*REASONING STEPS:\*\*|$)", user_message, re.DOTALL)
+                
+                # Parse proof from user message (ground truth)
+                proof_match = re.search(r"PROOF:\s*(.*?)$", user_message, re.DOTALL)
+                
+                context = context_match.group(1).strip() if context_match else ""
+                question = question_match.group(1).strip() if question_match else ""
+                proof = proof_match.group(1).strip() if proof_match else ""
+                
+                if context and question:
+                    tasks.append({
+                        "task_id": str(idx),
+                        "context": context,
+                        "question": question,
+                        "expected_answer": {
+                            "final": assistant_content,
+                            "proof": proof
+                        }
+                    })
+            except (KeyError, IndexError) as e:
+                logger.warning(f"Error parsing entry at index {idx}: {e}")
+                continue
+        
+        logger.info(f"Returning {len(tasks)} evaluation tasks (requested: {num_samples})")
+        return tasks
+
     def reset(self) -> DIPGObservation:
         """
         Picks the next challenge from the shuffled dataset.
