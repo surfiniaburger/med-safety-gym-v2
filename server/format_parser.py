@@ -135,12 +135,9 @@ class FormatParser:
             last_backtick = cleaned_response.rfind('```')
             
             if first_backtick != -1 and last_backtick != -1 and first_backtick < last_backtick:
-                # Extract content between the backticks
-                content = cleaned_response[first_backtick:last_backtick + 3]
-                # Remove the opening ```json or ``` and closing ```
-                content = re.sub(r'^```\w*\s*', '', content)
-                content = re.sub(r'\s*```$', '', content)
-                cleaned_response = content.strip()
+                # Extract content between the outermost backticks and strip the language specifier
+                content_block = cleaned_response[first_backtick + 3 : last_backtick]
+                cleaned_response = re.sub(r'^\w*\s*', '', content_block).strip()
             
         try:
             data = json.loads(cleaned_response)
