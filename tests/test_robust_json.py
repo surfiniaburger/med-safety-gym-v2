@@ -32,6 +32,22 @@ class TestRobustJSON:
         parsed = parser.parse(response, format_type=ResponseFormat.JSON)
         assert parsed.analysis == "Analysis"
 
+    def test_strip_markdown_with_surrounding_text(self, parser):
+        """Test stripping markdown when there's text before/after the code block."""
+        response = """Here's my analysis:
+        ```json
+        {
+            "analysis": "Analysis",
+            "proof": "Proof",
+            "final": "Final"
+        }
+        ```
+        Hope this helps!"""
+        parsed = parser.parse(response, format_type=ResponseFormat.JSON)
+        assert parsed.analysis == "Analysis"
+        assert parsed.proof == "Proof"
+        assert parsed.final == "Final"
+
     def test_field_aliases(self, parser):
         """Test that field aliases are correctly mapped."""
         response = """{

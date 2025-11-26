@@ -127,13 +127,20 @@ class FormatParser:
         """Parse JSON format with robustness improvements"""
         cleaned_response = response.strip()
         
-        # 1. Strip markdown code blocks
+        # 1. Strip markdown code blocks (handles text before/after blocks)
         if '```' in cleaned_response:
-            # Remove ```json or ``` at start
-            cleaned_response = re.sub(r'^```\w*\s*', '', cleaned_response)
-            # Remove ``` at end
-            cleaned_response = re.sub(r'\s*```$', '', cleaned_response)
-            cleaned_response = cleaned_response.strip()
+            # Find content between first ``` and last ```
+            # This handles cases like: "Here's the answer: ```json {...} ``` Hope this helps!"
+            first_backtick = cleaned_response.find('```')
+            last_backtick = cleaned_response.rfind('```')
+            
+            if first_backtick != -1 and last_backtick != -1 and first_backtick < last_backtick:
+                # Extract content between the backticks
+                content = cleaned_response[first_backtick:last_backtick + 3]
+                # Remove the opening ```json or ``` and closing ```
+                content = re.sub(r'^```\w*\s*', '', content)
+                content = re.sub(r'\s*```$', '', content)
+                cleaned_response = content.strip()
             
         try:
             data = json.loads(cleaned_response)
@@ -154,7 +161,11 @@ class FormatParser:
                     if source in data:
                         normalized_data[target_field] = data[source]
                         break
-                # If not found, default to empty string (handled by DIPGResponse default)
+                # If not found, default to empty string
+                # Note: Empty fields are allowed to support partial parsing.
+                # Downstream evaluation logic in DIPGEnvironment.calculate_total_reward_from_parsed
+                # correctly handles empty strings by applying specific penalties (e.g., missing_trace_penalty)
+                # rather than generic format failures.
                 if target_field not in normalized_data:
                      normalized_data[target_field] = ""
             

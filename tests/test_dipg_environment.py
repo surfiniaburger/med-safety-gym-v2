@@ -30,7 +30,7 @@ def server():
 
     gunicorn_command = [
         "gunicorn",
-        "-w", "1",
+        "-w", "1",  # Use single worker for deterministic testing with small mock dataset
         "-k", "uvicorn.workers.UvicornWorker",
         "-b", f"0.0.0.0:{PORT}",
         "server.app:app",

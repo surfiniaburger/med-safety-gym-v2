@@ -118,7 +118,7 @@ def test_evaluate_batch_handles_errors(eval_manager):
     # Should still return results for all responses
     assert result.total_responses == 2
     assert len(result.rewards) == 2
-    # First response should get penalty for format error
+    # First response should get penalty for format error (falls back to legacy parsing)
     assert result.rewards[0] == eval_manager.environment.format_mismatch_penalty
 
 
