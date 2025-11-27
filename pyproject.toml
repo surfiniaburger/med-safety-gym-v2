@@ -10,13 +10,14 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "openenv-core>=0.1.0",  # The core dependency
-    "fastapi==0.104.0",
+    "fastapi>=0.109.1",
     "uvicorn[standard]==0.24.0",
-    "requests==2.25.0",
+    "requests>=2.31.0",
     "wsproto==1.0.0",
     "gunicorn==22.0.0",
     "datasets",
-    "starlette",
+    "starlette>=0.36.3",
+    "idna>=3.7",
 ]
 
 [project.optional-dependencies]

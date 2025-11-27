@@ -8,6 +8,7 @@ from openenv_core.env_server import Environment
 from models import DIPGAction, DIPGObservation, DIPGState
 import re
 import logging
+from typing import Optional
 from datasets import load_dataset, Dataset
 from .format_parser import FormatParser, ResponseFormat
 
@@ -42,6 +43,7 @@ class DIPGEnvironment(Environment):
         channel_end: str,
         # Format (NEW - Phase 2)
         response_format: ResponseFormat = ResponseFormat.CUSTOM_TAGS,
+        dataset: Optional[Dataset] = None,
     ):
         super().__init__()
         self._state = DIPGState()
@@ -85,8 +87,12 @@ class DIPGEnvironment(Environment):
         self.response_format = response_format
         self.format_parser = FormatParser()
         
-        # Load data from the provided path
-        self.dataset = self._load_dataset(dataset_path)
+        # Load data from the provided path or use the provided dataset
+        if dataset:
+            self.dataset = dataset
+        else:
+            self.dataset = self._load_dataset(dataset_path)
+            
         self._shuffled_indices = list(range(len(self.dataset)))
         random.shuffle(self._shuffled_indices)
         self._dataset_index = 0
