@@ -52,19 +52,19 @@ class TestFormatFirstRewards:
         """If format is not perfect, a large penalty is returned immediately."""
         # Case 1: Missing a channel
         llm_response_missing = f"{self.ANALYSIS_START}Analysis.{self.END}\n{self.FINAL_START}Final answer.{self.END}"
-        reward = env_v3.calculate_total_reward(llm_response_missing, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
+        reward, _ = env_v3.calculate_total_reward(llm_response_missing, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
         assert reward == env_v3.format_mismatch_penalty
 
         # Case 2: Wrong order
         llm_response_wrong_order = f"{self.FINAL_START}Final.{self.END}\n{self.PROOF_START}Proof.{self.END}\n{self.ANALYSIS_START}Analysis.{self.END}"
-        reward = env_v3.calculate_total_reward(llm_response_wrong_order, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
+        reward, _ = env_v3.calculate_total_reward(llm_response_wrong_order, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
         assert reward == env_v3.format_mismatch_penalty
 
     def test_hallucinated_trace_with_perfect_format(self, env_v3):
         """Perfect format but hallucinated proof results in format reward + hallucination penalty."""
         proof = "This is a fabricated proof."
         llm_response = f"{self.ANALYSIS_START}A.{self.END}\n{self.PROOF_START}{proof}{self.END}\n{self.FINAL_START}F.{self.END}"
-        reward = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
+        reward, _ = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
         expected = env_v3.exact_format_reward + env_v3.hallucinated_trace_penalty
         assert reward == expected
 
@@ -77,7 +77,7 @@ class TestFormatFirstRewards:
             f"{self.PROOF_START}{proof}{self.END}\n"
             f"{self.FINAL_START}{final}{self.END}"
         )
-        reward = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
+        reward, _ = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
         expected = (
             env_v3.exact_format_reward +
             env_v3.verifiable_trace_reward +
@@ -88,16 +88,16 @@ class TestFormatFirstRewards:
     def test_perfect_format_but_incorrect_answer(self, env_v3):
         """Perfect format and valid proof, but the final answer is wrong."""
         proof = "Drug A is effective."
-        final = "Drug B is better." # Incorrect conclusion
+        final = "Drug B is better."  # Incorrect conclusion
         llm_response = (
             f"{self.ANALYSIS_START}Analysis.{self.END}\n"
             f"{self.PROOF_START}{proof}{self.END}\n"
             f"{self.FINAL_START}{final}{self.END}"
         )
-        reward = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
+        reward, _ = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
         expected = (
             env_v3.exact_format_reward +
-            env_v3.verifiable_trace_reward + # Trace was good
+            env_v3.verifiable_trace_reward +  # Trace was good
             env_v3.incorrect_answer_penalty  # But answer was bad
         )
         assert reward == expected
@@ -112,7 +112,7 @@ class TestFormatFirstRewards:
             f"{self.PROOF_START}{proof}{self.END}\n"
             f"{self.FINAL_START}{final}{self.END}"
         )
-        reward = env_v3.calculate_total_reward(llm_response, context_conflict, self.GROUND_TRUTH_ABSTENTION)
+        reward, _ = env_v3.calculate_total_reward(llm_response, context_conflict, self.GROUND_TRUTH_ABSTENTION)
         expected = (
             env_v3.exact_format_reward +
             env_v3.verifiable_trace_reward +
@@ -127,7 +127,7 @@ class TestFormatFirstRewards:
             f"{self.PROOF_START}{self.END}\n"  # Empty proof
             f"{self.FINAL_START}Final.{self.END}"
         )
-        reward = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
+        reward, _ = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
         # The format is perfect, so it gets the format reward.
         # Then, the logic checks for an empty proof and applies the penalty.
         expected = env_v3.exact_format_reward + env_v3.missing_trace_penalty

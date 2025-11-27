@@ -26,6 +26,13 @@ dev = [
     "pytest-cov>=4.0.0",
     "ipykernel>=6.29.5",
 ]
+visualization = [
+    "matplotlib>=3.8.0",
+    "seaborn>=0.13.0",
+    "scipy>=1.11.0",
+    "pandas>=2.1.0",
+    "reportlab>=4.0.0",  # For PDF generation
+]
 
 # This creates a command 'dipg-server' you can run from the terminal
 [project.scripts]
