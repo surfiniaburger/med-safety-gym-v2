@@ -86,11 +86,17 @@ class EvaluationResult(BaseModel):
     max_reward: float
     rewards: List[float]
     
-    # Advanced Safety Metrics
+    # Advanced Safety Metrics (aggregate rates)
     refusal_rate: float = 0.0
     safe_response_rate: float = 0.0
     medical_hallucination_rate: float = 0.0
     reasoning_consistency_rate: float = 0.0
+    
+    # Per-sample metrics for CI calculation (list of 0/1 outcomes)
+    refusal_outcomes: Optional[List[int]] = None
+    safe_outcomes: Optional[List[int]] = None
+    hallucination_outcomes: Optional[List[int]] = None
+    consistency_outcomes: Optional[List[int]] = None
     
     saved_to: Optional[str] = None
 
@@ -148,6 +154,12 @@ class EvaluationManager:
             hallucination_count = 0
             consistency_count = 0
             
+            # Per-sample outcomes for CI calculation
+            refusal_outcomes = []
+            safe_outcomes = []
+            hallucination_outcomes = []
+            consistency_outcomes = []
+            
             for idx, response in enumerate(responses):
                 observation = None
                 try:
@@ -163,54 +175,30 @@ class EvaluationManager:
                     
                     # Collect Metrics
                     metrics = self.environment.last_metrics
-                    if metrics.get("refusal"): refusal_count += 1
-                    if metrics.get("safe"): safe_count += 1
-                    if metrics.get("hallucination"): hallucination_count += 1
-                    if not metrics.get("inconsistency") and not metrics.get("format_error") and not metrics.get("refusal"):
-                         # Consistent if no inconsistency, no format error. 
-                         # Refusals don't have reasoning to be consistent, so exclude them?
-                         # Proposal said: "Count(Verifiable Traces) / Total Requests"
-                         # Verifiable trace means supports() returned True.
-                         # In calculate_total_reward, if not verifiable_trace -> inconsistency=True.
-                         # So if inconsistency=False AND format_error=False AND refusal=False (refusals might skip trace check), it's consistent.
-                         # Actually, let's look at logic:
-                         # if not proof_text -> missing_trace (safe=False)
-                         # if not grounded -> hallucination (safe=False)
-                         # if not verifiable -> inconsistency (safe=False)
-                         # else -> verifiable_trace_reward added.
-                         # So we can just check if inconsistency is False?
-                         # But missing trace also means no consistency check.
-                         # Let's check if 'verifiable_trace_reward' was added? No, we don't have breakdown.
-                         # Let's check: if not inconsistency AND not hallucination AND not missing trace (which is implied by safe=True?)
-                         # Actually, let's simplify: 
-                         # RCR = (Total - Inconsistent - Missing Trace - Hallucinated - Refusals?) / Total
-                         # Or better: if metrics["safe"] and not metrics["refusal"]?
-                         # Let's stick to the proposal: "Count(Verifiable Traces)".
-                         # In my env logic, I set "inconsistency"=True if supports() fails.
-                         # I didn't set "consistent"=True explicitly.
-                         # But if it passed the gates (proof exists, grounded, supports), then it's consistent.
-                         pass
-
-                    # Re-evaluating RCR logic based on env implementation:
-                    # I set "inconsistency"=True if supports() returns False.
-                    # I set "hallucination"=True if grounded() returns False.
-                    # I set "safe"=False if any of these or missing trace.
-                    # So a consistent trace is one that exists, is grounded, and supports final.
-                    # i.e., safe=True AND refusal=False (assuming refusals are safe but have no trace).
-                    # Wait, refusals might be marked safe=True in my env logic if I didn't set safe=False.
-                    # In env: "Refusals are generally considered safe... metrics['refusal'] = True".
-                    # I didn't set safe=False for refusals.
-                    # So safe=True includes refusals.
-                    # So Consistent = Safe AND Not Refusal.
-                    if metrics.get("safe") and not metrics.get("refusal"):
-                        consistency_count += 1
+                    
+                    # Track aggregate counts and per-sample outcomes
+                    is_refusal = 1 if metrics.get("refusal") else 0
+                    is_safe = 1 if metrics.get("safe") else 0
+                    is_hallucination = 1 if metrics.get("hallucination") else 0
+                    # Consistent = safe AND not refusal (refusals have no reasoning to verify)
+                    is_consistent = 1 if (metrics.get("safe") and not metrics.get("refusal")) else 0
+                    
+                    refusal_count += is_refusal
+                    safe_count += is_safe
+                    hallucination_count += is_hallucination
+                    consistency_count += is_consistent
+                    
+                    refusal_outcomes.append(is_refusal)
+                    safe_outcomes.append(is_safe)
+                    hallucination_outcomes.append(is_hallucination)
+                    consistency_outcomes.append(is_consistent)
 
                     rewards.append(reward)
                     detailed_results.append({
                         "index": idx,
                         "response": response,
                         "reward": reward,
-                        "metrics": metrics, # Save metrics to detailed results
+                        "metrics": metrics,
                         "context": observation.context,
                         "question": observation.question
                     })
@@ -241,11 +229,16 @@ class EvaluationManager:
                 min_reward=min(rewards) if rewards else 0.0,
                 max_reward=max(rewards) if rewards else 0.0,
                 rewards=rewards,
-                # New Metrics
+                # Aggregate metrics
                 refusal_rate=refusal_count / total if total > 0 else 0.0,
                 safe_response_rate=safe_count / total if total > 0 else 0.0,
                 medical_hallucination_rate=hallucination_count / total if total > 0 else 0.0,
-                reasoning_consistency_rate=consistency_count / total if total > 0 else 0.0
+                reasoning_consistency_rate=consistency_count / total if total > 0 else 0.0,
+                # Per-sample outcomes for CI calculation
+                refusal_outcomes=refusal_outcomes,
+                safe_outcomes=safe_outcomes,
+                hallucination_outcomes=hallucination_outcomes,
+                consistency_outcomes=consistency_outcomes
             )
             
             # Save detailed results if requested
@@ -300,6 +293,12 @@ class EvaluationManager:
             hallucination_count = 0
             consistency_count = 0
             
+            # Per-sample outcomes for CI calculation
+            refusal_outcomes = []
+            safe_outcomes = []
+            hallucination_outcomes = []
+            consistency_outcomes = []
+            
             for idx, item in enumerate(evaluations):
                 try:
                     # Set up the environment state with the provided ground truth
@@ -318,18 +317,29 @@ class EvaluationManager:
                     
                     # Collect Metrics
                     metrics = self.environment.last_metrics
-                    if metrics.get("refusal"): refusal_count += 1
-                    if metrics.get("safe"): safe_count += 1
-                    if metrics.get("hallucination"): hallucination_count += 1
-                    if metrics.get("safe") and not metrics.get("refusal"):
-                        consistency_count += 1
+                    
+                    # Track aggregate counts and per-sample outcomes
+                    is_refusal = 1 if metrics.get("refusal") else 0
+                    is_safe = 1 if metrics.get("safe") else 0
+                    is_hallucination = 1 if metrics.get("hallucination") else 0
+                    is_consistent = 1 if (metrics.get("safe") and not metrics.get("refusal")) else 0
+                    
+                    refusal_count += is_refusal
+                    safe_count += is_safe
+                    hallucination_count += is_hallucination
+                    consistency_count += is_consistent
+                    
+                    refusal_outcomes.append(is_refusal)
+                    safe_outcomes.append(is_safe)
+                    hallucination_outcomes.append(is_hallucination)
+                    consistency_outcomes.append(is_consistent)
                     
                     rewards.append(reward)
                     detailed_results.append({
                         "index": idx,
                         "response": item.response,
                         "reward": reward,
-                        "metrics": metrics, # Save metrics
+                        "metrics": metrics,
                         "context": item.ground_truth.context,
                         "question": item.ground_truth.question,
                         "expected_answer": item.ground_truth.expected_answer
@@ -339,6 +349,12 @@ class EvaluationManager:
                     logger.error(f"Error evaluating item {idx}: {e}")
                     # Assign minimum penalty for failed evaluations
                     rewards.append(self.environment.missing_answer_penalty)
+                    
+                    # Add zero outcomes for failed evaluations
+                    refusal_outcomes.append(0)
+                    safe_outcomes.append(0)
+                    hallucination_outcomes.append(0)
+                    consistency_outcomes.append(0)
                     
                     error_entry = {
                         "index": idx,
@@ -361,11 +377,16 @@ class EvaluationManager:
                 min_reward=min(rewards) if rewards else 0.0,
                 max_reward=max(rewards) if rewards else 0.0,
                 rewards=rewards,
-                # New Metrics
+                # Aggregate metrics
                 refusal_rate=refusal_count / total if total > 0 else 0.0,
                 safe_response_rate=safe_count / total if total > 0 else 0.0,
                 medical_hallucination_rate=hallucination_count / total if total > 0 else 0.0,
-                reasoning_consistency_rate=consistency_count / total if total > 0 else 0.0
+                reasoning_consistency_rate=consistency_count / total if total > 0 else 0.0,
+                # Per-sample outcomes for CI calculation
+                refusal_outcomes=refusal_outcomes,
+                safe_outcomes=safe_outcomes,
+                hallucination_outcomes=hallucination_outcomes,
+                consistency_outcomes=consistency_outcomes
             )
             
             # Save detailed results if requested

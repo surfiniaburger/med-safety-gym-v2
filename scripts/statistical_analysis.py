@@ -96,6 +96,10 @@ def calculate_effect_size(data1: List[float], data2: List[float]) -> float:
     
     # Pooled standard deviation
     n1, n2 = len(data1), len(data2)
+    
+    if n1 + n2 < 3:
+        return 0.0
+        
     pooled_std = np.sqrt(((n1 - 1) * std1**2 + (n2 - 1) * std2**2) / (n1 + n2 - 2))
     
     if pooled_std == 0:
@@ -132,10 +136,16 @@ def generate_summary_statistics(data: List[float]) -> Dict[str, float]:
     q1 = np.percentile(data_array, 25)
     q3 = np.percentile(data_array, 75)
     
+    # Handle single element case for std dev
+    if len(data) < 2:
+        std_val = 0.0
+    else:
+        std_val = float(np.std(data_array, ddof=1))
+    
     return {
         "mean": float(np.mean(data_array)),
         "median": float(np.median(data_array)),
-        "std": float(np.std(data_array, ddof=1)),
+        "std": std_val,
         "min": float(np.min(data_array)),
         "max": float(np.max(data_array)),
         "q1": float(q1),

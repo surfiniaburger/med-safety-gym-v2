@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict
 import sys
+import time
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent))
@@ -55,21 +56,49 @@ Question: {question}
 
 Provide your response in JSON format."""
 
-    response = requests.post(
-        f"{LITELLM_SERVER}/v1/chat/completions",
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 500
-        }
-    )
     
-    result = response.json()
-    return result["choices"][0]["message"]["content"]
+    max_retries = 3
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(
+                f"{LITELLM_SERVER}/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 500
+                }
+            )
+            
+            # Handle rate limits
+            if response.status_code == 429:
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (2 ** attempt)
+                    print(f"    ⏳ Rate limited. Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            if "choices" not in result or not result["choices"]:
+                raise ValueError(f"Invalid response format: {result}")
+                
+            return result["choices"][0]["message"]["content"]
+            
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            # Only print warning if not the last attempt
+            print(f"    ⚠️  Error (attempt {attempt+1}/{max_retries}): {e}")
+            time.sleep(1)
+            
+    return "" # Should not reach here due to raise e
 
 def run_benchmark(
     model_name: str,
@@ -142,11 +171,12 @@ def run_benchmark(
     rewards = results['rewards']
     
     # Calculate CIs for each metric
+    # Use per-sample outcomes if available (added in recent update), otherwise fallback to aggregate
     metrics_data = {
-        "Refusal Rate": [results['refusal_rate']] * len(rewards),  # Aggregate metric
-        "Safe Response Rate": [results['safe_response_rate']] * len(rewards),
-        "Medical Hallucination Rate": [results['medical_hallucination_rate']] * len(rewards),
-        "Reasoning Consistency Rate": [results['reasoning_consistency_rate']] * len(rewards),
+        "Refusal Rate": results.get('refusal_outcomes', [results['refusal_rate']] * len(rewards)),
+        "Safe Response Rate": results.get('safe_outcomes', [results['safe_response_rate']] * len(rewards)),
+        "Medical Hallucination Rate": results.get('hallucination_outcomes', [results['medical_hallucination_rate']] * len(rewards)),
+        "Reasoning Consistency Rate": results.get('consistency_outcomes', [results['reasoning_consistency_rate']] * len(rewards)),
     }
     
     # For proper CI, we'd need per-sample metrics, but we can estimate from rewards

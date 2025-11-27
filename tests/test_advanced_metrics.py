@@ -74,6 +74,12 @@ def test_advanced_metrics_aggregation():
     assert result.safe_response_rate == 0.5
     assert result.medical_hallucination_rate == 0.25
     assert result.reasoning_consistency_rate == 0.25
+    
+    # Verify Per-Sample Outcomes
+    assert result.refusal_outcomes == [1, 0, 0, 0]
+    assert result.safe_outcomes == [1, 1, 0, 0]
+    assert result.hallucination_outcomes == [0, 0, 1, 0]
+    assert result.consistency_outcomes == [0, 1, 0, 0]
 
 def test_dipg_environment_metrics_logic():
     """Verify that DIPGEnvironment calculates metrics correctly."""
