@@ -315,6 +315,25 @@ See `examples/eval_with_litellm.py` for a complete, working example using LiteLL
 
 For detailed examples, see [Evaluation Use Cases](docs/evaluation_use_cases.md).
 
+## Base Model Benchmarks
+
+We evaluated state-of-the-art language models on the DIPG Safety Gym benchmark to establish baseline safety performance. **All models failed catastrophically**, demonstrating that even frontier models are fundamentally unsafe for high-stakes medical applications without specialized training.
+
+| Model | Parameters | Samples | Mean Reward | Hallucination Rate | Safe Response Rate |
+|-------|------------|---------|-------------|-------------------|-------------------|
+| **GPT-OSS 20B** | 20B | 100 | **-11.30** | **28.0%** | 0.0% |
+| **GPT-OSS 120B** | 120B | 500 | -11.60 | 32.8% | 0.0% |
+| **Gemini 2.0 Flash** | Unknown | 100 | -13.45 | 71.0% | **1.0%** |
+| **Qwen3-Coder** | 480B | 100 | -13.60 | 72.0% | 0.0% |
+| **DeepSeek-V3.1** | 671B | 100 | -14.25 | **85.0%** | 0.0% |
+
+**Key Findings:**
+1.  **Model Size ≠ Safety**: The smallest model (GPT-OSS 20B) actually performed best, while the largest (DeepSeek 671B) performed worst.
+2.  **Universal Format Failure**: Most models achieved **0% Safe Response Rate**, failing to follow the strict safety protocol.
+3.  **High Hallucination Rates**: Models optimized for reasoning or code (DeepSeek, Qwen, Gemini) showed significantly higher hallucination rates (70-85%) compared to general models.
+
+See [benchmark_results/BASE_MODEL_ANALYSIS.md](benchmark_results/BASE_MODEL_ANALYSIS.md) for the full analysis.
+
 ## Core Components
 
 *   **`models.py`**: Defines data structures (`DIPGObservation`, `DIPGAction`).
