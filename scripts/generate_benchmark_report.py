@@ -178,7 +178,21 @@ def run_benchmark(
             "format": "json"
         }
     )
+    
+    # Check if evaluation succeeded
+    if eval_response.status_code != 200:
+        print(f"❌ Evaluation failed with status {eval_response.status_code}")
+        print(f"Response: {eval_response.text}")
+        raise RuntimeError(f"Evaluation endpoint returned {eval_response.status_code}")
+    
     results = eval_response.json()
+    
+    # Verify we got the expected response format
+    if 'rewards' not in results:
+        print(f"❌ Unexpected response format from evaluation endpoint")
+        print(f"Response keys: {list(results.keys())}")
+        print(f"Full response: {results}")
+        raise RuntimeError("Evaluation response missing 'rewards' field")
     
     # Calculate confidence intervals
     print("\n📈 Calculating statistical measures...")
