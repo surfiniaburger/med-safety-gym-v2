@@ -62,3 +62,9 @@ A comprehensive Jupyter notebook demonstrating the full Reinforcement Learning w
 - Fine-tuning a model (SFT)
 - Training with GRPO and the DIPG Safety Gym environment
 - Analyzing results
+
+
+```bash
+python scripts/generate_benchmark_report.py --model "ollama/deepseek-v3.1:671b-cloud" --samples 500
+
+```
