@@ -14,11 +14,47 @@ import json
 import argparse
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Callable, Any
 import sys
+from functools import wraps
+
 DIPG_SERVER = "http://localhost:8000"
 LITELLM_SERVER = "http://localhost:8080"
 GITHUB_INFERENCE_URL = "https://models.github.ai/inference/chat/completions"
+
+def with_retry(max_retries: int = 3, initial_delay: float = 2.0):
+    """Decorator for retrying functions with exponential backoff."""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
+            delay = initial_delay
+            last_exception = None
+            
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    error_str = str(e)
+                    is_rate_limit = "429" in error_str or "quota" in error_str.lower() or "rate" in error_str.lower()
+                    
+                    if attempt < max_retries - 1:
+                        if is_rate_limit:
+                            print(f"    ⏳ Rate limited. Retrying in {delay}s...")
+                            time.sleep(delay)
+                            delay *= 2
+                        else:
+                            print(f"    ⚠️  Error (attempt {attempt+1}/{max_retries}): {e}")
+                            time.sleep(initial_delay)
+                    else:
+                        # On last attempt, raise the exception
+                        raise last_exception
+            
+            if last_exception:
+                raise last_exception
+            raise RuntimeError("Exited retry loop unexpectedly.")
+        return wrapper
+    return decorator
 
 def get_tasks(num_tasks: int, shuffle: bool = True) -> List[Dict]:
     """Fetch tasks from DIPG Safety Gym."""
@@ -31,6 +67,7 @@ def get_tasks(num_tasks: int, shuffle: bool = True) -> List[Dict]:
     print(f"✅ Retrieved {len(data['tasks'])} tasks from dataset of {data['dataset_size']} samples")
     return data["tasks"]
 
+@with_retry(max_retries=5, initial_delay=3)
 def generate_response_with_gemini(context: str, question: str, model: str) -> str:
     """Generate a response using Google Gemini API."""
     from google import genai
@@ -55,54 +92,33 @@ Question: {question}
 
 Provide your response in JSON format."""
 
-    max_retries = 5
-    retry_delay = 3  # Longer delay for Gemini
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(text=f"{system_prompt}\n\n{user_prompt}"),
+            ],
+        ),
+    ]
     
-    for attempt in range(max_retries):
-        try:
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=f"{system_prompt}\n\n{user_prompt}"),
-                    ],
-                ),
-            ]
-            
-            generate_content_config = types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=500,
-            )
-            
-            response = client.models.generate_content(
-                model=model,
-                contents=contents,
-                config=generate_content_config,
-            )
-            
-            # Extract text from response
-            if response.text:
-                return response.text
-            else:
-                raise ValueError("Empty response from Gemini")
-                
-        except Exception as e:
-            error_str = str(e)
-            # Check for rate limit errors
-            if "429" in error_str or "quota" in error_str.lower() or "rate" in error_str.lower():
-                if attempt < max_retries - 1:
-                    wait_time = retry_delay * (2 ** attempt)
-                    print(f"    ⏳ Rate limited (Gemini). Retrying in {wait_time}s...")
-                    time.sleep(wait_time)
-                    continue
-            
-            if attempt == max_retries - 1:
-                raise e
-            print(f"    ⚠️  Error (attempt {attempt+1}/{max_retries}): {e}")
-            time.sleep(2)
-            
-    raise RuntimeError("Exited retry loop unexpectedly.")
+    generate_content_config = types.GenerateContentConfig(
+        temperature=0.7,
+        max_output_tokens=500,
+    )
+    
+    response = client.models.generate_content(
+        model=model,
+        contents=contents,
+        config=generate_content_config,
+    )
+    
+    # Extract text from response
+    if response.text:
+        return response.text
+    else:
+        raise ValueError("Empty response from Gemini")
 
+@with_retry(max_retries=5, initial_delay=5)
 def generate_response_with_github(context: str, question: str, model: str) -> str:
     """Generate a response using GitHub Models API."""
     token = os.environ.get("GITHUB_TOKEN")
@@ -128,48 +144,33 @@ Provide your response in JSON format."""
         "Accept": "application/json"
     }
 
-    max_retries = 5
-    retry_delay = 5 # Start with 5s for GitHub as it can be strict
+    response = requests.post(
+        GITHUB_INFERENCE_URL,
+        headers=headers,
+        json={
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 500
+        }
+    )
     
-    for attempt in range(max_retries):
-        try:
-            response = requests.post(
-                GITHUB_INFERENCE_URL,
-                headers=headers,
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 500
-                }
-            )
-            
-            # Handle rate limits
-            if response.status_code == 429:
-                wait_time = retry_delay * (2 ** attempt)
-                print(f"    ⏳ Rate limited (GitHub). Retrying in {wait_time}s...")
-                time.sleep(wait_time)
-                continue
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            if "choices" not in result or not result["choices"]:
-                raise ValueError(f"Invalid response format: {result}")
-                
-            return result["choices"][0]["message"]["content"]
-            
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise e
-            print(f"    ⚠️  Error (attempt {attempt+1}/{max_retries}): {e}")
-            time.sleep(2)
-            
-    raise RuntimeError("Exited retry loop unexpectedly.")
+    # Handle rate limits explicitly for GitHub to trigger retry logic
+    if response.status_code == 429:
+        raise RuntimeError(f"GitHub API Rate Limit: {response.text}")
+    
+    response.raise_for_status()
+    result = response.json()
+    
+    if "choices" not in result or not result["choices"]:
+        raise ValueError(f"Invalid response format: {result}")
+        
+    return result["choices"][0]["message"]["content"]
 
+@with_retry(max_retries=3, initial_delay=2)
 def generate_response_with_litellm(context: str, question: str, model: str) -> str:
     """Generate a response using LiteLLM."""
     system_prompt = """You are a medical AI assistant. Respond in JSON format with three fields:
@@ -185,52 +186,34 @@ Question: {question}
 
 Provide your response in JSON format."""
 
-    max_retries = 3
-    retry_delay = 2
+    response = requests.post(
+        f"{LITELLM_SERVER}/v1/chat/completions",
+        json={
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 500
+        }
+    )
     
-    for attempt in range(max_retries):
-        try:
-            response = requests.post(
-                f"{LITELLM_SERVER}/v1/chat/completions",
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 500
-                }
-            )
-            
-            # Handle rate limits
-            if response.status_code == 429:
-                if attempt < max_retries - 1:
-                    wait_time = retry_delay * (2 ** attempt)
-                    print(f"    ⏳ Rate limited. Retrying in {wait_time}s...")
-                    time.sleep(wait_time)
-                    continue
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            # Check for error in response
-            if "error" in result:
-                raise ValueError(f"LiteLLM error: {result['error'].get('message', result['error'])}")
-            
-            if "choices" not in result or not result["choices"]:
-                raise ValueError(f"Invalid response format: {result}")
-                
-            return result["choices"][0]["message"]["content"]
-            
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise e
-            # Only print warning if not the last attempt
-            print(f"    ⚠️  Error (attempt {attempt+1}/{max_retries}): {e}")
-            time.sleep(1)
-            
-    raise RuntimeError("Exited retry loop unexpectedly without returning or raising an exception.")
+    # Handle rate limits explicitly
+    if response.status_code == 429:
+        raise RuntimeError(f"LiteLLM Rate Limit: {response.text}")
+    
+    response.raise_for_status()
+    result = response.json()
+    
+    # Check for error in response
+    if "error" in result:
+        raise ValueError(f"LiteLLM error: {result['error'].get('message', result['error'])}")
+    
+    if "choices" not in result or not result["choices"]:
+        raise ValueError(f"Invalid response format: {result}")
+        
+    return result["choices"][0]["message"]["content"]
 
 def run_benchmark(
     model_name: str,
