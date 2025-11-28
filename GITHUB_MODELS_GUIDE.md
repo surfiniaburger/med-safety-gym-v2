@@ -17,7 +17,7 @@ The DIPG Safety Gym now supports benchmarking models via the GitHub Models API, 
 ### 2. Set the Token as an Environment Variable
 
 ```bash
-export GITHUB_TOKEN=ghp_your_token_here
+export GITHUB_TOKEN=<YOUR_GITHUB_TOKEN>
 ```
 
 ### 3. List Available Models
