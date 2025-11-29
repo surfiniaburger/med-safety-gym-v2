@@ -78,9 +78,14 @@ async def run_evaluation(model, tokenizer, num_samples=100):
                     outputs = model.generate(input_ids=inputs, max_new_tokens=512, use_cache=True, pad_token_id=tokenizer.eos_token_id)
                     decoded = tokenizer.batch_decode(outputs)
                     
-                    # Extract response (assuming standard chat template output)
-                    # We split by the assistant start token to get the response
-                    response_text = decoded[0].split("<|start|>assistant<|message|>")[-1].replace("<|end|>", "").strip()
+                    # Extract response, handling cases where the template might be missing.
+                    assistant_token = "<|start|>assistant<|message|>"
+                    response_parts = decoded[0].split(assistant_token)
+                    if len(response_parts) > 1:
+                        response_text = response_parts[-1].replace("<|end|>", "").strip()
+                    else:
+                        response_text = "" # Or handle as an error
+                        print(f"Warning: Assistant start token not found in output for task {i}.")
                     
                     evaluations.append({
                         "response": response_text,
