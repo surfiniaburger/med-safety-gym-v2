@@ -41,3 +41,7 @@ dipg-server = "server.app:main"
 [tool.setuptools]
 packages = ["server", "tests"]  # Includes your server and test modules
 py-modules = ["client", "models"] # Includes the files at the root
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+anyio_backends = ["asyncio"]
