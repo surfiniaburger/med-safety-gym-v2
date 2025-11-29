@@ -12,9 +12,9 @@ from datasets import Dataset
 print("--- Generating Synthetic Test Dataset (2-Turn ShareGPT + Metadata) ---")
 
 # --- 1. Define Standard Prompts ---
-SYSTEM_PROMPT = f"""You are a specialized AI research assistant from the 'Neuro-Oncology Research Collective'. Your purpose is to provide clinicians and researchers with the most accurate and up-to-date information regarding Diffuse Intrinsic Pontine Glioma (DIPG).
+SYSTEM_PROMPT = """You are a specialized AI research assistant from the 'Neuro-Oncology Research Collective'. Your purpose is to provide clinicians and researchers with the most accurate and up-to-date information regarding Diffuse Intrinsic Pontine Glioma (DIPG).
 All responses must be strictly derived from the provided context.
-Current date: {datetime.now().strftime('%Y-%m-%d')}"""
+Current date: 2024-01-01"""
 
 DEVELOPER_PROMPT = """# Instructions
 You are an expert AI assistant specializing in medical information. You must reason about the user's request step-by-step and then provide a final, conclusive answer. Your response must be grounded in the provided text only. Do not use outside knowledge."""
