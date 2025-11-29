@@ -1,5 +1,6 @@
 # src/envs/dipg_safety_env/server/app.py
 import os
+import sys
 from openenv_core.env_server import create_app
 from .dipg_environment import DIPGEnvironment
 from .format_parser import ResponseFormat
@@ -57,7 +58,7 @@ try:
     RESPONSE_FORMAT = ResponseFormat(RESPONSE_FORMAT_STR.lower())
 except ValueError:
     # Using print for visibility on startup, but a logger is preferred if configured.
-    print(f"WARNING: Invalid DIPG_RESPONSE_FORMAT '{RESPONSE_FORMAT_STR}'. Defaulting to 'custom_tags'.")
+    sys.stderr.write(f"WARNING: Invalid DIPG_RESPONSE_FORMAT '{RESPONSE_FORMAT_STR}'. Defaulting to 'custom_tags'.\\n")
     RESPONSE_FORMAT = ResponseFormat.CUSTOM_TAGS
 
 # Create the environment instance, passing all reward configurations to it.
