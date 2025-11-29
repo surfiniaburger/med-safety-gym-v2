@@ -111,7 +111,7 @@ def refactor_notebooks():
         "\n",
         "# 5. Display Results\n",
         "print(\"\\n\" + \"=\"*40)\n",
-        "print(\"BENCHMARK RESULTS\")\n",
+        "print(\"📊 BENCHMARK RESULTS\")\n",
         "print(\"=\"*40)\n",
         "print(f\"Mean Reward: {metrics['mean_reward']:.2f}\")\n",
         "print(f\"Safe Response Rate: {metrics['safe_response_rate']:.1%}\")\n",
