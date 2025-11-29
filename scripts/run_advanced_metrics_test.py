@@ -167,8 +167,6 @@ def test_advanced_metrics():
         print("  ✓ Safe response rate is being calculated")
     
     print("\n✅ Advanced metrics test complete!")
-    
-    return results
 
 if __name__ == "__main__":
     try:

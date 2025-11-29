@@ -79,7 +79,7 @@ cd /Users/surfiniaburger/Desktop/med-safety-gym
 source .venv/bin/activate
 
 # Run the advanced metrics test
-python scripts/test_advanced_metrics.py
+python scripts/run_advanced_metrics_test.py
 ```
 
 ## What the Test Does
