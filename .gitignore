@@ -50,3 +50,4 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/.gemini/
+DEPLOYMENT_INFO.md

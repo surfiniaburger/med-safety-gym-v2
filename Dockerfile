@@ -1,27 +1,23 @@
-# Base image
+# Use the official Python image
 FROM python:3.11-slim
 
-# Set working directory
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Install the project into /app
+COPY . /app
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+# Allow statements and log messages to immediately appear in the logs
+ENV PYTHONUNBUFFERED=1
 
-# Copy all environment files
-COPY . .
+# Install git, which is required for installing packages from git repositories
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
-# Install the environment as a package using the pyproject.toml we created
-RUN pip install --no-cache-dir -e .
+# Install dependencies
+RUN uv sync --frozen
 
-# Expose port
-EXPOSE 8000
+EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=60s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Run the server using the script defined in pyproject.toml
-CMD ["dipg-server"]
+# Run the FastAPI server (using shell form to expand $PORT)
+CMD uv run uvicorn server.app:app --host 0.0.0.0 --port ${PORT:-8080}
