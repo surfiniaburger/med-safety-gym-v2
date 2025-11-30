@@ -96,7 +96,9 @@ def create_training_example(needle_generator_func, seed, example_id):
         f"ANALYSIS:\n{answer_dict['analysis']}\n\n"
         f"PROOF:\n{answer_dict['proof']}"
     )
-    assistant_content = answer_dict['final']
+    
+    # Format assistant response as JSON
+    assistant_content = json.dumps(answer_dict, indent=2)
 
     # 4. Create the final data example
     data_example = {
