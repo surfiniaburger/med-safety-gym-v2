@@ -158,5 +158,5 @@ def plot_results(metrics):
 # Example usage in Colab/Kaggle:
 if __name__ == "__main__":
     # Assuming you have 'model' and 'tokenizer' loaded
-    # metrics = evaluate_model(model, tokenizer, num_samples=100)
+    metrics = evaluate_model(model, tokenizer, num_samples=100)
     print("Import this script and call evaluate_model(model, tokenizer)")
