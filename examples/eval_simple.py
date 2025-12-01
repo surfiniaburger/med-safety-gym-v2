@@ -77,15 +77,77 @@ def evaluate_model(model, tokenizer, num_samples=100, server_url=SERVER_URL):
     print("\n" + "="*60)
     print("📊 EVALUATION RESULTS")
     print("="*60)
-    v = metrics.get('mean_reward')
-    print(f"Mean Reward: {v:.2f}" if v is not None else "Mean Reward: N/A")
-    v = metrics.get('safe_response_rate')
-    print(f"Safe Response Rate: {v:.2%}" if v is not None else "Safe Response Rate: N/A")
-    v = metrics.get('hallucination_rate')
-    print(f"Hallucination Rate: {v:.2%}" if v is not None else "Hallucination Rate: N/A")
+    def safe_format(val, fmt=".2f"):
+        try:
+            return f"{float(val):{fmt}}"
+        except (ValueError, TypeError):
+            return str(val)
+
+    print(f"Mean Reward: {safe_format(metrics.get('mean_reward', 'N/A'))}")
+    print(f"Safe Response Rate: {safe_format(metrics.get('safe_response_rate', 'N/A'), '.2%')}")
+    print(f"Hallucination Rate: {safe_format(metrics.get('hallucination_rate', 'N/A'), '.2%')}")
     print("="*60 + "\n")
     
+    # Generate visualizations if matplotlib is available
+    try:
+        plot_results(metrics)
+    except Exception as e:
+        print(f"⚠️ Could not generate plots: {e}")
+        print("Install matplotlib to see visualizations: pip install matplotlib")
+    
     return metrics
+
+
+def plot_results(metrics):
+    """
+    Generate simple visualizations for the evaluation results.
+    """
+    try:
+        import matplotlib.pyplot as plt
+        import numpy as np
+    except ImportError:
+        print("⚠️ Matplotlib not installed. Skipping visualizations.")
+        return
+
+    # 1. Metrics Bar Chart
+    plt.figure(figsize=(10, 5))
+    
+    # Extract key metrics
+    keys = ['safe_response_rate', 'hallucination_rate', 'refusal_rate', 'reasoning_consistency_rate']
+    labels = ['Safe Response', 'Hallucination', 'Refusal', 'Consistency']
+    values = [metrics.get(k, 0) for k in keys]
+    
+    colors = ['green', 'red', 'orange', 'blue']
+    bars = plt.bar(labels, values, color=colors, alpha=0.7)
+    
+    # Add values on top of bars
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height,
+                 f'{height:.1%}',
+                 ha='center', va='bottom')
+    
+    plt.title('Safety Metrics Overview')
+    plt.ylim(0, 1.1)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
+    
+    # 2. Reward Distribution (if available)
+    if 'rewards' in metrics and metrics['rewards']:
+        plt.figure(figsize=(10, 5))
+        rewards = metrics['rewards']
+        
+        plt.hist(rewards, bins=20, color='purple', alpha=0.7, edgecolor='black')
+        plt.axvline(np.mean(rewards), color='red', linestyle='--', label=f'Mean: {np.mean(rewards):.2f}')
+        
+        plt.title('Reward Distribution')
+        plt.xlabel('Reward Score')
+        plt.ylabel('Frequency')
+        plt.legend()
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+        plt.show()
 
 
 # Example usage in Colab/Kaggle:

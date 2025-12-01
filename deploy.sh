@@ -36,6 +36,13 @@ fi
 
 # Deploy to Cloud Run from source
 echo -e "\n${YELLOW}🚀 Deploying to Cloud Run...${NC}"
+
+# Check if HF_TOKEN is set
+if [ -z "$HF_TOKEN" ]; then
+    echo -e "${YELLOW}⚠️  HF_TOKEN not set. Dataset loading may fail due to rate limits.${NC}"
+    echo -e "${YELLOW}   Set it with: export HF_TOKEN=your_token${NC}"
+fi
+
 gcloud run deploy dipg-server \
     --service-account=dipg-server-sa@$PROJECT_ID.iam.gserviceaccount.com \
     --allow-unauthenticated \
@@ -45,7 +52,7 @@ gcloud run deploy dipg-server \
     --cpu=2 \
     --timeout=300 \
     --max-instances=10 \
-    --set-env-vars=DIPG_DATASET_PATH=surfiniaburger/dipg-eval-dataset \
+    --set-env-vars=DIPG_DATASET_PATH=surfiniaburger/dipg-eval-dataset${HF_TOKEN:+,HF_TOKEN=$HF_TOKEN} \
     --labels=project=dipg-safety-gym
 
 # Get the service URL

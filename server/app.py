@@ -320,8 +320,9 @@ async def get_tasks(
     # Create environment
     env = get_environment()
     
-    # Get tasks from dataset
-    raw_tasks = env.get_eval_tasks(max_samples=count, shuffle=True)
+    # Get tasks from dataset - NO SHUFFLE to ensure IDs match indices
+    # In a real system, we'd use stable UUIDs from the dataset itself
+    raw_tasks = env.get_eval_tasks(max_samples=count, shuffle=False)
     
     # Format tasks for client
     tasks = []
@@ -342,41 +343,30 @@ async def get_tasks(
     }
 
 
+# Pydantic models for request validation
+from pydantic import BaseModel
+from typing import List, Optional
+
+class TaskResponse(BaseModel):
+    task_id: str
+    response: str
+
+class EvaluateTasksRequest(BaseModel):
+    responses: List[TaskResponse]
+    format: str = "custom_tags"
+    dataset: Optional[str] = None
+
+
 @app.post("/evaluate/tasks")
-async def evaluate_tasks(request: dict):
+async def evaluate_tasks(request: EvaluateTasksRequest):
     """
     Evaluate responses to tasks - SIMPLE API for universal platform support.
     
     This endpoint receives task responses and returns evaluation metrics.
     Server handles all the complexity (dataset lookup, scoring, etc.).
-    
-    Request Body:
-        {
-          "dataset": "dipg-eval",  # Optional, defaults to env var
-          "responses": [
-            {
-              "task_id": "task_001",
-              "response": "{\\"analysis\\": \\"...\\", \\"proof\\": \\"...\\", \\"final\\": \\"...\\"}"
-            },
-            ...
-          ],
-          "format": "json"  # Optional, defaults to "custom_tags"
-        }
-        
-    Returns:
-        {
-          "metrics": {
-            "mean_reward": 8.5,
-            "safe_response_rate": 0.95,
-            "hallucination_rate": 0.05,
-            ...
-          },
-          "task_count": 100
-        }
     """
     # Security: Limit number of tasks
-    responses = request.get("responses", [])
-    if len(responses) > MAX_EVALUATION_ITEMS:
+    if len(request.responses) > MAX_EVALUATION_ITEMS:
         raise HTTPException(
             status_code=413,
             detail=f"Too many responses. Maximum {MAX_EVALUATION_ITEMS} allowed."
@@ -386,32 +376,46 @@ async def evaluate_tasks(request: dict):
     env = get_environment()
     eval_manager = EvaluationManager(env)
     
-    # Get dataset tasks to match with responses
-    # Create a lookup map from task_id to task data for efficient and correct lookup.
-    all_dataset_tasks = env.get_eval_tasks(shuffle=False)
-    task_map = {task['task_id']: task for task in all_dataset_tasks}
-
-    # Build evaluations with ground truth
+    # Get ALL tasks from dataset to ensure we can match any ID
+    # Note: In a production system with huge datasets, we would use a database or cache
+    # For now, loading the dataset is fast enough
+    all_tasks = env.get_eval_tasks(max_samples=None, shuffle=False)
+    
+    # Build evaluations with ground truth by matching task_ids
     evaluations = []
-    for resp in responses:
-        task_id = resp.get("task_id")
-        task = task_map.get(task_id)
-
-        if task:
-            evaluations.append({
-                "response": resp.get("response", ""),
-                "ground_truth": {
-                    "context": task.get("context", ""),
-                    "question": task.get("question", ""),
-                    "expected_answer": task.get("expected_answer", {})
-                }
-            })
+    for resp in request.responses:
+        task_id = resp.task_id
+        
+        # Parse task index from ID (format: task_0001)
+        try:
+            task_idx = int(task_id.split("_")[1])
+            
+            if 0 <= task_idx < len(all_tasks):
+                task = all_tasks[task_idx]
+                evaluations.append({
+                    "response": resp.response,
+                    "ground_truth": {
+                        "context": task.get("context", ""),
+                        "question": task.get("question", ""),
+                        "expected_answer": task.get("expected_answer", {})
+                    }
+                })
+            else:
+                print(f"Warning: Task ID {task_id} out of range")
+        except (IndexError, ValueError):
+            print(f"Warning: Invalid task ID format {task_id}")
+            continue
+    
+    if not evaluations:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid evaluations found. Check task_ids."
+        )
     
     # Evaluate
-    response_format = request.get("format", "custom_tags")
     result = eval_manager.evaluate_with_ground_truth(
         evaluations=evaluations,
-        response_format=response_format
+        response_format=request.format
     )
     
     return {
