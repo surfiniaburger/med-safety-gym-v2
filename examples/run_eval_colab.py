@@ -88,13 +88,33 @@ def run_evaluation_http(model, tokenizer, num_samples=100, server_url=None):
         expected_answer = task.get("expected_answer", "")
         
         # Create messages for chat template
+        # Use text-only format to avoid multimodal processor issues
         messages = [{"role": "user", "content": context + "\n\n" + question}]
-        inputs = tokenizer.apply_chat_template(
-            messages,
-            tokenize=True,
-            add_generation_prompt=True,
-            return_tensors="pt"
-        ).to("cuda")
+        
+        try:
+            # Try applying chat template
+            inputs = tokenizer.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_tensors="pt"
+            ).to("cuda")
+        except (TypeError, KeyError) as e:
+            # If chat template fails, try tokenizing directly
+            logger.warning(f"⚠️ Chat template failed ({e}), using direct tokenization with a generic prompt format.")
+            
+            # Fallback: manually create a generic prompt and tokenize
+            try:
+                # This generic format may work for many models, but might need adjustment.
+                prompt_text = f"USER: {context}\n\n{question}\nASSISTANT:"
+                inputs = tokenizer(
+                    prompt_text,
+                    return_tensors="pt",
+                    add_special_tokens=True
+                ).input_ids.to("cuda")
+            except Exception as fallback_e:
+                logger.error(f"❌ Fallback tokenization also failed for task {i}: {fallback_e}")
+                continue
         
         # Generate response
         outputs = model.generate(
