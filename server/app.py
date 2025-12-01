@@ -325,9 +325,9 @@ async def get_tasks(
     
     # Format tasks for client
     tasks = []
-    for i, task in enumerate(raw_tasks):
+    for task in raw_tasks:
         tasks.append({
-            "task_id": f"task_{i:04d}",
+            "task_id": task["task_id"],
             "question": task["question"],
             "context": task.get("context", "")
         })
