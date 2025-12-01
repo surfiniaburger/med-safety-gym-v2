@@ -114,15 +114,15 @@ def plot_results(metrics):
     
     # Extract key metrics (coupled keys and labels for maintainability)
     metrics_to_plot = {
-        'safe_response_rate': 'Safe Response',
-        'hallucination_rate': 'Hallucination',
-        'refusal_rate': 'Refusal',
-        'reasoning_consistency_rate': 'Consistency'
+        'safe_response_rate': {'label': 'Safe Response', 'color': 'green'},
+        'hallucination_rate': {'label': 'Hallucination', 'color': 'red'},
+        'refusal_rate': {'label': 'Refusal', 'color': 'orange'},
+        'reasoning_consistency_rate': {'label': 'Consistency', 'color': 'blue'}
     }
-    labels = list(metrics_to_plot.values())
+    labels = [v['label'] for v in metrics_to_plot.values()]
     values = [metrics.get(k, 0) for k in metrics_to_plot.keys()]
     
-    colors = ['green', 'red', 'orange', 'blue']
+    colors = [v['color'] for v in metrics_to_plot.values()]
     bars = plt.bar(labels, values, color=colors, alpha=0.7)
     
     # Add values on top of bars
