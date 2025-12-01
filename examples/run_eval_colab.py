@@ -101,15 +101,20 @@ def run_evaluation_http(model, tokenizer, num_samples=100, server_url=None):
             ).to("cuda")
         except (TypeError, KeyError) as e:
             # If chat template fails, try tokenizing directly
-            logger.warning(f"⚠️ Chat template failed ({e}), using direct tokenization")
+            logger.warning(f"⚠️ Chat template failed ({e}), using direct tokenization with a generic prompt format.")
             
-            # Fallback: concatenate and tokenize
-            prompt_text = f"{context}\n\n{question}"
-            inputs = tokenizer(
-                prompt_text,
-                return_tensors="pt",
-                add_special_tokens=True
-            ).input_ids.to("cuda")
+            # Fallback: manually create a generic prompt and tokenize
+            try:
+                # This generic format may work for many models, but might need adjustment.
+                prompt_text = f"USER: {context}\n\n{question}\nASSISTANT:"
+                inputs = tokenizer(
+                    prompt_text,
+                    return_tensors="pt",
+                    add_special_tokens=True
+                ).input_ids.to("cuda")
+            except Exception as fallback_e:
+                logger.error(f"❌ Fallback tokenization also failed for task {i}: {fallback_e}")
+                continue
         
         # Generate response
         outputs = model.generate(
