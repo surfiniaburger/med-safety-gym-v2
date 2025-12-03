@@ -19,6 +19,7 @@ import subprocess
 import time
 import sys
 import requests
+import os
 
 def wait_for_server(url: str, timeout: int = 30) -> bool:
     """Poll a server URL until it responds or timeout is reached."""
@@ -33,13 +34,21 @@ def wait_for_server(url: str, timeout: int = 30) -> bool:
         time.sleep(0.5)
     return False
 
-def start_server(command: list, name: str, health_url: str, wait_time: int = 30):
+def start_server(command: list, name: str, health_url: str, wait_time: int = 30, env: dict | None = None):
     """Start a server in the background and wait for it to be ready."""
+    
     print(f"🚀 Starting {name}...")
+    
+    process_env = None
+    if env:
+        process_env = os.environ.copy()
+        process_env.update({k: str(v) for k, v in env.items()})
+    
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
+        env=process_env,
     )
     print(f"   Waiting for {name} to be ready (timeout: {wait_time}s)...")
     if wait_for_server(health_url, timeout=wait_time):
@@ -65,7 +74,8 @@ def main():
             ["uv", "run", "python", "server/fastmcp_server.py"],
             "FastMCP Server",
             "http://localhost:8081/mcp",
-            wait_time=30
+            wait_time=30,
+            env={"PORT": "8081"},
         )
         
         # Start A2A agent server
@@ -73,7 +83,8 @@ def main():
             ["uv", "run", "uvicorn", "server.dipg_agent:a2a_app", "--host", "localhost", "--port", "10000"],
             "A2A Agent Server",
             "http://localhost:10000/.well-known/agent-card.json",
-            wait_time=30
+            wait_time=30,
+            env={"MCP_SERVER_URL": "http://localhost:8081/mcp"},
         )
         
         # Run test client
