@@ -410,16 +410,23 @@ async def evaluate_tasks(request: EvaluateTasksRequest):
             detail="No valid evaluations found. Check task_ids."
         )
     
-    # Evaluate
-    result = eval_manager.evaluate_with_ground_truth(
-        evaluations=evaluations,
-        response_format=request.format
-    )
-    
-    return {
-        "metrics": result,
-        "task_count": len(evaluations)
-    }
+    # Evaluate with error handling
+    try:
+        result = eval_manager.evaluate_with_ground_truth(
+            evaluations=evaluations,
+            response_format=request.format
+        )
+        
+        return {
+            "metrics": result,
+            "task_count": len(evaluations)
+        }
+    except Exception as e:
+        logging.error(f"Evaluation failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Evaluation failed: {str(e)}"
+        )
 
 
 def main():

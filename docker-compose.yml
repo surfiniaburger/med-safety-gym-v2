@@ -1,0 +1,32 @@
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - DIPG_DATASET_PATH=surfiniaburger/dipg-eval-dataset
+      # Add HF_TOKEN if needed for private datasets
+      # - HF_TOKEN=${HF_TOKEN}
+
+  a2a-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.a2a
+    ports:
+      - "10000:10000"
+    environment:
+      - PORT=10000
+      - MCP_SERVER_URL=http://mcp-server:8081/mcp
+      - LITELLM_MODEL=${LITELLM_MODEL:-ollama/gpt-oss:20b-cloud}
+      # Add GOOGLE_API_KEY if using Gemini models
+      # - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      # Add OPENAI_API_KEY if using OpenAI models
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - mcp-server
+    # For Linux users to access host Ollama:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
