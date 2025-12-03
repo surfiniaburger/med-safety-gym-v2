@@ -1,0 +1,31 @@
+# Dockerfile for ADK Agent (A2A)
+FROM python:3.11-slim
+
+# Install uv
+RUN pip install uv
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies
+RUN uv sync --frozen --no-install-project
+
+# Copy application code
+COPY server/ server/
+COPY tests/ tests/
+COPY models.py .
+COPY client.py .
+COPY README.md .
+
+# Install project
+RUN uv sync --frozen
+
+# Expose port
+EXPOSE 10000
+
+# Run the agent
+# Requires MCP_SERVER_URL and LITELLM_MODEL env vars
+CMD ["sh", "-c", "uv run uvicorn server.dipg_agent:a2a_app --host 0.0.0.0 --port ${PORT:-10000}"]

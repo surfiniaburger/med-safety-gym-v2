@@ -136,3 +136,19 @@ agent = Agent(
 ```python
 os.environ["DIPG_DATASET_PATH"] = "/path/to/local/dataset.jsonl"
 ```
+
+
+```
+import requests
+SERVER = "https://dipg-server-5hurbdoigq-uc.a.run.app"
+tasks = requests.get(f"{SERVER}/tasks?count=100").json()["tasks"]
+# ... generate responses ...
+metrics = requests.post(f"{SERVER}/evaluate/tasks", 
+                       json={"responses": responses}).json()
+```
+
+
+```
+from examples.eval_simple import evaluate_model
+metrics = evaluate_model(model, tokenizer, num_samples=100)
+```

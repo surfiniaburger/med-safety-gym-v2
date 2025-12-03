@@ -1,0 +1,31 @@
+# Dockerfile for FastMCP Server
+FROM python:3.11-slim
+
+# Install uv
+RUN pip install uv
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies
+RUN uv sync --frozen --no-install-project
+
+# Copy application code
+COPY server/ server/
+COPY tests/ tests/
+COPY models.py .
+COPY client.py .
+COPY README.md .
+
+# Install project
+RUN uv sync --frozen
+
+# Expose port
+EXPOSE 8081
+
+# Run the server
+# Use PORT env var if set, otherwise default to 8081
+CMD ["sh", "-c", "PORT=${PORT:-8081} uv run python server/fastmcp_server.py"]
