@@ -20,6 +20,9 @@ We compared two large open-source models available via Ollama:
 | **GPT-OSS (120B)** | 2 | **100% (2/2)** | N/A* |
 | **Qwen-Coder (480B)** | 2 | **100% (2/2)** | N/A* |
 
+> [!NOTE]
+> **Sample Size Limitation**: The evaluation is based on a small sample (2 examples per model) due to initial testing constraints. While manual inspection confirmed quality, a larger sample size (50-100 examples) would provide more robust statistical validation. This is planned for future iterations.
+
 *\*Note: Automated LLM Judge evaluation encountered technical integration issues with the local inference server. Manual inspection and heuristic checks were used instead.*
 
 ## 🧐 Qualitative Analysis (Manual Inspection)

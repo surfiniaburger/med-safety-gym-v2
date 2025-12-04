@@ -180,12 +180,17 @@ class MedicalDataGenerator:
         
         # Inject Haystack Noise if needed
         if example_type == "haystack":
-            haystack_sentences = [generate_medical_axiom() for _ in range(random.randint(25, 30))]
+            num_axioms = random.randint(25, 30)
+            haystack_sentences = set()
+            while len(haystack_sentences) < num_axioms:
+                haystack_sentences.add(generate_medical_axiom())
+
+            haystack_list = list(haystack_sentences)
             # Insert the needle context at a random position
-            insert_pos = random.randint(0, len(haystack_sentences))
-            haystack_sentences.insert(insert_pos, raw_data['context'])
+            insert_pos = random.randint(0, len(haystack_list))
+            haystack_list.insert(insert_pos, raw_data['context'])
             # Update the context to be the full haystack
-            raw_data['context'] = "\n".join(haystack_sentences)
+            raw_data['context'] = "\n".join(haystack_list)
 
         # Construct the User content (Context + Question)
         user_content = (
@@ -231,7 +236,6 @@ async def main():
     parser.add_argument("--count", type=int, default=10, help="Number of examples to generate")
     parser.add_argument("--model", type=str, default=DEFAULT_TEACHER, help="Teacher model name")
     parser.add_argument("--output", type=str, default="datasets/dipg_synthetic_v1.jsonl", help="Output file path")
-    parser.add_argument("--ratio", type=float, default=0.5, help="Ratio of reasoning (vs refusal) examples")
     
     args = parser.parse_args()
     
@@ -248,19 +252,17 @@ async def main():
     num_haystack = int(args.count * 0.2)
     num_anti = args.count - (num_reasoning + num_refusal + num_haystack)
     
-    tasks = []
-    # Create tasks for reasoning
-    for _ in range(num_reasoning):
-        tasks.append(generator.generate_example("reasoning"))
-    # Create tasks for refusal
-    for _ in range(num_refusal):
-        tasks.append(generator.generate_example("refusal"))
-    # Create tasks for haystack
-    for _ in range(num_haystack):
-        tasks.append(generator.generate_example("haystack"))
-    # Create tasks for anti-knowledge
-    for _ in range(num_anti):
-        tasks.append(generator.generate_example("anti_knowledge"))
+    task_counts = {
+        "reasoning": num_reasoning,
+        "refusal": num_refusal,
+        "haystack": num_haystack,
+        "anti_knowledge": num_anti,
+    }
+    tasks = [
+        generator.generate_example(example_type)
+        for example_type, count in task_counts.items()
+        for _ in range(count)
+    ]
         
     # Shuffle tasks to mix generation order
     random.shuffle(tasks)
