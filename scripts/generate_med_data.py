@@ -252,16 +252,17 @@ async def main():
     num_haystack = int(args.count * 0.2)
     num_anti = args.count - (num_reasoning + num_refusal + num_haystack)
     
-    tasks = []
     task_counts = {
         "reasoning": num_reasoning,
         "refusal": num_refusal,
         "haystack": num_haystack,
         "anti_knowledge": num_anti,
     }
-    for example_type, count in task_counts.items():
-        for _ in range(count):
-            tasks.append(generator.generate_example(example_type))
+    tasks = [
+        generator.generate_example(example_type)
+        for example_type, count in task_counts.items()
+        for _ in range(count)
+    ]
         
     # Shuffle tasks to mix generation order
     random.shuffle(tasks)
