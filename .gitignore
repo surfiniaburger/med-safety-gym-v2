@@ -51,3 +51,10 @@ logs/
 .coverage
 htmlcov/.gemini/
 DEPLOYMENT_INFO.md
+golas.md
+unsloth.md
+beat.md
+mistral.md
+goog.md
+.env
+/datasets

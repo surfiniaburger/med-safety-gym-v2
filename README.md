@@ -334,6 +334,64 @@ We evaluated state-of-the-art language models on the DIPG Safety Gym benchmark t
 
 See [benchmark_results/BASE_MODEL_ANALYSIS.md](benchmark_results/BASE_MODEL_ANALYSIS.md) for the full analysis.
 
+## Hybrid Architecture: A2A + MCP
+
+The latest version of the DIPG Safety Gym introduces a powerful hybrid architecture that combines the **Agent-to-Agent (A2A)** protocol with the **Model Context Protocol (MCP)**. This provides a robust, scalable, and easy-to-use system for evaluating and interacting with the safety environment.
+
+![Hybrid Architecture](docs/architecture.png)
+
+### Key Components:
+
+*   **A2A Client (`a2a_client.py`)**: A Python SDK that simplifies interaction with the ADK Agent. It handles the complexities of the A2A protocol, allowing you to send prompts and receive events with just a few lines of code.
+*   **ADK Agent (`server/dipg_agent.py`)**: The "brain" of the system, built using the Agent Development Kit (ADK). It interprets natural language prompts, calls the necessary tools via MCP, and streams responses back to the client.
+*   **FastMCP Server (`server/fastmcp_server.py`)**: A high-performance server that exposes the DIPG environment's functions (like `get_eval_tasks` and `evaluate_batch`) as tools that the ADK Agent can use.
+*   **DIPG Environment (`server/dipg_environment.py`)**: The core evaluation engine that manages the dataset and calculates safety metrics.
+
+### A2A Flow for Evaluation
+
+The A2A framework enables a seamless, conversational workflow for evaluating models. Here’s how it works:
+
+1.  **Connect to the Agent**: The user connects to the A2A agent from a client, such as a Jupyter notebook or a Python script.
+
+    ```python
+    from a2a.client import A2AClient, A2ACardResolver
+    import httpx
+
+    AGENT_URL = "http://localhost:10000"
+
+    async with httpx.AsyncClient(timeout=60.0) as httpx_client:
+        resolver = A2ACardResolver(httpx_client=httpx_client, base_url=AGENT_URL)
+        agent_card = await resolver.get_agent_card()
+        client = A2AClient(httpx_client=httpx_client, agent_card=agent_card)
+    ```
+
+2.  **Request Evaluation Tasks**: The user sends a natural language prompt to the agent to request evaluation tasks.
+
+    ```python
+    from a2a.types import SendMessageRequest, MessageSendParams
+    from uuid import uuid4
+
+    send_message_payload = {
+        "message": {
+            "role": "user",
+            "parts": [{"kind": "text", "text": "Get me 3 evaluation tasks from the DIPG dataset"}],
+            "messageId": uuid4().hex,
+        },
+    }
+    request = SendMessageRequest(id=str(uuid4()), params=MessageSendParams(**send_message_payload))
+    response = await client.send_message(request)
+    ```
+
+3.  **Agent Fetches Tasks**: The A2A agent receives the prompt and calls the `get_eval_tasks` tool on the FastMCP server. The MCP server, in turn, fetches the tasks from the DIPG environment.
+
+4.  **Receive Tasks**: The tasks are returned to the user through the A2A client.
+
+5.  **Generate Responses**: The user's model generates responses for the given tasks.
+
+6.  **Evaluate Responses**: The user sends the responses back to the agent for evaluation. The agent then calls the `evaluate_batch` tool on the FastMCP server to get the safety metrics.
+
+This conversational approach simplifies the evaluation process, allowing researchers to focus on model development and analysis rather than the underlying infrastructure. For a complete, runnable example, see `server/test_a2a_client.py`.
+
 ## Core Components
 
 *   **`models.py`**: Defines data structures (`DIPGObservation`, `DIPGAction`).
