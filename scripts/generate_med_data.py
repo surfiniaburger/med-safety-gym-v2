@@ -258,8 +258,29 @@ async def main():
         "haystack": num_haystack,
         "anti_knowledge": num_anti,
     }
+    # Limit concurrency to avoid 429 errors
+    max_concurrent = 1  # Reduce to serial execution to be safe
+    sem = asyncio.Semaphore(max_concurrent)
+
+    async def generate_with_limit(etype):
+        async with sem:
+            retries = 5
+            base_delay = 2.0
+            for attempt in range(retries):
+                result = await generator.generate_example(etype)
+                if result is not None:
+                    return result
+                
+                # If we are here, it returned None (error)
+                # We should really inspect the error in generator, but for now we assume it's transient
+                # and just backoff.
+                delay = base_delay * (2 ** attempt) + (random.random() * 1.0)
+                print(f"⚠️ Retrying in {delay:.2f}s...")
+                await asyncio.sleep(delay)
+            return None
+
     tasks = [
-        generator.generate_example(example_type)
+        generate_with_limit(example_type)
         for example_type, count in task_counts.items()
         for _ in range(count)
     ]
@@ -267,19 +288,24 @@ async def main():
     # Shuffle tasks to mix generation order
     random.shuffle(tasks)
 
-    # Run concurrently with progress bar
-    for future in tqdm(asyncio.as_completed(tasks), total=len(tasks)):
-        result = await future
-        if result:
-            dataset.append(result)
-
-    # Save to file
+    # Create output directory first
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    with open(args.output, "w") as f:
-        for item in dataset:
-            f.write(json.dumps(item) + "\n")
+    
+    # Open file in append mode (or write mode) to stream results
+    # We use 'w' here to start fresh, but we keep it open or reopen it.
+    # Better approach: Open file once and write as we go.
+    
+    with open(args.output, "w") as f_out:
+        print(f"📄 Streaming results to {args.output}...")
+        
+        # Run concurrently with progress bar
+        for future in tqdm(asyncio.as_completed(tasks), total=len(tasks)):
+            result = await future
+            if result:
+                f_out.write(json.dumps(result) + "\n")
+                f_out.flush()  # Ensure it's written to disk
 
-    print(f"\n✅ Generation complete! Saved {len(dataset)} examples to {args.output}")
+    print(f"\n✅ Generation complete! Output saved to {args.output}")
 
 if __name__ == "__main__":
     asyncio.run(main())
