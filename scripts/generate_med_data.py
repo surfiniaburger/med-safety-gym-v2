@@ -5,6 +5,7 @@ following the XML-tag schema defined in DATA_SCHEMA.md.
 """
 
 import os
+import sys
 import json
 import uuid
 import random
@@ -19,6 +20,10 @@ from tqdm.asyncio import tqdm
 # Default Teacher Model (can be overridden by env var or args)
 # Using a large local/cloud model via Ollama for high-quality generation
 DEFAULT_TEACHER = "ollama/gpt-oss:120b-cloud"
+
+# Retry Configuration
+MAX_RETRIES = 5
+BASE_RETRY_DELAY = 2.0
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -264,9 +269,7 @@ async def main():
 
     async def generate_with_limit(etype):
         async with sem:
-            retries = 5
-            base_delay = 2.0
-            for attempt in range(retries):
+            for attempt in range(MAX_RETRIES):
                 result = await generator.generate_example(etype)
                 if result is not None:
                     return result
@@ -274,8 +277,8 @@ async def main():
                 # If we are here, it returned None (error)
                 # We should really inspect the error in generator, but for now we assume it's transient
                 # and just backoff.
-                delay = base_delay * (2 ** attempt) + (random.random() * 1.0)
-                print(f"⚠️ Retrying in {delay:.2f}s...")
+                delay = BASE_RETRY_DELAY * (2 ** attempt) + (random.random() * 1.0)
+                print(f"⚠️ Retrying in {delay:.2f}s...", file=sys.stderr)
                 await asyncio.sleep(delay)
             return None
 
@@ -295,7 +298,8 @@ async def main():
     # We use 'w' here to start fresh, but we keep it open or reopen it.
     # Better approach: Open file once and write as we go.
     
-    with open(args.output, "w") as f_out:
+    success_count = 0
+    with open(args.output, "w", encoding='utf-8') as f_out:
         print(f"📄 Streaming results to {args.output}...")
         
         # Run concurrently with progress bar
@@ -304,8 +308,9 @@ async def main():
             if result:
                 f_out.write(json.dumps(result) + "\n")
                 f_out.flush()  # Ensure it's written to disk
+                success_count += 1
 
-    print(f"\n✅ Generation complete! Output saved to {args.output}")
+    print(f"\n✅ Generation complete! Output saved to {args.output} ({success_count} items)")
 
 if __name__ == "__main__":
     asyncio.run(main())

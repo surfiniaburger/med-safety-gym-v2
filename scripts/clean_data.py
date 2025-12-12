@@ -1,18 +1,27 @@
+import sys
 import json
 import argparse
 import difflib
 from typing import List, Dict, Set
 
+# Constants
+REQUIRED_TAGS = ["<think>", "</think>", "<proof>", "</proof>", "<answer>", "</answer>"]
+
 def load_dataset(filepath: str) -> List[Dict]:
     data = []
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         for i, line in enumerate(f):
             try:
                 item = json.loads(line)
                 data.append(item)
             except json.JSONDecodeError:
-                print(f"⚠️ Warning: Check malformed JSON at line {i+1}")
+                print(f"⚠️ Warning: Check malformed JSON at line {i+1}", file=sys.stderr)
     return data
+
+def get_user_content(item: Dict) -> str:
+    """Helper to extract user content from messages."""
+    messages = item.get("messages", [])
+    return next((m["content"] for m in messages if m["role"] == "user"), "")
 
 def validate_schema(item: Dict) -> bool:
     """Checks for required fields and non-empty content inside the nested message structure."""
@@ -20,28 +29,23 @@ def validate_schema(item: Dict) -> bool:
         return False
     
     # Extract user and assistant content
-    user_content = next((m["content"] for m in item["messages"] if m["role"] == "user"), "")
+    user_content = get_user_content(item)
     assistant_content = next((m["content"] for m in item["messages"] if m["role"] == "assistant"), "")
     
     if not user_content or not assistant_content:
         return False
 
     # Check for basic tags in assistant content
-    required_tags = ["<think>", "</think>", "<proof>", "</proof>", "<answer>", "</answer>"]
-    if not all(tag in assistant_content for tag in required_tags):
+    if not all(tag in assistant_content for tag in REQUIRED_TAGS):
         return False
         
     return True
 
 def get_fingerprint(item: Dict) -> str:
     """Creates a fingerprint string for deduplication (based on question)."""
-    # Extract the question part from user content
-    messages = item.get("messages", [])
-    user_content = next((m["content"] for m in messages if m["role"] == "user"), "")
-    
     # Simple extraction: just use the whole user content as fingerprint
     # Ideally we'd parse <question>...</question> but this is robust enough for exact duplicates
-    return user_content.strip()
+    return get_user_content(item).strip()
 
 def is_similar(s1: str, s2: str, threshold: float = 0.9) -> bool:
     """Checks if two strings are highly similar."""
@@ -103,7 +107,7 @@ def main():
     data = load_dataset(args.input_file)
     cleaned_data = clean_dataset(data)
 
-    with open(args.output_file, 'w') as f:
+    with open(args.output_file, 'w', encoding='utf-8') as f:
         for item in cleaned_data:
             f.write(json.dumps(item) + "\n")
             
