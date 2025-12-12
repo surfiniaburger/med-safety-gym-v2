@@ -112,7 +112,7 @@ uv run scripts/generate_med_data.py --count <N> --output <FILE_PATH>
 ```
 
 **Key Features:**
-- **Streaming Writes**: Data is saved to disk immediately after generation. If the process is interrupted (e.g., by a crash or quota limit), **no data is lost**.
+- **Streaming Writes**: Data is saved to disk immediately after generation. If the process is interrupted (e.g., by a crash or quota limit), already generated data is preserved. **Note**: Re-running the command with the same output file will **overwrite** it.
 - **Smart Retries**: Implements exponential backoff (up to 5 attempts) to handle `429 Too Many Requests` or transient API errors without crashing.
 - **Concurrency Control**: Limits concurrent requests to prevent overloading the local inference server.
 
