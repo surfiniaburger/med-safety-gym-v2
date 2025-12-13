@@ -25,7 +25,8 @@ Once running, you can access the API at `http://localhost:8080/evaluate`.
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `POST` | `/evaluate` | **Main Evaluator:** Submit batch responses (with ground truth) for scoring. |
-| `GET` | `/eval/tasks` | **Task Getter:** Get random samples from the dataset to test your model. |
+| `GET` | `/tasks` | **Universal Task Getter:** Get tasks (simple format) for any platform. |
+| `GET` | `/eval/tasks` | **Task Getter (Legacy):** Get random samples (advanced options). |
 | `POST` | `/evaluate/tasks` | **Task Evaluator:** Submit responses linked to Task IDs (simpler flow). |
 | `GET` | `/metrics/summary` | Get current environment configuration and rewards. |
 
