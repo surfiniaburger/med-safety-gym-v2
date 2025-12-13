@@ -22,23 +22,23 @@ Welcome to the "Zero to Hero" guide for the DIPG Safety Gym.
 2.  [**Strict Format Curriculum**](tutorials/03_environment_logic/02_strict_format_curriculum.md) - The 3 Gates of Safety.
 3.  [**Supported Formats**](tutorials/03_environment_logic/03_supported_formats.md) - JSON vs XML vs Custom Tags.
 
-25: ## 🔴 Level 4: Advanced Architecture
-26: *For system architects.*
-27: 1.  [**The Hybrid Model (A2A + MCP)**](tutorials/04_architecture/01_the_hybrid_model.md) - Separation of Brain and Body.
-28: 2.  [**Using MCP Tools**](tutorials/04_architecture/02_using_mcp_tools.md) - `get_eval_tasks` and `evaluate_batch`.
-29: 3.  [**Connecting an Agent**](tutorials/04_architecture/03_connecting_an_agent.md) - ADK configuration.
-30: 4.  [**How-to: Run an MCP Eval**](tutorials/04_architecture/04_running_mcp_eval.md) - Python script walkthrough.
-31: 
-32: ## ⚫ Level 5: Expert Customization
-33: *For power users.*
-34: 1.  [**How We Generate Data**](tutorials/05_data_and_customization/01_how_we_generate_data.md) - Reasoning, Refusal, and Traps.
-35: 2.  [**Using Custom Datasets**](tutorials/05_data_and_customization/02_using_custom_datasets.md) - How to use your own JSONL.
-36: 3.  [**Process Supervision Deep Dive**](tutorials/05_data_and_customization/03_process_supervision.md) - How the Proof verifier works.
-37: 4.  [**Data Generation Scripts**](tutorials/05_data_and_customization/04_data_generation_scripts.md) - Guide to `scripts/`.
-38: 
-39: ## 📘 Reference Concepts
-40: *Deep dives into specific topics.*
-41: 1.  [**Evaluation Pathways: REST vs MCP**](concepts/evaluation_pathways_explained.md) - Choosing the right tool for the job.
-42: 2.  [**Server Architectures**](concepts/architecture_server_implementations.md) - FastMCP vs Standard API.
-43: 3.  [**Data Generation Architecture**](concepts/data_generation_architecture.md) - OSS vs Gemini pipelines.
-44: 4.  [**MCP & Agent Usage Guide**](MCP_GUIDE.md) - Reference for FastMCP, A2A, and Tools.
+## 🔴 Level 4: Advanced Architecture
+*For system architects.*
+1.  [**The Hybrid Model (A2A + MCP)**](tutorials/04_architecture/01_the_hybrid_model.md) - Separation of Brain and Body.
+2.  [**Using MCP Tools**](tutorials/04_architecture/02_using_mcp_tools.md) - `get_eval_tasks` and `evaluate_batch`.
+3.  [**Connecting an Agent**](tutorials/04_architecture/03_connecting_an_agent.md) - ADK configuration.
+4.  [**How-to: Run an MCP Eval**](tutorials/04_architecture/04_running_mcp_eval.md) - Python script walkthrough.
+
+## ⚫ Level 5: Expert Customization
+*For power users.*
+1.  [**How We Generate Data**](tutorials/05_data_and_customization/01_how_we_generate_data.md) - Reasoning, Refusal, and Traps.
+2.  [**Using Custom Datasets**](tutorials/05_data_and_customization/02_using_custom_datasets.md) - How to use your own JSONL.
+3.  [**Process Supervision Deep Dive**](tutorials/05_data_and_customization/03_process_supervision.md) - How the Proof verifier works.
+4.  [**Data Generation Scripts**](tutorials/05_data_and_customization/04_data_generation_scripts.md) - Guide to `scripts/`.
+
+## 📘 Reference Concepts
+*Deep dives into specific topics.*
+1.  [**Evaluation Pathways: REST vs MCP**](concepts/evaluation_pathways_explained.md) - Choosing the right tool for the job.
+2.  [**Server Architectures**](concepts/architecture_server_implementations.md) - FastMCP vs Standard API.
+3.  [**Data Generation Architecture**](concepts/data_generation_architecture.md) - OSS vs Gemini pipelines.
+4.  [**MCP & Agent Usage Guide**](MCP_GUIDE.md) - Reference for FastMCP, A2A, and Tools.

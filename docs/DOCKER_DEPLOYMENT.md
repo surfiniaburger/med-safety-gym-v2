@@ -18,7 +18,16 @@ docker run -p 8080:8080 \
   -e DIPG_DATASET_PATH=/app/datasets/dipg_1500_final.jsonl \
   med-safety-gym-env
 ```
-Once running, you can access the API at `http://localhost:8080/eval`.
+Once running, you can access the API at `http://localhost:8080/evaluate`.
+
+### API Endpoints Reference
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/evaluate` | **Main Evaluator:** Submit batch responses (with ground truth) for scoring. |
+| `GET` | `/eval/tasks` | **Task Getter:** Get random samples from the dataset to test your model. |
+| `POST` | `/evaluate/tasks` | **Task Evaluator:** Submit responses linked to Task IDs (simpler flow). |
+| `GET` | `/metrics/summary` | Get current environment configuration and rewards. |
 
 ---
 
@@ -65,7 +74,7 @@ For development, you can run components directly using `uv`.
 export DIPG_DATASET_PATH=$(pwd)/datasets/dipg_1500_final.jsonl
 
 # 2. Run FastMCP Server (Port 8081)
-uv run python server/fastmcp_server.py
+PORT=8081 uv run python server/fastmcp_server.py
 
 # 3. Run A2A Agent (Port 10000) - In a separate terminal
 export MCP_SERVER_URL=http://localhost:8081/mcp

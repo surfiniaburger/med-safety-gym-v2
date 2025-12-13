@@ -27,7 +27,7 @@ For Python users, we provide a wrapper class `DIPGSafetyEnv` in `client.py` that
 ```python
 from client import DIPGSafetyEnv
 
-client = DIPGSafetyEnv("http://localhost:8080")
+client = DIPGSafetyEnv("http://localhost:8000")
 results = client.evaluate_model(
     responses=["JSON or XML string from your model..."],
     response_format="auto" # json, xml, or custom_tags

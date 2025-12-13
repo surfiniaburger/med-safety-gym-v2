@@ -10,7 +10,7 @@ See [Docker Deployment](DOCKER_DEPLOYMENT.md) for running it via Docker.
 ```bash
 # Starts on port 8081
 export DIPG_DATASET_PATH=$(pwd)/datasets/dipg_1500_final.jsonl
-uv run python server/fastmcp_server.py
+PORT=8081 uv run python server/fastmcp_server.py
 ```
 
 ## 2. Agent-to-Agent (A2A) Wrapper
