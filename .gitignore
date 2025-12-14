@@ -58,3 +58,6 @@ mistral.md
 goog.md
 .env
 /datasets
+sam3_agent.ipynb
+adapt_sam3_agent.ipynb
+adapt_sam3_agent.py
