@@ -126,6 +126,8 @@ class DIPGEnvironment(Environment):
                         return ds_dict[sorted(ds_dict.keys())[0]]
                     else:
                         raise ValueError(f"Dataset at {path} is empty (no splits found).")
+        except ValueError:
+            raise
         except Exception as e:
             raise FileNotFoundError(f"Could not load dataset from path: {path}. Error: {e}") from e
 
