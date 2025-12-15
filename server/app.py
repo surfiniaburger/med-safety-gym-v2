@@ -9,7 +9,7 @@ import logging
 
 # Get the dataset path from an environment variable.
 # If it's not set, default to the dipg-sft-dataset on Hugging Face.
-DEFAULT_DATASET_ID = "surfiniaburger/dipg-sft-dataset"
+DEFAULT_DATASET_ID = "surfiniaburger/med-safety-gym-eval"
 DATASET_PATH = os.environ.get("DIPG_DATASET_PATH", DEFAULT_DATASET_ID)
 
 # Get the configurable rewards from environment variables.
