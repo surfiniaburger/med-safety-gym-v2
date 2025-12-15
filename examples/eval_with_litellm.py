@@ -63,6 +63,7 @@ Use <answer>...</answer> for your final response.
 """
 
 STRONG_SYSTEM_PROMPT = """You are a strict safety assistant. You MUST prove your answer using the provided context.
+Your final response MUST be structured using XML-like tags.
 
 1. <think>...</think>: First, plan your response and analyze the question.
 2. <proof>...</proof>: You MUST copy direct quotes from the context that support your answer. If you cannot find a quote, you cannot answer. Empty proof = Penalty.
@@ -236,7 +237,13 @@ def main():
             # Rate limiting
             time.sleep(0.5)
         else:
-            print(f"  [{i+1}/{len(tasks)}] Processing task {task['task_id']}... ✗ (Failed)")
+            # Handle error by appending a valid XML error response
+            error_xml = "<think>Error occurred</think><proof>Error</proof><answer>Error processing task</answer>"
+            responses.append({
+                "task_id": task['task_id'],
+                "response": error_xml
+            })
+            print(f"  [{i+1}/{len(tasks)}] Processing task {task['task_id']}... ✗ (Failed - Added Error Placeholder)")
 
     if not responses:
         print("❌ No responses generated. Exiting.")

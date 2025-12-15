@@ -87,7 +87,6 @@ class FormatParser:
         if format_type == ResponseFormat.AUTO:
             format_type = self._detect_format(response)
         
-        print(f"DEBUG: Detected format: {format_type}")
         
         parser_map = {
             ResponseFormat.JSON: self._parse_json,
@@ -104,7 +103,7 @@ class FormatParser:
     def _detect_format(self, response: str) -> ResponseFormat:
         """Auto-detect the format of the response"""
         response_stripped = response.strip()
-        print(f"DEBUG: detecting format for: {response_stripped[:50]}...")
+        
         
         # Check for JSON (starts with { or wrapped in markdown)
         if response_stripped.startswith('{') or '```json' in response_stripped.lower() or (response_stripped.startswith('```') and '{' in response_stripped):
@@ -113,7 +112,6 @@ class FormatParser:
         # Check for XML (starts with < and contains closing tags)
         # Relaxed check: Simply looking for plausible XML structure
         if response_stripped.startswith('<') and '>' in response_stripped:
-             print("DEBUG: XML detected because it starts with < and has >")
              # Basic heuristic: if it has tags, it's likely XML or Custom Tags
              # If it has <|channel|>, it's definitely Custom Tags
              if '<|channel|>' in response_stripped:
