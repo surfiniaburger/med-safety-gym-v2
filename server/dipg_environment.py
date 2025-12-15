@@ -114,7 +114,18 @@ class DIPGEnvironment(Environment):
                 return load_dataset('json', data_files=path, split='train')
             else:
                 # Assume it's a HuggingFace dataset ID
-                return load_dataset(path, split="train")
+                try:
+                    return load_dataset(path, split="train")
+                except ValueError:
+                    # Fallback for evaluation datasets that might only have 'test'
+                    ds_dict = load_dataset(path)
+                    if "test" in ds_dict:
+                        return ds_dict["test"]
+                    elif len(ds_dict) > 0:
+                        # Return the first available split
+                        return ds_dict[list(ds_dict.keys())[0]]
+                    else:
+                        raise ValueError(f"Dataset at {path} is empty (no splits found).")
         except Exception as e:
             raise FileNotFoundError(f"Could not load dataset from path: {path}. Error: {e}") from e
 
