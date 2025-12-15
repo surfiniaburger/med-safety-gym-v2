@@ -173,25 +173,42 @@ class FormatParser:
             raise ValueError(f"JSON validation failed: {e}")
     
     def _parse_xml(self, response: str) -> DIPGResponse:
-        """Parse XML format"""
+        """Parse XML format with robustness for fragments and aliases"""
+        cleaned_response = response.strip()
+        
+        # Helper to find text in potential tags
+        def get_text(root, tags):
+            for tag in tags:
+                # Check root itself
+                if root.tag == tag:
+                    return root.text or ""
+                # Check children
+                elem = root.find(tag)
+                if elem is not None:
+                    return elem.text or ""
+            return ""
+
         try:
-            root = ET.fromstring(response.strip())
+            # Try parsing as is
+            try:
+                root = ET.fromstring(cleaned_response)
+            except ET.ParseError:
+                # failed, likely due to multiple roots (fragments). Wrap it.
+                root = ET.fromstring(f"<root>{cleaned_response}</root>")
             
-            # Handle both with and without root element
-            if root.tag == 'dipg_response':
-                analysis_elem = root.find('analysis')
-                proof_elem = root.find('proof')
-                final_elem = root.find('final')
-            else:
-                # Try to find elements at root level
-                analysis_elem = root if root.tag == 'analysis' else root.find('analysis')
-                proof_elem = root if root.tag == 'proof' else root.find('proof')
-                final_elem = root if root.tag == 'final' else root.find('final')
+            # Map aliases
+            # analysis -> think, reasoning, analysis
+            # proof -> proof, evidence
+            # final -> answer, final, conclusion
+            
+            analysis_text = get_text(root, ['analysis', 'think', 'reasoning'])
+            proof_text = get_text(root, ['proof', 'evidence'])
+            final_text = get_text(root, ['final', 'answer', 'conclusion'])
             
             data = {
-                "analysis": analysis_elem.text or "" if analysis_elem is not None else "",
-                "proof": proof_elem.text or "" if proof_elem is not None else "",
-                "final": final_elem.text or "" if final_elem is not None else ""
+                "analysis": analysis_text,
+                "proof": proof_text,
+                "final": final_text
             }
             
             return DIPGResponse(**data)
