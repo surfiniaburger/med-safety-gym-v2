@@ -43,6 +43,8 @@ Setup:
 
 3. Run this script:
    python examples/eval_with_litellm.py
+
+uv run examples/eval_with_litellm.py --model ollama/ministral-3:3b-cloud --prompt strong --port 8001
 """
 
 import requests
