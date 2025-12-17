@@ -111,14 +111,19 @@ class FormatParser:
         
         # Check for XML (starts with < and contains closing tags)
         # Relaxed check: Simply looking for plausible XML structure
-        if response_stripped.startswith('<') and '>' in response_stripped:
+        # We now check for closing tags anywhere, handling preamble text
+        if '</' in response_stripped and '>' in response_stripped:
              # Basic heuristic: if it has tags, it's likely XML or Custom Tags
              # If it has <|channel|>, it's definitely Custom Tags
              if '<|channel|>' in response_stripped:
                  return ResponseFormat.CUSTOM_TAGS
              
-             # If it doesn't have custom tag markers but starts with <, assume XML
+             # If it doesn't have custom tag markers but has closing tags, assume XML
              # This covers standard LLM output like <think>...</think>
+             return ResponseFormat.XML
+        
+        # Fallback check for startup tags if closing tags are missing (rare but possible)
+        if response_stripped.startswith('<') and '>' in response_stripped:
              return ResponseFormat.XML
 
         
