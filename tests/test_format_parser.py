@@ -131,6 +131,7 @@ class TestFormatParser:
         assert result.analysis == "test"
         # Others should be empty
         assert result.proof == ""
+        assert result.final == ""
     
     # ==================================================================================
     # YAML Format Tests
