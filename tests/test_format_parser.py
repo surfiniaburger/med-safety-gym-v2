@@ -119,11 +119,18 @@ class TestFormatParser:
         assert isinstance(result, DIPGResponse)
     
     def test_parse_xml_invalid_syntax(self, parser):
-        """Test parsing invalid XML syntax"""
+        """Test parsing invalid XML syntax - Robust Parser should extract partials"""
+        # Previously raised ValueError, now robust regex handles it
         invalid_xml = '<dipg_response><analysis>test</analysis>'  # Unclosed tags
         
-        with pytest.raises(ValueError, match="Invalid XML"):
-            parser.parse(invalid_xml, ResponseFormat.XML)
+        # Should NOT raise, but extract what it can
+        result = parser.parse(invalid_xml, ResponseFormat.XML)
+        
+        assert isinstance(result, DIPGResponse)
+        # It should extract analysis since the tag is technically closed </analysis> (regex pattern)
+        assert result.analysis == "test"
+        # Others should be empty
+        assert result.proof == ""
     
     # ==================================================================================
     # YAML Format Tests

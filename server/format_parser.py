@@ -105,6 +105,10 @@ class FormatParser:
         response_stripped = response.strip()
         
         
+        # Check for Custom Tags (distinctive markers) - Prioritize this!
+        if '<|channel|>' in response_stripped:
+             return ResponseFormat.CUSTOM_TAGS
+
         # Check for JSON (starts with { or wrapped in markdown)
         if response_stripped.startswith('{') or '```json' in response_stripped.lower() or (response_stripped.startswith('```') and '{' in response_stripped):
             return ResponseFormat.JSON
@@ -113,16 +117,12 @@ class FormatParser:
         # Relaxed check: Simply looking for plausible XML structure
         # We now check for closing tags anywhere, handling preamble text
         if '</' in response_stripped and '>' in response_stripped:
-             # Basic heuristic: if it has tags, it's likely XML or Custom Tags
-             # If it has <|channel|>, it's definitely Custom Tags
-             if '<|channel|>' in response_stripped:
-                 return ResponseFormat.CUSTOM_TAGS
-             
-             # If it doesn't have custom tag markers but has closing tags, assume XML
+             # Basic heuristic: if it has tags, it's likely XML
              # This covers standard LLM output like <think>...</think>
              return ResponseFormat.XML
         
         # Fallback check for startup tags if closing tags are missing (rare but possible)
+        # But we must ensure it's not actually custom tags (already checked above)
         if response_stripped.startswith('<') and '>' in response_stripped:
              return ResponseFormat.XML
 
