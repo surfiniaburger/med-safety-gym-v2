@@ -111,14 +111,19 @@ class FormatParser:
         
         # Check for XML (starts with < and contains closing tags)
         # Relaxed check: Simply looking for plausible XML structure
-        if response_stripped.startswith('<') and '>' in response_stripped:
+        # We now check for closing tags anywhere, handling preamble text
+        if '</' in response_stripped and '>' in response_stripped:
              # Basic heuristic: if it has tags, it's likely XML or Custom Tags
              # If it has <|channel|>, it's definitely Custom Tags
              if '<|channel|>' in response_stripped:
                  return ResponseFormat.CUSTOM_TAGS
              
-             # If it doesn't have custom tag markers but starts with <, assume XML
+             # If it doesn't have custom tag markers but has closing tags, assume XML
              # This covers standard LLM output like <think>...</think>
+             return ResponseFormat.XML
+        
+        # Fallback check for startup tags if closing tags are missing (rare but possible)
+        if response_stripped.startswith('<') and '>' in response_stripped:
              return ResponseFormat.XML
 
         
@@ -175,53 +180,36 @@ class FormatParser:
             raise ValueError(f"JSON validation failed: {e}")
     
     def _parse_xml(self, response: str) -> DIPGResponse:
-        """Parse XML format with robustness for fragments and aliases"""
+        """Parse XML-like format using Robust Regex (ignore strict XML rules)"""
+        # We use regex to be resilient to malformed XML, attributes, or fragments
         cleaned_response = response.strip()
-        
-        try:
-            # Try parsing as is
-            try:
-                root = ET.fromstring(cleaned_response)
-            except ET.ParseError:
-                # failed, likely due to multiple roots (fragments). Wrap it.
-                root = ET.fromstring(f"<root>{cleaned_response}</root>")
-            
-            # Helper to find text in ALL matching tags (concatenating them)
-            def get_text(root_elem, tags):
-                texts = []
-                
-                # Check root itself (rare if wrapped, but possible if single root)
-                if root_elem.tag in tags:
-                    texts.append(root_elem.text or "")
-                
-                # Check children - iterate over ALL children to maintain order
-                for child in root_elem:
-                    if child.tag in tags:
-                        texts.append(child.text or "")
-                        # Also check for tail text if needed, but usually LLM structure is clean
-                
-                return "\n".join(filter(None, texts)).strip()
 
-            # Map aliases
-            # analysis -> think, reasoning, analysis
-            # proof -> proof, evidence
-            # final -> answer, final, conclusion
-            
-            analysis_text = get_text(root, ['analysis', 'think', 'reasoning'])
-            proof_text = get_text(root, ['proof', 'evidence'])
-            final_text = get_text(root, ['final', 'answer', 'conclusion'])
-            
-            data = {
-                "analysis": analysis_text,
-                "proof": proof_text,
-                "final": final_text
-            }
-            
-            return DIPGResponse(**data)
-        except ET.ParseError as e:
-            raise ValueError(f"Invalid XML format: {e}")
-        except ValidationError as e:
-            raise ValueError(f"XML validation failed: {e}")
+        def extract_content(tags: list[str]) -> str:
+            # Try each tag alias
+            for tag in tags:
+                # Regex for <tag>CONTENT</tag> or <tag attr="...">CONTENT</tag>
+                # Using dotall to capture newlines
+                pattern = f"<{tag}(?:\\s+[^>]*)?>(.*?)</{tag}>"
+                matches = re.findall(pattern, cleaned_response, re.IGNORECASE | re.DOTALL)
+                if matches:
+                    # Join all occurrences (e.g. multiple proofs)
+                    # Use a space if it's single line, or newline if multiline? 
+                    # Generally newline separation is safer for proofs.
+                    return "\\n".join(m.strip() for m in matches if m.strip())
+            return ""
+
+        # Map aliases
+        analysis_text = extract_content(['analysis', 'think', 'reasoning', 'thought'])
+        proof_text = extract_content(['proof', 'evidence', 'quote'])
+        final_text = extract_content(['final', 'answer', 'conclusion', 'final_answer'])
+        
+        data = {
+            "analysis": analysis_text,
+            "proof": proof_text,
+            "final": final_text
+        }
+        
+        return DIPGResponse(**data)
     
     def _parse_yaml(self, response: str) -> DIPGResponse:
         """Parse YAML format"""

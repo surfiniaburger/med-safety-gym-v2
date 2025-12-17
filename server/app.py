@@ -5,6 +5,7 @@ from openenv_core.env_server import create_app
 from .dipg_environment import DIPGEnvironment
 from .format_parser import ResponseFormat
 from models import DIPGAction, DIPGObservation
+from .evaluation_service import EvaluationRequest, EvaluationManager, EvaluationItem, GroundTruth # NEW: Import service classes
 import logging
 
 # Get the dataset path from an environment variable.
@@ -53,8 +54,9 @@ CHANNEL_END = os.environ.get("CHANNEL_END", "<|end|>")
 
 # --- Response Format Configuration (NEW - Phase 3) ---
 # Determines which format the model should use for responses
+# Determines which format the model should use for responses
 # Options: "custom_tags" (default), "json", "xml", "yaml", "auto"
-RESPONSE_FORMAT_STR = os.environ.get("DIPG_RESPONSE_FORMAT", "custom_tags")
+RESPONSE_FORMAT_STR = os.environ.get("DIPG_RESPONSE_FORMAT", "auto")
 try:
     RESPONSE_FORMAT = ResponseFormat(RESPONSE_FORMAT_STR.lower())
 except ValueError:
@@ -354,17 +356,17 @@ class TaskResponse(BaseModel):
 
 class EvaluateTasksRequest(BaseModel):
     responses: List[TaskResponse]
-    format: str = "custom_tags"
+    format: str = "auto"
     dataset: Optional[str] = None
 
 
 @app.post("/evaluate/tasks")
 async def evaluate_tasks(request: EvaluateTasksRequest):
     """
-    Evaluate responses to tasks - SIMPLE API for universal platform support.
+    Evaluate responses to tasks - SIMPLE API (Bridged to Phase 3 core).
     
-    This endpoint receives task responses and returns evaluation metrics.
-    Server handles all the complexity (dataset lookup, scoring, etc.).
+    This endpoint receives task responses (legacy format with task_id),
+    looks up their Ground Truth, and runs evaluation using the new Phase 3 Manager.
     """
     # Security: Limit number of tasks
     if len(request.responses) > MAX_EVALUATION_ITEMS:
@@ -378,59 +380,78 @@ async def evaluate_tasks(request: EvaluateTasksRequest):
     eval_manager = EvaluationManager(env)
     
     # Get ALL tasks from dataset to ensure we can match any ID
-    # Note: In a production system with huge datasets, we would use a database or cache
-    # For now, loading the dataset is fast enough
     all_tasks = env.get_eval_tasks(max_samples=None, shuffle=False)
-    
-    # Build evaluations with ground truth by matching task_ids
-    # Create a lookup map from task_id to task data for efficient and correct lookup.
     task_map = {task['task_id']: task for task in all_tasks}
 
+    # Debug Logging
+    print(f"DEBUG_SERVER: Received {len(request.responses)} responses")
+    if len(request.responses) > 0:
+         print(f"DEBUG_SERVER: First Id: {request.responses[0].task_id}")
+         print(f"DEBUG_SERVER: First Response RAW: {repr(request.responses[0].response[:200])}...")
+
+    # Build Phase 3 Evaluation Items from Legacy Request
     evaluations = []
+    
+    # Use proper import for these classes if needed, or define locally if EvaluationItem 
+    # and GroundTruth are imported from evaluation_service (they are not currently imported!)
+    # I need to import them! I will assume they are available or define them here temporarily?
+    # No, better to import them. I'll use dict structure if I can't import easily, 
+    # but eval_manager expects EvaluationItem objects.
+    
+    # Let's rely on EvaluationItem being imported or defined.
+    # It is NOT imported currently. I will use the service's internal method or 
+    # I need to add EvaluationItem to imports.
+    
+    # Actually, let's fix imports in a separate step if needed, or assume I can mock it?
+    # No, EvaluationManager takes EvaluationItem.
+    # I'll add the imports in the PREVIOUS step? No I can't go back.
+    # I will add imports in THIS step at top of file? No, replace_file_content is contiguous.
+    
+    # Wait, check Step 3961. I imported EvaluationRequest, EvaluationManager.
+    # I did NOT import EvaluationItem or GroundTruth.
+    # I must import them for this bridge to work.
+    
+    # For now, I will define this bridge logic, and then immediately add the imports.
+    
     for resp in request.responses:
         task_id = resp.task_id
         task = task_map.get(task_id)
 
         if task:
-            # Construct Pydantic objects for type safety and attribute access
-            gt = GroundTruth(
+             # Construct Pydantic objects for type safety and Phase 3 compatibility
+             gt = GroundTruth(
                 context=task.get("context", ""),
                 question=task.get("question", ""),
                 expected_answer=task.get("expected_answer", {})
-            )
-            
-            item = EvaluationItem(
+             )
+             
+             item = EvaluationItem(
                 response=resp.response,
                 ground_truth=gt
-            )
-            evaluations.append(item)
+             )
+             evaluations.append(item)
         else:
-
             logging.warning(f"Task ID {task_id} not found in dataset")
-    
+
     if not evaluations:
         raise HTTPException(
             status_code=400,
             detail="No valid evaluations found. Check task_ids."
         )
-    
-    # Evaluate with error handling
+
+    # Run evaluation using Phase 3 Manager (Stateless Mode backend)
     try:
         result = eval_manager.evaluate_with_ground_truth(
             evaluations=evaluations,
             response_format=request.format
         )
-        
-        return {
-            "metrics": result,
-            "task_count": len(evaluations)
-        }
+        return {"metrics": result.model_dump()}
+            
     except Exception as e:
-        logging.error(f"Evaluation failed: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Evaluation failed: {str(e)}"
-        )
+        logger.error(f"Evaluation failed: {e}")
+        # DEBUG: Print exact error for remote debugging
+        print(f"DEBUG_SERVER: Evaluation Failed with: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def main():
