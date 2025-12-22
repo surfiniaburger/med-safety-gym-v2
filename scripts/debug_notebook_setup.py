@@ -61,7 +61,7 @@ def debug_setup():
         print(f"✅ openenv_core FOUND! Path: {openenv_core.__file__}")
     except ImportError as e:
         print(f"❌ ImportError: {e}")
-        print("   This means openenv-core was NOT installed by 'pip install -e .'")
+        print("   This means openenv_core was NOT installed by 'pip install -e .'")
         print("   Checking what IS installed...")
         run_command(f"{sys.executable} -m pip list | grep openenv")
 

@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("litellm_openai_server")
 
 # Configure LiteLLM
-DEFAULT_MODEL = "ollama/gpt-oss:120b-cloud"  # Change to your model
+DEFAULT_MODEL = "ollama/nemotron-3-nano:30b-cloud"  # Change to your model
 
 async def chat_completions(request):
     """OpenAI-compatible chat completions endpoint"""
@@ -76,4 +76,4 @@ if __name__ == "__main__":
     print(f"Starting LiteLLM OpenAI-compatible server on port 8080")
     print(f"Default model: {DEFAULT_MODEL}")
     print(f"Endpoint: http://localhost:8080/v1/chat/completions")
-    uvicorn.run(app, host="127.0.0.1", port=8080)
+    uvicorn.run(app, host="127.0.0.1", port=8082)

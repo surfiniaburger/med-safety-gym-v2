@@ -199,6 +199,7 @@ def main():
     parser.add_argument("--model", type=str, default="ollama/gpt-oss:120b-cloud", help="Model name (e.g. ollama/mistral)")
     parser.add_argument("--prompt", type=str, choices=["default", "strong"], default="default", help="System prompt mode")
     parser.add_argument("--port", type=int, default=8000, help="DIPG Server Port")
+    parser.add_argument("--litellm-port", type=int, default=8082, help="LiteLLM Server Port")
     parser.add_argument("--samples", type=int, default=10, help="Number of samples")
     
     args = parser.parse_args()
@@ -213,7 +214,7 @@ def main():
 
     # Configuration
     orchestrator = EvaluationOrchestrator(
-        litellm_url="http://localhost:8080",
+        litellm_url=f"http://localhost:{args.litellm_port}",
         dipg_url=f"http://localhost:{args.port}",
         model_name=args.model,
         system_prompt=system_prompt
