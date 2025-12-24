@@ -6,7 +6,7 @@ Tests all supported formats (JSON, XML, YAML, custom tags) and auto-detection.
 
 import json
 import pytest
-from server.format_parser import FormatParser, ResponseFormat, DIPGResponse
+from med_safety_gym.format_parser import FormatParser, ResponseFormat, DIPGResponse
 
 
 class TestFormatParser:

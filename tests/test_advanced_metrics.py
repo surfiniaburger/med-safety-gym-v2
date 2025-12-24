@@ -1,10 +1,10 @@
 
 import pytest
 from unittest.mock import MagicMock
-from server.evaluation_service import EvaluationManager
-from server.dipg_environment import DIPGEnvironment
-from server.format_parser import ResponseFormat
-from models import DIPGAction, DIPGObservation, DIPGState
+from med_safety_gym.evaluation_service import EvaluationManager
+from med_safety_gym.dipg_environment import DIPGEnvironment
+from med_safety_gym.format_parser import ResponseFormat
+from med_safety_gym.models import DIPGAction, DIPGObservation, DIPGState
 from openenv_core.http_env_client import StepResult
 
 class MockStepResult:

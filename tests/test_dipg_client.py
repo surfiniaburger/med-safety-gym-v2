@@ -5,8 +5,8 @@ Tests for the DIPGSafetyEnv client.
 import pytest
 import requests
 from unittest.mock import Mock, patch
-from client import DIPGSafetyEnv
-from models import DIPGAction
+from med_safety_gym.client import DIPGSafetyEnv
+from med_safety_gym.models import DIPGAction
 
 
 def test_client_connection_error():

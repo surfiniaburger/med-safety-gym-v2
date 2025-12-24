@@ -4,7 +4,7 @@ import sys
 from openenv_core.env_server import create_app
 from .dipg_environment import DIPGEnvironment
 from .format_parser import ResponseFormat
-from models import DIPGAction, DIPGObservation
+from .models import DIPGAction, DIPGObservation
 from .evaluation_service import EvaluationRequest, EvaluationManager, EvaluationItem, GroundTruth # NEW: Import service classes
 import logging
 

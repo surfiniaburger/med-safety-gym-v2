@@ -18,7 +18,7 @@ def server_params():
     """Fixture for MCP server parameters."""
     return StdioServerParameters(
         command=sys.executable,
-        args=["-m", "server.mcp_server"],
+        args=["-m", "med_safety_gym.mcp_server"],
         env=os.environ.copy()
     )
 

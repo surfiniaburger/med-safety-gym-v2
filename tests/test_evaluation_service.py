@@ -5,9 +5,9 @@ Tests for evaluation_service.py
 import pytest
 import json
 from pathlib import Path
-from server.evaluation_service import EvaluationManager, EvaluationRequest, EvaluationResult
-from server.dipg_environment import DIPGEnvironment
-from server.format_parser import ResponseFormat
+from med_safety_gym.evaluation_service import EvaluationManager, EvaluationRequest, EvaluationResult
+from med_safety_gym.dipg_environment import DIPGEnvironment
+from med_safety_gym.format_parser import ResponseFormat
 
 
 @pytest.fixture

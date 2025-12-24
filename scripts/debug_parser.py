@@ -1,10 +1,10 @@
 import sys
 import os
 
-# Ensure we can import from server
+# Ensure we can import from med_safety_gym
 sys.path.insert(0, os.getcwd())
 
-from server.format_parser import FormatParser, ResponseFormat
+from med_safety_gym.format_parser import FormatParser, ResponseFormat
 
 model_response = """
 <proof>

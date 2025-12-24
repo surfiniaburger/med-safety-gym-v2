@@ -6,8 +6,8 @@ import time
 import requests
 import pytest
 
-from client import DIPGSafetyEnv
-from models import DIPGAction
+from med_safety_gym.client import DIPGSafetyEnv
+from med_safety_gym.models import DIPGAction
 
 
 @pytest.fixture(scope="module")
@@ -33,7 +33,7 @@ def server():
         "-w", "1",  # Use single worker for deterministic testing with small mock dataset
         "-k", "uvicorn.workers.UvicornWorker",
         "-b", f"0.0.0.0:{PORT}",
-        "server.app:app",
+        "med_safety_gym.app:app",
     ]
     openenv_process = subprocess.Popen(
         gunicorn_command,

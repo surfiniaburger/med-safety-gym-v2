@@ -20,4 +20,4 @@ RUN uv sync --frozen
 EXPOSE 8080
 
 # Run the FastAPI server (using shell form to expand $PORT)
-CMD uv run uvicorn server.app:app --host 0.0.0.0 --port ${PORT:-8080}
+CMD uv run uvicorn med_safety_gym.app:app --host 0.0.0.0 --port ${PORT:-8080}

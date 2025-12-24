@@ -14,8 +14,8 @@ try:
     from .evaluation_service import EvaluationItem, GroundTruth
 except ImportError:
     # Fallback for running as a script directly
-    from server.app import get_environment, EvaluationManager, EvaluationRequest, EvaluationResult
-    from server.evaluation_service import EvaluationItem, GroundTruth
+    from med_safety_gym.app import get_environment, EvaluationManager, EvaluationRequest, EvaluationResult
+    from med_safety_gym.evaluation_service import EvaluationItem, GroundTruth
 
 # Initialize MCP Server
 server = Server("dipg-safety-gym-mcp")

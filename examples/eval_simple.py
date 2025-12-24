@@ -30,7 +30,7 @@ def evaluate_model(model, tokenizer, num_samples=100, server_url=SERVER_URL):
         dict: Evaluation metrics
     """
     
-    # Step 1: Get tasks from server
+    # Step 1: Get tasks from med_safety_gym
     print(f"📥 Fetching {num_samples} evaluation tasks...")
     response = requests.get(f"{server_url}/tasks", params={"count": num_samples})
     response.raise_for_status()

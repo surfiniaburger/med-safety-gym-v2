@@ -12,7 +12,7 @@ for the environment server. Its primary job is to handle the HTTP communication:
 
 import requests
 from openenv_core.http_env_client import HTTPEnvClient, StepResult
-from models import DIPGAction, DIPGObservation, DIPGState
+from .models import DIPGAction, DIPGObservation, DIPGState
 
 
 class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):

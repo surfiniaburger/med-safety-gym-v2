@@ -18,7 +18,7 @@ from fastmcp import FastMCP
 try:
     from .app import get_environment, EvaluationManager
 except ImportError:
-    from server.app import get_environment, EvaluationManager
+    from med_safety_gym.app import get_environment, EvaluationManager
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.INFO)

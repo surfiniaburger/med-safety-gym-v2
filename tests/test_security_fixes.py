@@ -1,9 +1,9 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from server.app import app, get_environment, MAX_EVALUATION_ITEMS
-from server.dipg_environment import DIPGEnvironment
-from server.format_parser import ResponseFormat
+from med_safety_gym.app import app, get_environment, MAX_EVALUATION_ITEMS
+from med_safety_gym.dipg_environment import DIPGEnvironment
+from med_safety_gym.format_parser import ResponseFormat
 
 client = TestClient(app)
 
@@ -52,7 +52,7 @@ def test_valid_request_still_works(monkeypatch):
             response_format=ResponseFormat.CUSTOM_TAGS
         )
 
-    monkeypatch.setattr("server.app.get_environment", get_mock_environment)
+    monkeypatch.setattr("med_safety_gym.app.get_environment", get_mock_environment)
     
     payload = {"responses": ["test response"]}
     response = client.post("/evaluate", json=payload)

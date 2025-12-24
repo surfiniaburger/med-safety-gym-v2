@@ -14,10 +14,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 
 # Copy application code
-COPY server/ server/
+COPY med_safety_gym/ med_safety_gym/
 COPY tests/ tests/
-COPY models.py .
-COPY client.py .
 COPY README.md .
 
 # Install project
@@ -28,4 +26,4 @@ EXPOSE 8081
 
 # Run the server
 # Use PORT env var if set, otherwise default to 8081
-CMD ["sh", "-c", "PORT=${PORT:-8081} uv run python server/fastmcp_server.py"]
+CMD ["sh", "-c", "PORT=${PORT:-8081} uv run python -m med_safety_gym.fastmcp_server"]

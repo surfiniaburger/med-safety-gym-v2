@@ -40,7 +40,7 @@ def evaluate_model(model, tokenizer, server_url=SERVER_URL, samples=50):
         response.raise_for_status()
         tasks = response.json()["tasks"]
     except requests.exceptions.RequestException as e:
-        print(f"❌ Failed to fetch tasks from server: {e}")
+        print(f"❌ Failed to fetch tasks from med_safety_gym: {e}")
         print("💡 Ensure DIPG server is running: uv run uvicorn server.app:app --port 8001")
         return
 

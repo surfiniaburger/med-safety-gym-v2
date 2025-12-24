@@ -1,5 +1,5 @@
 import pytest
-from server.format_parser import FormatParser, ResponseFormat, DIPGResponse
+from med_safety_gym.format_parser import FormatParser, ResponseFormat, DIPGResponse
 
 class TestRobustJSON:
     @pytest.fixture

@@ -2,8 +2,8 @@
 import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
-from server.evaluation_service import EvaluationManager
-from server.dipg_environment import DIPGEnvironment
+from med_safety_gym.evaluation_service import EvaluationManager
+from med_safety_gym.dipg_environment import DIPGEnvironment
 
 class TestSecurity:
     """Security tests for the evaluation service."""

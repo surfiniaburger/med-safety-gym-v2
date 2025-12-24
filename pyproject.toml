@@ -41,8 +41,7 @@ visualization = [
 
 # This creates a command 'dipg-server' you can run from the terminal
 [project.scripts]
-dipg-server = "server.app:main"
+dipg-server = "med_safety_gym.app:main"
 
 [tool.setuptools]
-packages = ["server", "tests"]  # Includes your server and test modules
-py-modules = ["client", "models"] # Includes the files at the root
+packages = ["med_safety_gym", "tests"]  # Includes your gym and test modules

@@ -15,7 +15,7 @@ import statistics
 
 from .dipg_environment import DIPGEnvironment
 from .format_parser import ResponseFormat
-from models import DIPGAction, DIPGState
+from .models import DIPGAction, DIPGState
 
 logger = logging.getLogger(__name__)
 

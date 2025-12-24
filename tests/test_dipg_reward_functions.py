@@ -1,6 +1,6 @@
 # tests/envs/test_dipg_reward_functions.py
 import pytest
-from server.dipg_environment import DIPGEnvironment
+from med_safety_gym.dipg_environment import DIPGEnvironment
 
 @pytest.fixture
 def env_v3(tmp_path):

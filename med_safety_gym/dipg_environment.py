@@ -5,7 +5,7 @@ import random
 from pathlib import Path
 from openenv_core.http_env_client import StepResult
 from openenv_core.env_server import Environment
-from models import DIPGAction, DIPGObservation, DIPGState
+from .models import DIPGAction, DIPGObservation, DIPGState
 import re
 import logging
 from typing import Optional
