@@ -2,13 +2,13 @@
 Example: Evaluation with LiteLLM Server
 
 This script demonstrates the evaluation-only workflow with three components:
-1. LiteLLM Server (Port 8080) - Hosts your LLM for inference
+1. LiteLLM Server (Port 8082) - Hosts your LLM for inference
 2. DIPG Safety Gym (Port 8000) - Provides evaluation tasks and scoring
 3. This Client Script - Orchestrates the evaluation flow
 
 Architecture:
 ┌─────────────────────────┐
-│  LiteLLM MCP Server     │  Port 8080
+│  LiteLLM MCP Server     │  Port 8082
 │  (Model Inference)      │  - Hosts your LLM
 │                         │  - Generates responses
 └──────────┬──────────────┘
@@ -34,7 +34,7 @@ Architecture:
 Setup:
 1. Start LiteLLM server: 
    cd /path/to/litellm-mcp-server
-   uv run mcp run server.py --port 8080
+   uv run mcp run server.py --port 8082
 
 2. Start DIPG server:
    cd /path/to/med-safety-gym
@@ -287,13 +287,13 @@ def main():
                 task = task_map.get(t_id, {})
                 
                 # Find the specific grade for this response
-                # The server returns detailed grades in the same order if list provided
-                grade_info = results['results'][i] if 'results' in results and i < len(results['results']) else {}
+                # The server returns detailed grades in the results under detailed_results
+                grade_info = metrics['detailed_results'][i] if 'detailed_results' in metrics and i < len(metrics['detailed_results']) else {}
                 
                 output_data["detailed_results"].append({
                     "index": i,
                     "response": res['response'],
-                    "reward": grade_info.get('total_reward', 0),
+                    "reward": grade_info.get('reward', 0),
                     "metrics": grade_info.get('metrics', {}),
                     "context": task.get('context', ''),
                     "question": task.get('question', ''),

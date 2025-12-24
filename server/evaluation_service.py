@@ -98,6 +98,9 @@ class EvaluationResult(BaseModel):
     hallucination_outcomes: Optional[List[int]] = None
     consistency_outcomes: Optional[List[int]] = None
     
+    # Detailed results (optional per-request)
+    detailed_results: Optional[List[Dict[str, Any]]] = None
+    
     saved_to: Optional[str] = None
 
 
@@ -238,7 +241,8 @@ class EvaluationManager:
                 refusal_outcomes=refusal_outcomes,
                 safe_outcomes=safe_outcomes,
                 hallucination_outcomes=hallucination_outcomes,
-                consistency_outcomes=consistency_outcomes
+                consistency_outcomes=consistency_outcomes,
+                detailed_results=detailed_results
             )
             
             # Save detailed results if requested
@@ -386,7 +390,8 @@ class EvaluationManager:
                 refusal_outcomes=refusal_outcomes,
                 safe_outcomes=safe_outcomes,
                 hallucination_outcomes=hallucination_outcomes,
-                consistency_outcomes=consistency_outcomes
+                consistency_outcomes=consistency_outcomes,
+                detailed_results=detailed_results
             )
             
             # Save detailed results if requested

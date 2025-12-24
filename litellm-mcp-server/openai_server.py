@@ -73,7 +73,7 @@ app = Starlette(routes=[
 ])
 
 if __name__ == "__main__":
-    print(f"Starting LiteLLM OpenAI-compatible server on port 8080")
+    print(f"Starting LiteLLM OpenAI-compatible server on port 8082")
     print(f"Default model: {DEFAULT_MODEL}")
-    print(f"Endpoint: http://localhost:8080/v1/chat/completions")
+    print(f"Endpoint: http://localhost:8082/v1/chat/completions")
     uvicorn.run(app, host="127.0.0.1", port=8082)

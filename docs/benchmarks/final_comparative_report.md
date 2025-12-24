@@ -32,7 +32,7 @@
 *   **Issues**: Susceptible to **Medical Hallucinations** (injecting external medical facts not in context), leading to a 40% hallucination rate despite its high reasoning score.
 
 ### 3. Gemma 3 & MedGemma (Small Instruct Models)
-*   **Behavior**: These models punches well above their weight.
+*   **Behavior**: These models punch well above their weight.
 *   **Status**: Tied at **-8.50**, they represent the gold standard for efficient, safety-compliant mobile-class models.
 
 # V4 Architecture Upgrade: Fuzzy Matching

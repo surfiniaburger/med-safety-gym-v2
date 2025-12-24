@@ -54,7 +54,6 @@ CHANNEL_END = os.environ.get("CHANNEL_END", "<|end|>")
 
 # --- Response Format Configuration (NEW - Phase 3) ---
 # Determines which format the model should use for responses
-# Determines which format the model should use for responses
 # Options: "custom_tags" (default), "json", "xml", "yaml", "auto"
 RESPONSE_FORMAT_STR = os.environ.get("DIPG_RESPONSE_FORMAT", "auto")
 try:
