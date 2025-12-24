@@ -3,8 +3,60 @@
 import json
 import random
 from pathlib import Path
-from openenv_core.http_env_client import StepResult
-from openenv_core.env_server import Environment
+import importlib
+
+# --- StepResult Import --- #
+StepResult = None
+_STEP_RESULT_PATHS = [
+    'openenv_core.http_env_client',
+    'openenv.core.client_types',
+    'openenv_core.client_types',
+    'openenv_core',
+]
+
+for path in _STEP_RESULT_PATHS:
+    try:
+        module = importlib.import_module(path)
+        if hasattr(module, 'StepResult'):
+            StepResult = module.StepResult
+            break
+    except (ImportError, ModuleNotFoundError):
+        continue
+
+if StepResult is None:
+    # Last resort shim if StepResult is not available
+    class StepResult:
+        def __init__(self, observation, reward, done, info=None):
+            self.observation = observation
+            self.reward = reward
+            self.done = done
+            self.info = info or {}
+
+# --- Environment Import --- #
+Environment = None
+_ENVIRONMENT_PATHS = [
+    'openenv_core.env_server',
+    'openenv.core.env_server.interfaces',
+]
+
+for path in _ENVIRONMENT_PATHS:
+    try:
+        module = importlib.import_module(path)
+        if hasattr(module, 'Environment'):
+            Environment = module.Environment
+            break
+    except (ImportError, ModuleNotFoundError):
+        continue
+
+if Environment is None:
+    # Generic Environment class if all else fails
+    class Environment:
+        def __init__(self):
+            pass
+        def reset(self):
+            raise NotImplementedError()
+        def step(self, action):
+            raise NotImplementedError()
 from .models import DIPGAction, DIPGObservation, DIPGState
 import re
 import logging

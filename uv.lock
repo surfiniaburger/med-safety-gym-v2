@@ -2935,18 +2935,13 @@ wheels = [
 
 [[package]]
 name = "openenv-dipg-safety"
-version = "0.1.0"
+version = "0.1.4"
 source = { editable = "." }
 dependencies = [
-    { name = "a2a-sdk" },
     { name = "datasets" },
     { name = "fastapi" },
-    { name = "fastmcp" },
-    { name = "google-adk" },
     { name = "gunicorn" },
     { name = "idna" },
-    { name = "litellm" },
-    { name = "mcp" },
     { name = "openenv-core" },
     { name = "requests" },
     { name = "starlette" },
@@ -2955,10 +2950,19 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+agent = [
+    { name = "a2a-sdk" },
+    { name = "google-adk" },
+    { name = "litellm" },
+]
 dev = [
     { name = "ipykernel" },
     { name = "pytest" },
     { name = "pytest-cov" },
+]
+mcp = [
+    { name = "fastmcp" },
+    { name = "mcp" },
 ]
 visualization = [
     { name = "matplotlib" },
@@ -2970,17 +2974,17 @@ visualization = [
 
 [package.metadata]
 requires-dist = [
-    { name = "a2a-sdk", specifier = ">=0.1.0" },
+    { name = "a2a-sdk", marker = "extra == 'agent'", specifier = ">=0.1.0" },
     { name = "datasets" },
     { name = "fastapi", specifier = ">=0.109.1" },
-    { name = "fastmcp", specifier = ">=0.5.0" },
-    { name = "google-adk", specifier = ">=1.0.0" },
+    { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=0.5.0" },
+    { name = "google-adk", marker = "extra == 'agent'", specifier = ">=1.0.0" },
     { name = "gunicorn", specifier = "==22.0.0" },
     { name = "idna", specifier = ">=3.7" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29.5" },
-    { name = "litellm", specifier = ">=1.0.0" },
+    { name = "litellm", marker = "extra == 'agent'", specifier = ">=1.0.0" },
     { name = "matplotlib", marker = "extra == 'visualization'", specifier = ">=3.8.0" },
-    { name = "mcp", specifier = ">=1.0.0" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0.0" },
     { name = "openenv-core", specifier = ">=0.1.0" },
     { name = "pandas", marker = "extra == 'visualization'", specifier = ">=2.1.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
@@ -2993,7 +2997,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
     { name = "wsproto", specifier = "==1.0.0" },
 ]
-provides-extras = ["dev", "visualization"]
+provides-extras = ["agent", "mcp", "dev", "visualization"]
 
 [[package]]
 name = "opentelemetry-api"
