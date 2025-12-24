@@ -3,8 +3,41 @@
 import json
 import random
 from pathlib import Path
-from openenv_core.http_env_client import StepResult
-from openenv_core.env_server import Environment
+try:
+    from openenv_core.http_env_client import StepResult
+except ImportError:
+    try:
+        from openenv.core.client_types import StepResult
+    except ImportError:
+        # Fallback for some versions where it's at top level or in client_types
+        try:
+            from openenv_core.client_types import StepResult
+        except ImportError:
+            try:
+                from openenv_core import StepResult
+            except ImportError:
+                # Last resort shim if StepResult is not available
+                class StepResult:
+                    def __init__(self, observation, reward, done, info=None):
+                        self.observation = observation
+                        self.reward = reward
+                        self.done = done
+                        self.info = info or {}
+
+try:
+    from openenv_core.env_server import Environment
+except ImportError:
+    try:
+        from openenv.core.env_server.interfaces import Environment
+    except ImportError:
+        # Generic Environment class if all else fails
+        class Environment:
+            def __init__(self):
+                pass
+            def reset(self):
+                raise NotImplementedError()
+            def step(self, action):
+                raise NotImplementedError()
 from .models import DIPGAction, DIPGObservation, DIPGState
 import re
 import logging
