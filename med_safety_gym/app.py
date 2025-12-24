@@ -8,10 +8,15 @@ from .models import DIPGAction, DIPGObservation
 from .evaluation_service import EvaluationRequest, EvaluationManager, EvaluationItem, GroundTruth # NEW: Import service classes
 import logging
 
-# Get the dataset path from an environment variable.
-# If it's not set, default to the dipg-sft-dataset on Hugging Face.
-DEFAULT_DATASET_ID = "surfiniaburger/med-safety-gym-eval"
-DATASET_PATH = os.environ.get("DIPG_DATASET_PATH", DEFAULT_DATASET_ID)
+# Get the dataset path from an environment variable or CLI argument.
+import argparse
+parser = argparse.ArgumentParser(add_help=False)
+parser.add_argument("--dataset_path", default=os.environ.get("DIPG_DATASET_PATH", "surfiniaburger/med-safety-gym-eval"))
+parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+args, unknown = parser.parse_known_args()
+
+DATASET_PATH = args.dataset_path
+PORT = args.port
 
 # Get the configurable rewards from environment variables.
 # ==================================================================================
@@ -116,11 +121,9 @@ def get_environment() -> DIPGEnvironment:
     )
 
 # The rest is the same.
-# Note: create_app expects an environment instance, but for the /evaluate endpoint
-# we will bypass the global app.state.env and use our per-request one.
-# We still pass a dummy env to create_app to satisfy the interface.
-dummy_env = get_environment()
-app = create_app(dummy_env, DIPGAction, DIPGObservation, env_name="dipg_safety_env")
+# Note: create_app expects an environment factory (callable), not an instance.
+# We pass get_environment which handles the configuration.
+app = create_app(get_environment, DIPGAction, DIPGObservation, env_name="dipg_safety_env")
 
 # ==================================================================================
 # EVALUATION SERVICE ENDPOINTS (NEW - Phase 4)
@@ -426,7 +429,7 @@ async def evaluate_tasks(request: EvaluateTasksRequest):
 
 def main():
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
     main()
