@@ -20,35 +20,33 @@ StepResult = None
 _POSSIBLE_PATHS = [
     'openenv_core.http_env_client',
     'openenv.core.http_env_client',
+    'openenv_core.client_types',
+    'openenv.core.client_types',
     'openenv_core',
     'openenv.core'
 ]
 
+_import_errors = []
+
 for path in _POSSIBLE_PATHS:
+    if HTTPEnvClient and StepResult:
+        break
+        
     try:
         module = importlib.import_module(path)
         if HTTPEnvClient is None and hasattr(module, 'HTTPEnvClient'):
             HTTPEnvClient = getattr(module, 'HTTPEnvClient')
         if StepResult is None and hasattr(module, 'StepResult'):
             StepResult = getattr(module, 'StepResult')
-    except (ImportError, ModuleNotFoundError):
+    except (ImportError, ModuleNotFoundError) as e:
+        _import_errors.append(f"{path}: {e}")
         continue
-
-# Check specifically for StepResult in client_types if not found yet
-if StepResult is None:
-    for path in ['openenv_core.client_types', 'openenv.core.client_types']:
-        try:
-            module = importlib.import_module(path)
-            if hasattr(module, 'StepResult'):
-                StepResult = getattr(module, 'StepResult')
-                break
-        except (ImportError, ModuleNotFoundError):
-            continue
 
 if HTTPEnvClient is None:
     # Fallback to prevent immediate crash, though inheritance will fail if this is None.
     # We raise specific error to help debug.
-    raise ImportError("Could not find HTTPEnvClient in openenv-core. Check installation.")
+    error_msg = "Could not find HTTPEnvClient in openenv-core. Checked paths:\n" + "\n".join(_import_errors)
+    raise ImportError(error_msg)
 
 if StepResult is None:
     # Fallback shim
