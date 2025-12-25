@@ -240,7 +240,7 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
 
     def evaluate_tasks(
         self, 
-        responses: list[dict], 
+        responses: list[dict[str, str]], 
         response_format: str = "auto",
         dataset: str = None
     ) -> dict:
