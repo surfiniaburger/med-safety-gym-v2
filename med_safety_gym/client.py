@@ -14,17 +14,17 @@ import requests
 from typing import Any, Dict, Generic, Optional, Type, TypeVar
 from abc import ABC, abstractmethod
 
+# Vendor HTTPEnvClient
+ActT = TypeVar("ActT")
+ObsT = TypeVar("ObsT")
+
 # Vendor StepResult
-class StepResult(Generic[TypeVar("ObsT")]):
-    def __init__(self, observation, reward, done, info=None):
+class StepResult(Generic[ObsT]):
+    def __init__(self, observation: ObsT, reward: Any, done: bool, info: Optional[Dict[str, Any]] = None):
         self.observation = observation
         self.reward = reward
         self.done = done
         self.info = info or {}
-
-# Vendor HTTPEnvClient
-ActT = TypeVar("ActT")
-ObsT = TypeVar("ObsT")
 
 class HTTPEnvClient(ABC, Generic[ActT, ObsT]):
     def __init__(
@@ -68,7 +68,7 @@ class HTTPEnvClient(ABC, Generic[ActT, ObsT]):
     def step(self, action: ActT) -> StepResult[ObsT]:
         body: Dict[str, Any] = {
             "action": self._step_payload(action),
-            "timeout_s": int(self._timeout),
+            "timeout_s": self._timeout,
         }
         r = self._http.post(
             f"{self._base}/step",
