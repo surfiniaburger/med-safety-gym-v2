@@ -238,6 +238,39 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
         
         return response.json()
 
+    def evaluate_tasks(
+        self, 
+        responses: list[dict], 
+        response_format: str = "auto",
+        dataset: str = None
+    ) -> dict:
+        """
+        Evaluate a batch of task responses against their ground truth from the dataset.
+        
+        Args:
+            responses: List of dicts, each containing {"task_id": "...", "response": "..."}
+            response_format: Expected format ("json", "xml", "auto", etc.)
+            dataset: Optional name/path of dataset to use (defaults to server config)
+            
+        Returns:
+            Dictionary with evaluation metrics (accuracy, etc.)
+        """
+        payload = {
+            "responses": responses,
+            "format": response_format
+        }
+        if dataset:
+            payload["dataset"] = dataset
+            
+        response = requests.post(
+            f"{self._base}/evaluate/tasks",
+            json=payload,
+            timeout=self._timeout
+        )
+        response.raise_for_status()
+        
+        return response.json()
+
     def get_eval_tasks(self, max_samples: int = None, shuffle: bool = True) -> list[dict]:
         """
         Fetch a list of evaluation tasks from the server.
