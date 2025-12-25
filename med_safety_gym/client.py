@@ -11,7 +11,54 @@ for the environment server. Its primary job is to handle the HTTP communication:
 """
 
 import requests
-from openenv_core.http_env_client import HTTPEnvClient, StepResult
+import importlib
+
+# Robust import for openenv_core components due to potential path variations
+HTTPEnvClient = None
+StepResult = None
+
+_POSSIBLE_PATHS = [
+    'openenv_core.http_env_client',
+    'openenv.core.http_env_client',
+    'openenv_core',
+    'openenv.core'
+]
+
+for path in _POSSIBLE_PATHS:
+    try:
+        module = importlib.import_module(path)
+        if HTTPEnvClient is None and hasattr(module, 'HTTPEnvClient'):
+            HTTPEnvClient = getattr(module, 'HTTPEnvClient')
+        if StepResult is None and hasattr(module, 'StepResult'):
+            StepResult = getattr(module, 'StepResult')
+    except (ImportError, ModuleNotFoundError):
+        continue
+
+# Check specifically for StepResult in client_types if not found yet
+if StepResult is None:
+    for path in ['openenv_core.client_types', 'openenv.core.client_types']:
+        try:
+            module = importlib.import_module(path)
+            if hasattr(module, 'StepResult'):
+                StepResult = getattr(module, 'StepResult')
+                break
+        except (ImportError, ModuleNotFoundError):
+            continue
+
+if HTTPEnvClient is None:
+    # Fallback to prevent immediate crash, though inheritance will fail if this is None.
+    # We raise specific error to help debug.
+    raise ImportError("Could not find HTTPEnvClient in openenv-core. Check installation.")
+
+if StepResult is None:
+    # Fallback shim
+    class StepResult:
+        def __init__(self, observation, reward, done, info=None):
+            self.observation = observation
+            self.reward = reward
+            self.done = done
+            self.info = info or {}
+
 from .models import DIPGAction, DIPGObservation, DIPGState
 
 
