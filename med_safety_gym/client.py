@@ -11,51 +11,83 @@ for the environment server. Its primary job is to handle the HTTP communication:
 """
 
 import requests
-import importlib
+from typing import Any, Dict, Generic, Optional, Type, TypeVar
+from abc import ABC, abstractmethod
 
-# Robust import for openenv_core components due to potential path variations
-HTTPEnvClient = None
-StepResult = None
+# Vendor StepResult
+class StepResult(Generic[TypeVar("ObsT")]):
+    def __init__(self, observation, reward, done, info=None):
+        self.observation = observation
+        self.reward = reward
+        self.done = done
+        self.info = info or {}
 
-_POSSIBLE_PATHS = [
-    'openenv_core.http_env_client',
-    'openenv.core.http_env_client',
-    'openenv_core.client_types',
-    'openenv.core.client_types',
-    'openenv_core',
-    'openenv.core'
-]
+# Vendor HTTPEnvClient
+ActT = TypeVar("ActT")
+ObsT = TypeVar("ObsT")
 
-_import_errors = []
+class HTTPEnvClient(ABC, Generic[ActT, ObsT]):
+    def __init__(
+        self,
+        base_url: str,
+        request_timeout_s: float = 15.0,
+        default_headers: Optional[Dict[str, str]] = None,
+    ):
+        self._base = base_url.rstrip("/")
+        self._timeout = float(request_timeout_s)
+        self._http = requests.Session()
+        self._headers = default_headers or {}
 
-for path in _POSSIBLE_PATHS:
-    if HTTPEnvClient and StepResult:
-        break
-        
-    try:
-        module = importlib.import_module(path)
-        if HTTPEnvClient is None and hasattr(module, 'HTTPEnvClient'):
-            HTTPEnvClient = getattr(module, 'HTTPEnvClient')
-        if StepResult is None and hasattr(module, 'StepResult'):
-            StepResult = getattr(module, 'StepResult')
-    except (ImportError, ModuleNotFoundError) as e:
-        _import_errors.append(f"{path}: {e}")
-        continue
+    @abstractmethod
+    def _step_payload(self, action: ActT) -> dict:
+        """Convert an Action object to the JSON body expected by the env server."""
+        raise NotImplementedError
 
-if HTTPEnvClient is None:
-    # Fallback to prevent immediate crash, though inheritance will fail if this is None.
-    # We raise specific error to help debug.
-    error_msg = "Could not find HTTPEnvClient in openenv-core. Checked paths:\n" + "\n".join(_import_errors)
-    raise ImportError(error_msg)
+    @abstractmethod
+    def _parse_result(self, payload: dict) -> StepResult[ObsT]:
+        """Convert a JSON response from the env server to StepResult[ObsT]."""
+        raise NotImplementedError
 
-if StepResult is None:
-    # Fallback shim
-    class StepResult:
-        def __init__(self, observation, reward, done, info=None):
-            self.observation = observation
-            self.reward = reward
-            self.done = done
-            self.info = info or {}
+    @abstractmethod
+    def _parse_state(self, payload: dict) -> Any:
+        """Convert a JSON response from the state endpoint to a State object."""
+        raise NotImplementedError
+
+    # ---------- Environment Server Interface Methods ----------
+    def reset(self) -> StepResult[ObsT]:
+        body: Dict[str, Any] = {}
+        r = self._http.post(
+            f"{self._base}/reset",
+            json=body,
+            headers=self._headers,
+            timeout=self._timeout,
+        )
+        r.raise_for_status()
+        return self._parse_result(r.json())
+
+    def step(self, action: ActT) -> StepResult[ObsT]:
+        body: Dict[str, Any] = {
+            "action": self._step_payload(action),
+            "timeout_s": int(self._timeout),
+        }
+        r = self._http.post(
+            f"{self._base}/step",
+            json=body,
+            headers=self._headers,
+            timeout=self._timeout,
+        )
+        # Handle specific error cases if needed, but raise_for_status covers most
+        r.raise_for_status()
+        return self._parse_result(r.json())
+
+    def state(self) -> Any:
+        r = self._http.get(
+            f"{self._base}/state",
+            headers=self._headers,
+            timeout=self._timeout,
+        )
+        r.raise_for_status()
+        return self._parse_state(r.json())
 
 from .models import DIPGAction, DIPGObservation, DIPGState
 
