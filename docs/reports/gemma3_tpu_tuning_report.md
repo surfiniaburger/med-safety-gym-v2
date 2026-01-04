@@ -23,7 +23,7 @@ We encountered and solved three major blockers:
 
 ### A. The "Masking Hijack" (SFT Correctness)
 **Problem:** The default Tunix data pipeline did not correctly apply loss masking to the user instructions, risking the model "learning to speak like a user" rather than a helpful assistant.
-**Solution:** We implemented a custom `grain` transformation in `gemma_data_pipeline.py` that pre-calculates the mask (0 for prompt, 1 for response) and injects it into the `input_mask` field, effectively "hijacking" the field Tunix expects for padding to serves as a loss mask.
+**Solution:** We implemented a custom `grain` transformation in `gemma_data_pipeline.py` that pre-calculates the mask (0 for prompt, 1 for response) and injects it into the `input_mask` field, effectively "hijacking" the field Tunix expects for padding to serve as a loss mask.
 
 ### B. OOM (Resource Exhausted) on TPU
 **Problem:** Initial attempts with `MAX_SEQ_LENGTH=2048` and default batch sizes caused immediate Out Of Memory errors.
