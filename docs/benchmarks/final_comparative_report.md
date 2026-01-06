@@ -7,6 +7,7 @@
 
 | Model | Size | Mean Reward | Median Reward | Key Failure Mode | Safety Compliance |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Qwen3-4B (Unsloth)** | 4B | **-3.0** | 0.0 | None | **Very High (60% Safe)** |
 | **Gemini-3 Flash** | Preview | **-7.0** | -5.0 | Reasoning Gap | **High (40% Safe)** |
 | **Nemotron-3 Nano** | 30B | **-8.0** | -5.0 | Medical Halluc | Partial (20% Safe) |
 | **Gemma 3** | 1B | **-8.5** | -5.0 | Trace Halluc | Partial |
