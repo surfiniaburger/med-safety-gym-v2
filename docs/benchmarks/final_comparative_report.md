@@ -7,6 +7,7 @@
 
 | Model | Size | Mean Reward | Median Reward | Key Failure Mode | Safety Compliance |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Qwen3-4B (Unsloth)** | 4B | **-3.0** | 0.0 | None | **Very High (60% Safe)** |
 | **Gemini-3 Flash** | Preview | **-7.0** | -5.0 | Reasoning Gap | **High (40% Safe)** |
 | **Nemotron-3 Nano** | 30B | **-8.0** | -5.0 | Medical Halluc | Partial (20% Safe) |
 | **Gemma 3** | 1B | **-8.5** | -5.0 | Trace Halluc | Partial |
@@ -15,14 +16,19 @@
 | **Ministral-3** | 3B | **-11.5** | -15.0 | Hallucinated Trace | Low |
 
 ### Key Findings
-1.  **Gemini-3 Flash Preview takes the lead**: Achieving a mean reward of **-7.0** and a **40% safety rate**, it shows superior instruction following and grounding compared to all other models tested.
+1.  **Qwen3-4B (Unsloth) takes the lead**: Achieving a mean reward of **-3.0** and a **60% safety rate**, it demonstrates superior instruction following and grounding, surpassing Gemini-3 Flash.
 2.  **Nemotron-3 Nano (30B) Strength**: Outperforms MedGemma and Gemma 3 on mean reward (**-8.0**), though it struggles with medical hallucinations more than Gemini.
 3.  **Format Compliance Solved**: With the "Strong Prompt," all models now reliably generate the required XML structure (`<think>`, `<proof>`, `<answer>`).
 4.  **The Fuzzy Matching Advantage**: The V4 upgrade (fuzzy matching for proofs) remains critical. Even the best models (Gemini/Nemotron) still paraphrase evidence slightly, which would be penalized as a "hallucination" under exact matching but is correctly credited under V4.
 
 ## Detailed Model Analysis
 
-### 1. Gemini-3 Flash (Preview)
+### 1. Qwen3-4B (Unsloth)
+*   **Behavior**: Distinct leader in safety compliance.
+*   **Edge Case**: It is the only model that reached a **60% Safe Response Rate** in this snapshot, effectively balancing refusal of unsupported claims with correct medical answering.
+*   **Issues**: Very minimal hallucinations (0.0% rate), setting a high bar for reliability.
+
+### 2. Gemini-3 Flash (Preview)
 *   **Behavior**: Extremely robust at following the `<think>`, `<proof>`, `<answer>` structure.
 *   **Edge Case**: It is the only model that reached a **40% Safe Response Rate** in this snapshot. Its reasoning chain is clear and generally well-grounded.
 *   **Issues**: Occasional reasoning gaps where the logic doesn't fully support the answer.
@@ -43,7 +49,7 @@ To address the "Hallucinated Trace" penalty caused by high-quality paraphrasing,
 
 ## Final Recommendations
 
-1.  **Deployment**: Use **Gemini-3 Flash** for highest safety assurance when latency permits.
+1.  **Deployment**: Use **Qwen3-4B (Unsloth)** for highest safety assurance. Its **60% safe rate** makes it the most reliable choice for production medical agents.
 2.  **On-Device**: **Gemma 3 (1B)** remains the preferred choice for edge deployments, offering near-SOTA safety (within 1.5 points of Gemini) at a fraction of the size.
 3.  **Finetuning**: Focus on reducing "Medical Hallucination" (specifically for Nemotron) by reinforcing the "Stay in Context" constraint.
 
