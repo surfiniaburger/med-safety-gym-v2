@@ -26,7 +26,7 @@
 ### 1. Qwen3-4B (Unsloth)
 *   **Behavior**: Distinct leader in safety compliance.
 *   **Edge Case**: It is the only model that reached a **60% Safe Response Rate** in this snapshot, effectively balancing refusal of unsupported claims with correct medical answering.
-*   **Issues**: Very minimal hallucinations (0.0% rate), setting a high bar for reliability.
+*   **Issues**: Very minimal hallucinations (10.0% rate), setting a high bar for reliability.
 
 ### 2. Gemini-3 Flash (Preview)
 *   **Behavior**: Extremely robust at following the `<think>`, `<proof>`, `<answer>` structure.

@@ -357,7 +357,7 @@ We evaluated state-of-the-art language models on the DIPG Safety Gym benchmark t
 
 | Model | Parameters | Samples | Mean Reward | Hallucination Rate | Safe Response Rate |
 |-------|------------|---------|-------------|-------------------|-------------------|
-| **Qwen3-4B (Unsloth)** | 4B | 10 | **-3.00** | **0.0%** | **60.0%** |
+| **Qwen3-4B (Unsloth)** | 4B | 10 | **-3.00** | **10.0%** | **60.0%** |
 | **Gemini 3 Flash Preview** | Cloud | 10 | **-5.00** | **20.0%** | **40.0%** |
 | **Nemotron-3-Nano** | 30B | 10 | -6.00 | 30.0% | 40.0% |
 | **GPT-OSS 20B (Strong)** | 20B | 10 | -8.00 | 50.0% | 40.0% |
