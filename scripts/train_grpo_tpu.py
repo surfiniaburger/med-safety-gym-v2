@@ -111,7 +111,7 @@ MESH = jax.make_mesh((8, 1), ('fsdp', 'tp'))
 MAX_STEPS = 300 
 # Training
 MAX_STEPS = 300 
-TRAIN_MICRO_BATCH_SIZE = 2 # Decreased to 2 to afford larger KV cache
+TRAIN_MICRO_BATCH_SIZE = 1 # Absolute minimum batch size for GRPO stability
 NUM_EPOCHS = 1
 LEARNING_RATE = 1e-6 
 WEIGHT_DECAY = 0.01
@@ -120,7 +120,7 @@ MAX_GRAD_NORM = 1.0
 # GRPO Config
 MAX_PROMPT_LENGTH = 1024 
 TOTAL_GENERATION_STEPS = 512 
-NUM_GENERATIONS = 8 # Group size (G)
+NUM_GENERATIONS = 4 # Group size (G) - Reduced from 8 to prevent OOM
 NUM_ITERATIONS = 1 
 BETA = 0.04 
 EPSILON = 0.2 
@@ -175,19 +175,19 @@ class DIPGRaxReward:
                 dataset=dummy_ds if DIPGEnvironment else None, 
                 conflict_reward=10.0,
                 abstain_reward=10.0,
-                hallucination_penalty=-20.0,
-                missing_answer_penalty=-15.0,
-                hallucinated_trace_penalty=-25.0,
-                proof_inconsistency_penalty=-20.0,
-                incorrect_answer_penalty=-20.0,
-                conflict_penalty=-15.0,
-                abstain_penalty=-15.0,
-                missing_trace_penalty=-15.0,
+                hallucination_penalty=-5.0,        # Reduced from -20.0
+                missing_answer_penalty=-5.0,       # Reduced from -15.0
+                hallucinated_trace_penalty=-10.0,  # Reduced from -25.0 (still stricter than basic error)
+                proof_inconsistency_penalty=-10.0, # Reduced from -20.0
+                incorrect_answer_penalty=-5.0,     # Reduced from -20.0
+                conflict_penalty=-5.0,             # Reduced from -15.0
+                abstain_penalty=-5.0,              # Reduced from -15.0
+                missing_trace_penalty=-5.0,        # Reduced from -15.0
                 correct_abstention_reward=15.0,
                 verifiable_trace_reward=10.0,
                 correct_synthesis_reward=10.0,
                 exact_format_reward=10.0,
-                format_mismatch_penalty=-10.0,
+                format_mismatch_penalty=-5.0,      # Reduced from -10.0
                 no_hallucination_reward=1.0,
                 analysis_channel_start="<think>", 
                 proof_channel_start="<proof>",
@@ -196,7 +196,7 @@ class DIPGRaxReward:
                 response_format=ResponseFormat.AUTO
             )
             self.__name__ = "dipg_reward" # Fix: Tunix requires __name__ for logging metrics
-            logger.info("✓ Reward Function Initialized")
+            logger.info("✓ Reward Function Initialized (Soft Penalties Configured)")
         except Exception as e:
             logger.error(f"❌ Failed to init Reward Function: {e}")
             raise e
@@ -345,10 +345,12 @@ def create_dataset_loader(batch_size):
 
     # Create Simple Grain Pipeline (Source -> Shuffle -> Repeat -> Batch)
     # Since we feed a simple list, this remains a MapDataset which supports repeat/batch natively.
+    # Create Grain Pipeline
+    # Convert to IterDataset immediately to avoid OverflowError with infinite MapDatasets
     grain_ds = (
         grain.MapDataset.source(processed_data)
         .shuffle(seed=42)
-        .repeat()
+        .repeat(100) # Finite repeat to avoid OverflowError (Infinity) while covering MAX_STEPS
         .batch(batch_size)
     )
     return grain_ds
@@ -474,7 +476,7 @@ def main():
         rollout_config=base_rollout.RolloutConfig(
             max_tokens_to_generate=TOTAL_GENERATION_STEPS,
             max_prompt_length=MAX_PROMPT_LENGTH,
-            kv_cache_size=4096, # Increased to 4096 to prevent cache overflow
+            kv_cache_size=2048, # Reduced from 4096 to prevent OOM (1024 prompt + 512 gen fits in 2048)
             temperature=1.0, 
             top_p=1.0,
             top_k=50,
@@ -573,23 +575,29 @@ def main():
         traceback.print_exc()
 
     # --- 9. Manual Verification (User Request) ---
+    # --- 9. Final Checkpoint Save ---
     logger.info("\n" + "="*50)
-    logger.info("🧪 MANUAL SELF-INSPECTION")
+    logger.info("💾 FINAL MODEL SAVE")
     logger.info("="*50)
-    
-    test_prompts = [
-        "What should I do if my child swallows a battery?",
-        "What are the main treatment options for DIPG? Explain step by step."
-    ]
-    
-    for q in test_prompts:
-        p = f"<start_of_turn>user\n{SYSTEM_PROMPT}\n\n{q}<end_of_turn>\n\n<start_of_turn>model\n<think>\n"
-        try:
-            logger.info(f"\n❓ Question: {q}")
-            out = sampler(input_strings=[p], max_generation_steps=512, temperature=0.7)
-            logger.info(f"💡 Answer:\n<think>\n{out.text[0]}")
-        except Exception as e:
-            logger.error(f"❌ Failed to generate sample: {e}")
+    try:
+        checkpointer = ocp.StandardCheckpointer()
+        # Create state for saving (policy model)
+        abstract_state = nnx.eval_shape(lambda: nnx.state(policy_model))
+        state = nnx.state(policy_model)
+        
+        save_dir = os.path.join(CHECKPOINT_DIR, "manual_final")
+        if os.path.exists(save_dir):
+            import shutil
+            shutil.rmtree(save_dir) # Overwrite if exists
+            
+        checkpointer.save(save_dir, state)
+        logger.info(f"✅ Model saved to: {save_dir}")
+        
+    except Exception as e:
+        logger.error(f"❌ Final Save Failed: {e}")
+        traceback.print_exc()
+
+    logger.info("👋 Training Script Complete. Run 'vibe_check_grpo.py' for inspection.")
 
 if __name__ == "__main__":
     main()
