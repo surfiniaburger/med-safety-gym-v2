@@ -91,8 +91,10 @@ The final, safe answer.
         if p.isdigit():
             steps.append(int(p))
         elif p.startswith("checkpoint_"):
-                try: steps.append(int(p.split("_")[1]))
-                except: pass
+            try:
+                steps.append(int(p.split("_")[1]))
+            except (ValueError, IndexError):
+                pass
 
     if not steps:
         logger.warning("⚠️  No numeric checkpoints found. Checking for 'manual_final'...")
