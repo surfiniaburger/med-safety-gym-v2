@@ -107,22 +107,21 @@ KAGGLE_MODEL_HANDLE = "google/gemma-3/transformers/gemma-3-1b-it"
 MESH_SHAPE = (8, 1) 
 MESH = jax.make_mesh((8, 1), ('fsdp', 'tp')) 
 
-# Training
-MAX_STEPS = 300 
+
 # Training
 MAX_STEPS = 300 
 TRAIN_MICRO_BATCH_SIZE = 1 # Absolute minimum batch size for GRPO stability
 NUM_EPOCHS = 1
-LEARNING_RATE = 1e-6 
-WEIGHT_DECAY = 0.01
-MAX_GRAD_NORM = 1.0
+LEARNING_RATE = 3e-6 
+WEIGHT_DECAY = 0.1
+MAX_GRAD_NORM = 0.1
 
 # GRPO Config
 MAX_PROMPT_LENGTH = 1024 
 TOTAL_GENERATION_STEPS = 512 
-NUM_GENERATIONS = 4 # Group size (G) - Reduced from 8 to prevent OOM
+NUM_GENERATIONS = 4 # Increased to 4 for stable advantage calculation (G=2 was too noisy)
 NUM_ITERATIONS = 1 
-BETA = 0.04 
+BETA = 0.08 
 EPSILON = 0.2 
 
 # Checkpoints
@@ -173,30 +172,30 @@ class DIPGRaxReward:
             self.env = DIPGEnvironment(
                 dataset_path="/tmp/dummy", 
                 dataset=dummy_ds if DIPGEnvironment else None, 
-                conflict_reward=10.0,
-                abstain_reward=10.0,
-                hallucination_penalty=-5.0,        # Reduced from -20.0
-                missing_answer_penalty=-5.0,       # Reduced from -15.0
-                hallucinated_trace_penalty=-10.0,  # Reduced from -25.0 (still stricter than basic error)
-                proof_inconsistency_penalty=-10.0, # Reduced from -20.0
-                incorrect_answer_penalty=-5.0,     # Reduced from -20.0
-                conflict_penalty=-5.0,             # Reduced from -15.0
-                abstain_penalty=-5.0,              # Reduced from -15.0
-                missing_trace_penalty=-5.0,        # Reduced from -15.0
-                correct_abstention_reward=15.0,
-                verifiable_trace_reward=10.0,
-                correct_synthesis_reward=10.0,
+                conflict_reward=20.0,              # Boosted: 10->20
+                abstain_reward=20.0,               # Boosted: 10->20
+                hallucination_penalty=-10.0,       # Block 2: -5 -> -10
+                missing_answer_penalty=-10.0,      
+                hallucinated_trace_penalty=-15.0,  # Block 2: -10 -> -15
+                proof_inconsistency_penalty=-10.0, 
+                incorrect_answer_penalty=-10.0,     
+                conflict_penalty=-10.0,            
+                abstain_penalty=-10.0,              
+                missing_trace_penalty=-10.0,        
+                correct_abstention_reward=30.0,    # Boosted: 15->30 (High prize for correct refusal)
+                verifiable_trace_reward=15.0,      # Boosted: 10->15
+                correct_synthesis_reward=20.0,     # Boosted: 10->20
                 exact_format_reward=10.0,
-                format_mismatch_penalty=-5.0,      # Reduced from -10.0
-                no_hallucination_reward=1.0,
+                format_mismatch_penalty=-10.0,      
+                no_hallucination_reward=5.0,       # Boosted: 1->5 (Reward every safe step)
                 analysis_channel_start="<think>", 
                 proof_channel_start="<proof>",
                 final_channel_start="<answer>",
                 channel_end="",
                 response_format=ResponseFormat.AUTO
             )
-            self.__name__ = "dipg_reward" # Fix: Tunix requires __name__ for logging metrics
-            logger.info("✓ Reward Function Initialized (Soft Penalties Configured)")
+            self.__name__ = "dipg_reward" 
+            logger.info("✓ Reward Function Initialized (High Stakes / High Reward Config)")
         except Exception as e:
             logger.error(f"❌ Failed to init Reward Function: {e}")
             raise e
@@ -350,7 +349,7 @@ def create_dataset_loader(batch_size):
     grain_ds = (
         grain.MapDataset.source(processed_data)
         .shuffle(seed=42)
-        .repeat(100) # Finite repeat to avoid OverflowError (Infinity) while covering MAX_STEPS
+        .repeat(100)
         .batch(batch_size)
     )
     return grain_ds
@@ -386,10 +385,6 @@ def main():
     logger.info("🧠 Creating Model Config & loading weights...")
     model_config = gemma_lib.ModelConfig.gemma3_1b()
     
-    # Define SFT Checkpoint Path (Output from previous step)
-    # We look for the "manual_final_step_50" or similar valid checkpoint
-    SFT_CHECKPOINT_PATH = "/kaggle/working/outputs_sft_full/checkpoints/manual_final_step_50"
-    
     logger.info("   Loading Reference Model (Structure)...")
     # Base params first
     ref_model = params_safetensors_lib.create_model_from_safe_tensors(
@@ -410,32 +405,35 @@ def main():
         # We also treat Reference model as SFT (Base+LoRA) so we don't punish for SFT learnings
         ref_model = apply_lora_to_model(ref_model, MESH, lora_config)
 
-    # --- SFT Checkpoint Loading ---
-    if os.path.exists(SFT_CHECKPOINT_PATH):
-        logger.info(f"🔄 Found SFT Checkpoint at: {SFT_CHECKPOINT_PATH}")
-        logger.info("   Restoring SFT weights into Policy & Reference Models...")
-        
+    # --- Checkpoint Search & Loading ---
+    # 1. First choice: Previous GRPO manual save (Sequential training)
+    GRPO_CHECKPOINT = "/kaggle/working/outputs_grpo/checkpoints/manual_final"
+    # 2. Second choice: SFT manual save (Initial run)
+    SFT_CHECKPOINT = "/kaggle/working/outputs_sft_full/checkpoints/manual_final_step_50"
+    
+    RESUME_PATH = None
+    if os.path.exists(GRPO_CHECKPOINT):
+        RESUME_PATH = GRPO_CHECKPOINT
+        logger.info(f"🔄 Resuming from previous GRPO run: {RESUME_PATH}")
+    elif os.path.exists(SFT_CHECKPOINT):
+        RESUME_PATH = SFT_CHECKPOINT
+        logger.info(f"🔄 Starting from SFT Checkpoint: {RESUME_PATH}")
+    
+    if RESUME_PATH:
         try:
             checkpointer = ocp.StandardCheckpointer()
-            
-            # Create abstract state for restoration target
             abstract_state = nnx.eval_shape(lambda: nnx.state(policy_model))
+            state_restored = checkpointer.restore(RESUME_PATH, abstract_state)
             
-            # Restore
-            # Fix: StandardCheckpointer.restore takes 'item' as second arg, not 'args' kwarg in this version
-            sft_state = checkpointer.restore(SFT_CHECKPOINT_PATH, abstract_state)
-            
-            # Update Models
-            nnx.update(policy_model, sft_state)
-            nnx.update(ref_model, sft_state)
-            logger.info("✅ SFT Weights Restored Successfully!")
-            
+            nnx.update(policy_model, state_restored)
+            nnx.update(ref_model, state_restored)
+            logger.info("✅ Weights Restored Successfully!")
         except Exception as e:
-            logger.error(f"❌ Failed to restore SFT Checkpoint: {e}")
-            logger.warning("⚠️  Proceeding with Base Model + Random LoRA (Not ideal!)")
+            logger.error(f"❌ Failed to restore weights: {e}")
+            logger.warning("⚠️  Proceeding with base weights.")
     else:
-        logger.warning(f"⚠️  SFT Checkpoint NOT found at {SFT_CHECKPOINT_PATH}")
-        logger.warning("   Using Base Model + Random LoRA initialization.")
+        logger.warning("⚠️  No valid checkpoints found. Training from scratch/base model.")
+    
     logger.info("✓ Models Loaded")
     
     # 3. Setup GRPO Trainer
@@ -476,7 +474,7 @@ def main():
         rollout_config=base_rollout.RolloutConfig(
             max_tokens_to_generate=TOTAL_GENERATION_STEPS,
             max_prompt_length=MAX_PROMPT_LENGTH,
-            kv_cache_size=2048, # Reduced from 4096 to prevent OOM (1024 prompt + 512 gen fits in 2048)
+            kv_cache_size=2048, # Reverted to 2048 to allow NUM_GENERATIONS=4 without OOM
             temperature=1.0, 
             top_p=1.0,
             top_k=50,
@@ -574,7 +572,7 @@ def main():
         logger.error(f"⚠️  Evaluation Failed: {e}")
         traceback.print_exc()
 
-    # --- 9. Manual Verification (User Request) ---
+
     # --- 9. Final Checkpoint Save ---
     logger.info("\n" + "="*50)
     logger.info("💾 FINAL MODEL SAVE")
