@@ -1,0 +1,25 @@
+            self.env = DIPGEnvironment(
+                dataset_path="/tmp/dummy", 
+                dataset=dummy_ds if DIPGEnvironment else None, 
+                conflict_reward=20.0,              # Boosted: 10->20
+                abstain_reward=20.0,               # Boosted: 10->20
+                hallucination_penalty=-10.0,       # Block 2: -5 -> -10
+                missing_answer_penalty=-10.0,      
+                hallucinated_trace_penalty=-15.0,  # Block 2: -10 -> -15
+                proof_inconsistency_penalty=-10.0, 
+                incorrect_answer_penalty=-10.0,     
+                conflict_penalty=-10.0,            
+                abstain_penalty=-10.0,              
+                missing_trace_penalty=-10.0,        
+                correct_abstention_reward=30.0,    # Boosted: 15->30 (High prize for correct refusal)
+                verifiable_trace_reward=15.0,      # Boosted: 10->15
+                correct_synthesis_reward=20.0,     # Boosted: 10->20
+                exact_format_reward=10.0,
+                format_mismatch_penalty=-10.0,      
+                no_hallucination_reward=5.0,       # Boosted: 1->5 (Reward every safe step)
+                analysis_channel_start="<think>", 
+                proof_channel_start="<proof>",
+                final_channel_start="<answer>",
+                channel_end="",
+                response_format=ResponseFormat.AUTO
+            )
