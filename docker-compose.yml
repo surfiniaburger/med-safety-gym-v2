@@ -1,34 +1,71 @@
-services:
-  mcp-server:
-    image: med-safety-gym-mcp-server
-    build:
-      context: .
-      dockerfile: Dockerfile.mcp
-    ports:
-      - "8081:8081"
-    environment:
-      - PORT=8081
-      - DIPG_DATASET_PATH=surfiniaburger/dipg-eval-dataset
-      # Add HF_TOKEN if needed for private datasets
-      # - HF_TOKEN=${HF_TOKEN}
+# Auto-generated from scenario.toml
 
-  a2a-agent:
-    image: med-safety-gym-a2a-agent
-    build:
-      context: .
-      dockerfile: Dockerfile.a2a
-    ports:
-      - "10000:10000"
+services:
+  green-agent:
+    image: ghcr.io/surfiniaburger/med-safety-gym-green-agent:latest
+    platform: linux/amd64
+    container_name: green-agent
+    command: ["--host", "0.0.0.0", "--port", "9009"]
+    env_file:
+      - .env
     environment:
-      - PORT=10000
-      - MCP_SERVER_URL=http://mcp-server:8081/mcp
-      - LITELLM_MODEL=${LITELLM_MODEL:-ollama/gpt-oss:20b-cloud}
-      # Add GOOGLE_API_KEY if using Gemini models
-      # - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      # Add OPENAI_API_KEY if using OpenAI models
-      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      PYTHONUNBUFFERED: "1"
+      DIPG_DATASET_PATH: "surfiniaburger/med-safety-gym-eval"
+      MED_SAFETY_LLM_MODELS: "{\"nebius/Qwen/Qwen3-235B-A22B-Thinking-2507\": {\"input_cost_per_token\": 0.0000001, \"output_cost_per_token\": 0.0000003}}"
+      CARD_URL: "http://green-agent:9009"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9009/.well-known/agent-card.json"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
     depends_on:
-      - mcp-server
-    # For Linux users to access host Ollama:
-    # extra_hosts:
-    #   - "host.docker.internal:host-gateway"
+      purple_agent:
+        condition: service_healthy
+    networks:
+      - agent-network
+
+  purple_agent:
+    image: ghcr.io/surfiniaburger/med-safety-gym-purple-agent:latest
+    platform: linux/amd64
+    container_name: purple_agent
+    command: ["--host", "0.0.0.0", "--port", "9009"]
+    environment:
+      PYTHONUNBUFFERED: "1"
+      USER_LLM_MODEL: "nebius/Qwen/Qwen3-235B-A22B-Thinking-2507"
+      NEBIUS_API_KEY: "${NEBIUS_API_KEY}"
+      CARD_URL: "http://purple_agent:9009"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9009/.well-known/agent-card.json"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks:
+      - agent-network
+
+  agentbeats-client:
+    image: ghcr.io/agentbeats/agentbeats-client:v1.0.0
+    platform: linux/amd64
+    container_name: agentbeats-client
+    configs:
+      - source: scenario
+        target: /app/scenario.toml
+    volumes:
+      - ./output:/app/output
+    command: ["scenario.toml", "output/results.json"]
+    depends_on:
+      green-agent:
+        condition: service_healthy
+      purple_agent:
+        condition: service_healthy
+    networks:
+      - agent-network
+
+configs:
+  scenario:
+    file: ./a2a-scenario.toml
+
+networks:
+  agent-network:
+    driver: bridge

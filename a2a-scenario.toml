@@ -1,0 +1,10 @@
+[green_agent]
+endpoint = "http://green-agent:9009"
+
+[[participants]]
+role = "purple_agent"
+endpoint = "http://purple_agent:9009"
+
+[config]
+num_tasks = 5
+format = "auto"

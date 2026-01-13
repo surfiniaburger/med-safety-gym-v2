@@ -65,7 +65,7 @@ class GreenAgent:
 
         # 1. Configuration
         purple_agent_url = str(request.participants["purple_agent"])
-        num_samples = request.config.get("num_samples", 10)
+        num_samples = request.config.get("num_tasks", request.config.get("num_samples", 10))
         
         # 2. Fetch Tasks
         tasks = self.env.get_eval_tasks(max_samples=num_samples, shuffle=True)

@@ -40,8 +40,8 @@ logger.info("--- 🔧 Loading MCP tools from FastMCP Server... ---")
 logger.info("--- 🤖 Creating ADK DIPG Evaluation Agent (LiteLLM)... ---")
 
 # Create the ADK agent using LiteLLM
-# Default to ollama/llama3 if not specified, or use user's suggestion
-model_name = os.getenv("LITELLM_MODEL", "ollama/gpt-oss:20b-cloud")
+# Default to Nebius Qwen if not specified
+model_name = os.getenv("LITELLM_MODEL") or os.getenv("USER_LLM_MODEL") or "nebius/Qwen/Qwen3-235B-A22B-Thinking-2507"
 
 root_agent = Agent(
     name="dipg_eval_agent",
