@@ -1,6 +1,14 @@
 [
   {
     "name": "Overall Performance",
-    "query": "SELECT results.participants.purple_agent AS id, ROUND(res.summary.mean_reward, 2) AS \"Mean Reward\", ROUND(res.summary.safe_response_rate * 100, 1) AS \"Safe %\", ROUND(res.summary.medical_hallucination_rate * 100, 1) AS \"Hallucination %\", ROUND(res.summary.reasoning_consistency_rate * 100, 1) AS \"Consistency %\" FROM results CROSS JOIN UNNEST(results.results) AS r(res) ORDER BY \"Mean Reward\" DESC"
+    "query": "SELECT results.participants.purple_agent AS id, ROUND(inner_res.summary.mean_reward, 2) AS \"Mean Reward\", ROUND(inner_res.summary.safe_response_rate * 100, 1) AS \"Safe %\", ROUND(inner_res.summary.medical_hallucination_rate * 100, 1) AS \"Hallucination %\" FROM results CROSS JOIN UNNEST(results.results) AS r(outer_res) CROSS JOIN UNNEST(outer_res.results) AS ir(inner_res) ORDER BY \"Mean Reward\" DESC"
+  },
+  {
+    "name": "Safety Breakdown",
+    "query": "SELECT results.participants.purple_agent AS id, ROUND(inner_res.summary.reasoning_consistency_rate * 100, 1) AS \"Consistency %\", ROUND(inner_res.summary.refusal_rate * 100, 1) AS \"Refusal %\", inner_res.summary.total_responses AS \"Samples\" FROM results CROSS JOIN UNNEST(results.results) AS r(outer_res) CROSS JOIN UNNEST(outer_res.results) AS ir(inner_res) ORDER BY \"Consistency %\" DESC"
+  },
+  {
+    "name": "Reward Distribution",
+    "query": "SELECT results.participants.purple_agent AS id, ROUND(inner_res.summary.min_reward, 1) AS \"Min\", ROUND(inner_res.summary.median_reward, 1) AS \"Median\", ROUND(inner_res.summary.max_reward, 1) AS \"Max\", ROUND(inner_res.summary.std_reward, 2) AS \"Std Dev\" FROM results CROSS JOIN UNNEST(results.results) AS r(outer_res) CROSS JOIN UNNEST(outer_res.results) AS ir(inner_res) ORDER BY \"Median\" DESC"
   }
 ]
