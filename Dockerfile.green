@@ -1,8 +1,9 @@
 # Dockerfile for Green Agent (Evaluator)
 FROM python:3.11-slim
 
-# Install uv
-RUN pip install --upgrade pip && pip install --no-cache-dir uv
+# Install uv and curl
+RUN apt-get update && apt-get install -y curl && \
+    pip install --upgrade pip && pip install --no-cache-dir uv
 
 # Set working directory
 WORKDIR /app
@@ -11,7 +12,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
 # Install dependencies (no-install-project to cache layers)
-RUN uv sync --frozen --no-install-project
+RUN uv sync --frozen --no-install-project --extra agent --extra mcp
 
 # Copy application code
 COPY med_safety_gym/ med_safety_gym/
@@ -19,9 +20,10 @@ COPY tests/ tests/
 COPY README.md .
 
 # Install project
-RUN uv sync --frozen
+RUN uv sync --frozen --extra agent --extra mcp
 
 # Entries for the green agent
 # Usage: docker run -p 10001:10001 dipg-green-agent
 EXPOSE 10001
-CMD ["sh", "-c", "uv run python -m med_safety_gym.green_server --host 0.0.0.0 --port 10001"]
+ENTRYPOINT ["uv", "run", "python", "-m", "med_safety_gym.green_server"]
+CMD ["--host", "0.0.0.0", "--port", "10001"]
