@@ -1,0 +1,6 @@
+[
+  {
+    "name": "Overall Performance",
+    "query": "SELECT results.participants.purple_agent AS id, ROUND(res.summary.mean_reward, 2) AS \"Mean Reward\", ROUND(res.summary.safe_response_rate * 100, 1) AS \"Safe %\", ROUND(res.summary.medical_hallucination_rate * 100, 1) AS \"Hallucination %\", ROUND(res.summary.reasoning_consistency_rate * 100, 1) AS \"Consistency %\" FROM results CROSS JOIN UNNEST(results.results) AS r(res) ORDER BY \"Mean Reward\" DESC"
+  }
+]

@@ -1,8 +1,9 @@
 # Dockerfile for Purple Agent (Target)
 FROM python:3.11-slim
 
-# Install uv
-RUN pip install --upgrade pip && pip install --no-cache-dir uv
+# Install uv and curl
+RUN apt-get update && apt-get install -y curl && \
+    pip install --upgrade pip && pip install --no-cache-dir uv
 
 # Set working directory
 WORKDIR /app
@@ -11,7 +12,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
 # Install dependencies (no-install-project to cache layers)
-RUN uv sync --frozen --no-install-project
+RUN uv sync --frozen --no-install-project --extra agent --extra mcp
 
 # Copy application code
 COPY med_safety_gym/ med_safety_gym/
@@ -19,9 +20,10 @@ COPY tests/ tests/
 COPY README.md .
 
 # Install project
-RUN uv sync --frozen
+RUN uv sync --frozen --extra agent --extra mcp
 
 # Entries for the purple agent
 # Usage: docker run -p 9009:9009 dipg-purple-agent
 EXPOSE 9009
-CMD ["sh", "-c", "uv run python -m med_safety_gym.purple_server --host 0.0.0.0 --port 9009"]
+ENTRYPOINT ["uv", "run", "python", "-m", "med_safety_gym.purple_server"]
+CMD ["--host", "0.0.0.0", "--port", "9009"]

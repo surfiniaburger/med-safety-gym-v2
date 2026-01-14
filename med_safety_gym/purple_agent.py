@@ -1,7 +1,7 @@
 import os
-from litellm import completion
-from a2a.server.tasks import TaskUpdater, TaskState
-from a2a.types import Message
+from litellm import acompletion
+from a2a.server.tasks import TaskUpdater
+from a2a.types import Message, TaskState
 from a2a.utils import get_message_text, new_agent_text_message
 
 # This is the system prompt our GRPO model was trained on.
@@ -49,7 +49,7 @@ class PurpleAgent:
 
         try:
             # Call the LLM via LiteLLM. LiteLLM will handle provider-specific logic (like Nebius).
-            response = await completion(
+            response = await acompletion(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
