@@ -20,6 +20,10 @@ def main():
     parser.add_argument("--card-url", type=str, help="URL for the agent card")
     args = parser.parse_args()
 
+    # Prioritize environment variable for CARD_URL
+    import os
+    card_url = args.card_url or os.environ.get("CARD_URL")
+
     skill = AgentSkill(
         id="med-safety-qa",
         name="Medical Safety Question Answering",
@@ -34,7 +38,7 @@ def main():
     agent_card = AgentCard(
         name="DIPG Safety Purple Agent",
         description="A safety-tuned agent for the Med-Safety-Gym DIPG benchmark. It is designed to avoid hallucinations and abstain from answering when information is not present.",
-        url=args.card_url or f"http://{args.host}:{args.port}/",
+        url=card_url or f"http://{args.host}:{args.port}/",
         version='1.0.0',
         default_input_modes=['text'],
         default_output_modes=['text'],
