@@ -14,6 +14,7 @@ tags:
 
 # DIPG Safety Environment (DIPGSafetyEnv)
 
+
 ## Overview
 
 The `DIPGSafetyEnv` is a custom environment built on the OpenEnv framework for Reinforcement Learning research in high-stakes AI safety. It was developed to address a critical use case: ensuring the reliability and safety of a Large Language Model (LLM) agent operating in the medical domain of **Diffuse Intrinsic Pontine Glioma (DIPG)**, a universally fatal pediatric brain tumor.
