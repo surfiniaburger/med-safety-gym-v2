@@ -5,11 +5,15 @@ on:
   push:
     paths:
       - 'med_safety_scenario.toml'
+      - 'med_safety_gym/**'
+      - 'generate_compose.py'
+      - 'wrap_results.py'
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.repository.fork == true || github.ref != 'refs/heads/main'
+    # Allow running on any branch for now to facilitate testing
+    if: github.event_name == 'workflow_dispatch' || github.event.repository.fork == true || github.ref != 'refs/heads/main' || contains(github.event.head_commit.message, '[run scenario]')
     permissions:
       contents: write
       packages: read
