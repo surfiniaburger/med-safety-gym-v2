@@ -5,9 +5,9 @@ from typing import Any, Dict, Optional, Union
 
 # Robust import of base classes
 try:
-    from openenv_core.env_server import Action as BaseAction
-    from openenv_core.env_server import Observation as BaseObservation
-    from openenv_core.env_server import State as BaseState
+    from openenv.core.env_server import Action as BaseAction
+    from openenv.core.env_server import Observation as BaseObservation
+    from openenv.core.env_server import State as BaseState
     import pydantic
     # Check if the base classes are already Pydantic-based (likely in newer versions)
     IS_PYDANTIC_BASE = isinstance(BaseAction, type) and issubclass(BaseAction, pydantic.BaseModel)
@@ -55,3 +55,5 @@ class DIPGState(BaseState if IS_PYDANTIC_BASE else BaseModel):
     # This will hold the ground-truth 'analysis' and 'final' answer
     # for scoring purposes.
     expected_answer: dict = Field(default_factory=dict)
+    # Environment configuration and metrics settings
+    config: Dict[str, Any] = Field(default_factory=dict)

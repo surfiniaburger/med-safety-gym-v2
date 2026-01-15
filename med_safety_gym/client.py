@@ -3,194 +3,98 @@
 Client implementation for the custom DIPGSafetyEnv.
 
 This file defines the `DIPGSafetyEnv` class, which acts as the "remote control"
-for the environment server. Its primary job is to handle the HTTP communication:
+for the environment server. Its primary job is to handle the communication:
   1.  It takes Python objects (like an Action) from the agent's code.
-  2.  It converts them into JSON to send to the server.
+  2.  It converts them into JSON to send to the server via WebSockets.
   3.  It receives JSON responses from the server.
-  4.  It parses that JSON back into useful Python objects (like Observations and Rewards).
+  4.  It parses that JSON back into structured objects (DIPGStepResult).
 """
 
 import requests
+import statistics
+import json
+import os
 from typing import Any, Dict, Generic, Optional, Type, TypeVar
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 
-# Vendor HTTPEnvClient
+from openenv.core import EnvClient
+from openenv.core.client_types import StepResult
+
+# Legacy TypeVars for backward compatibility
 ActT = TypeVar("ActT")
 ObsT = TypeVar("ObsT")
-
-# Vendor StepResult
-class StepResult(Generic[ObsT]):
-    def __init__(self, observation: ObsT, reward: Any, done: bool, info: Optional[Dict[str, Any]] = None):
-        self.observation = observation
-        self.reward = reward
-        self.done = done
-        self.info = info or {}
-
-class HTTPEnvClient(ABC, Generic[ActT, ObsT]):
-    def __init__(
-        self,
-        base_url: str,
-        request_timeout_s: float = 15.0,
-        default_headers: Optional[Dict[str, str]] = None,
-    ):
-        self._base = base_url.rstrip("/")
-        self._timeout = float(request_timeout_s)
-        self._http = requests.Session()
-        self._headers = default_headers or {}
-
-    @abstractmethod
-    def _step_payload(self, action: ActT) -> dict:
-        """Convert an Action object to the JSON body expected by the env server."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def _parse_result(self, payload: dict) -> StepResult[ObsT]:
-        """Convert a JSON response from the env server to StepResult[ObsT]."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def _parse_state(self, payload: dict) -> Any:
-        """Convert a JSON response from the state endpoint to a State object."""
-        raise NotImplementedError
-
-    # ---------- Environment Server Interface Methods ----------
-    def reset(self) -> StepResult[ObsT]:
-        body: Dict[str, Any] = {}
-        r = self._http.post(
-            f"{self._base}/reset",
-            json=body,
-            headers=self._headers,
-            timeout=self._timeout,
-        )
-        r.raise_for_status()
-        return self._parse_result(r.json())
-
-    def step(self, action: ActT) -> StepResult[ObsT]:
-        body: Dict[str, Any] = {
-            "action": self._step_payload(action),
-            "timeout_s": self._timeout,
-        }
-        r = self._http.post(
-            f"{self._base}/step",
-            json=body,
-            headers=self._headers,
-            timeout=self._timeout,
-        )
-        # Handle specific error cases if needed, but raise_for_status covers most
-        r.raise_for_status()
-        return self._parse_result(r.json())
-
-    def state(self) -> Any:
-        r = self._http.get(
-            f"{self._base}/state",
-            headers=self._headers,
-            timeout=self._timeout,
-        )
-        r.raise_for_status()
-        return self._parse_state(r.json())
+StateT = TypeVar("StateT")
 
 from .models import DIPGAction, DIPGObservation, DIPGState
 
+@dataclass
+class DIPGStepResult(StepResult[DIPGObservation]):
+    """
+    DIPG-specific StepResult that includes evaluation metrics in the 'info' field
+    for backward compatibility with the legacy evaluation suite.
+    """
+    info: Dict[str, Any] = field(default_factory=dict)
 
-class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
+class DIPGSafetyEnv(EnvClient[DIPGAction, DIPGObservation, DIPGState]):
     """
     Client for interacting with the `DIPGSafetyEnv` server.
-
-    This class inherits from the base `HTTPEnvClient` and is specialized to handle
-    the specific data types of our environment: `DIPGAction` and `DIPGObservation`.
     """
     
     def __init__(self, base_url: str, timeout: float = 60.0):
         """
         Initializes the client.
-        
-        Args:
-            base_url: The URL of the running environment server.
-            timeout: The number of seconds to wait for a server response.
         """
-        # This correctly calls the parent initializer with the expected
-        # 'request_timeout_s' keyword argument.
-        super().__init__(base_url=base_url, request_timeout_s=timeout)
-    # ----------------------------------------
+        # Store original base for custom HTTP endpoints (like fetching tasks)
+        self._base = base_url.rstrip("/")
+        self._http = requests.Session()
+        self._timeout = timeout
+        
+        super().__init__(
+            base_url=base_url, 
+            message_timeout_s=timeout, 
+            connect_timeout_s=timeout
+        )
 
     def _step_payload(self, action: DIPGAction) -> dict:
-        """
-        Formats the `DIPGAction` object into a JSON-serializable dictionary.
-        
-        This dictionary becomes the body of the HTTP POST request sent to the
-        server's `/step` endpoint.
-
-        Args:
-            action: The `DIPGAction` object containing the model's response.
-
-        Returns:
-            A dictionary to be sent as the JSON request body.
-        """
+        """Formats the action for transmission."""
         return {"llm_response": action.llm_response}
 
-    def _parse_result(self, payload: dict) -> StepResult[DIPGObservation]:
-        """
-        Parses the JSON payload from the server into a `StepResult`,
-        robustly handling inconsistencies and potential missing data.
-
-        This method is designed to be crash-proof and handles three key scenarios:
-        1. The single-nested 'observation' dictionary from the `/reset` endpoint.
-        2. The double-nested 'observation' dictionary from the `/step` endpoint.
-        3. A payload where the 'observation' key might be missing entirely.
-
-        Args:
-            payload: The raw dictionary parsed from the server's JSON response.
-
-        Returns:
-            A structured `StepResult` object.
-        """
-        # Safely get the top-level 'observation' object. It could be a dict or None.
+    def _parse_result(self, payload: dict) -> DIPGStepResult:
+        """Parses server response into structured DIPGStepResult."""
         obs_data = payload.get("observation")
 
-        # Check if the object is a dictionary and contains the nested 'observation' key.
-        # This identifies the double-nested structure from the /step endpoint.
         if isinstance(obs_data, dict) and "observation" in obs_data:
-            # If so, go one level deeper to get the actual data payload.
             actual_obs_data = obs_data.get("observation")
         else:
-            # Otherwise, it's either the single-nested structure from /reset or None.
             actual_obs_data = obs_data if isinstance(obs_data, dict) else {}
 
-        # To prevent crashes, ensure `actual_obs_data` is a dictionary before
-        # we try to access keys from it. If it was None, it becomes an empty dict.
         if not isinstance(actual_obs_data, dict):
             actual_obs_data = {}
         
-        # Construct the DIPGObservation object safely.
-        # Using .get() with a default value ("") prevents a KeyError if 'context' or
-        # 'question' are missing from the payload, ensuring the client never crashes.
+        # Integration: Extract metrics from metadata for easy access via .info
+        # Check both the possible nested location and the top-level obs_data
+        metrics = actual_obs_data.get("metadata", {}) or (obs_data.get("metadata", {}) if isinstance(obs_data, dict) else {})
+
         obs = DIPGObservation(
             context=actual_obs_data.get("context", ""),
             question=actual_obs_data.get("question", ""),
+            metadata=metrics
         )
         
-        # Assemble and return the final, structured StepResult.
-        return StepResult(
+        return DIPGStepResult(
             observation=obs,
             reward=payload.get("reward"),
             done=payload.get("done", False),
+            info=metrics
         )
-    
 
     def _parse_state(self, payload: dict) -> DIPGState:
-        """
-        Parses the JSON payload from the server's `/state` endpoint into a `DIPGState` object.
-        
-        Args:
-            payload: The raw dictionary parsed from the server's JSON response.
-            
-        Returns:
-            A structured `DIPGState` object.
-        """
+        """Parses state payload."""
         return DIPGState(**payload)
     
     # ==================================================================================
-    # EVALUATION HELPER METHODS (NEW - Phase 5)
+    # INTEGRATED EVALUATION METHODS
     # ==================================================================================
     
     def evaluate_model(
@@ -200,95 +104,76 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
         save_path: str | None = None
     ) -> dict:
         """
-        Evaluate a batch of model responses using the evaluation service.
+        Evaluate a batch of model responses using integrated environment steps.
         
-        This is a convenience method that calls the `/evaluate` endpoint
-        to get aggregate metrics for a list of responses.
-        
-        Args:
-            responses: List of model-generated responses to evaluate
-            response_format: Expected format ("json", "xml", "yaml", "custom_tags", or "auto")
-            save_path: Optional path to save detailed evaluation results
-            
-        Returns:
-            Dictionary with evaluation results including mean_reward, median_reward, etc.
-            
-        Example:
-            ```python
-            client = DIPGSafetyEnv("http://localhost:8000")
-            responses = ['{"analysis": "...", "proof": "...", "final": "..."}']
-            results = client.evaluate_model(responses, response_format="json")
-            print(f"Mean reward: {results['mean_reward']}")
-            ```
+        This method performs a standard gym loop (reset + step) for each response,
+        aggregating metrics directly from the StepResult.info field.
         """
-        payload = {
-            "responses": responses,
-            "format": response_format
+        rewards = []
+        detailed_results = []
+        
+        # Metric Counters
+        metrics_counts = {
+            "refusal": 0,
+            "safe": 0,
+            "hallucination": 0,
+            "inconsistency": 0,
+            "format_error": 0
+        }
+        
+        for idx, response in enumerate(responses):
+            try:
+                obs_result = self.reset()
+                step_result = self.step(DIPGAction(llm_response=response))
+                
+                reward = step_result.reward or 0.0
+                metrics = step_result.info
+                
+                rewards.append(reward)
+                
+                for key in metrics_counts.keys():
+                    if metrics.get(key):
+                        metrics_counts[key] += 1
+                
+                detailed_results.append({
+                    "index": idx,
+                    "response": response,
+                    "reward": reward,
+                    "metrics": metrics,
+                    "context": obs_result.observation.context,
+                    "question": obs_result.observation.question
+                })
+            except Exception as e:
+                rewards.append(-1.0) 
+                detailed_results.append({"index": idx, "error": str(e), "reward": -1.0})
+
+        total = len(responses)
+        result = {
+            "total_responses": total,
+            "mean_reward": statistics.mean(rewards) if rewards else 0.0,
+            "median_reward": statistics.median(rewards) if rewards else 0.0,
+            "std_reward": statistics.stdev(rewards) if len(rewards) > 1 else 0.0,
+            "min_reward": min(rewards) if rewards else 0.0,
+            "max_reward": max(rewards) if rewards else 0.0,
+            "rewards": rewards,
+            "refusal_rate": metrics_counts["refusal"] / total if total > 0 else 0.0,
+            "safe_response_rate": metrics_counts["safe"] / total if total > 0 else 0.0,
+            "medical_hallucination_rate": metrics_counts["hallucination"] / total if total > 0 else 0.0,
+            "reasoning_consistency_rate": metrics_counts["inconsistency"] / total if total > 0 else 0.0,
+            "detailed_results": detailed_results
         }
         
         if save_path:
-            payload["save_path"] = save_path
-        
-        response = requests.post(
-            f"{self._base}/evaluate",
-            json=payload,
-            timeout=self._timeout
-        )
-        response.raise_for_status()
-        
-        return response.json()
+            os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
+            with open(save_path, 'w') as f:
+                json.dump(result, f, indent=2)
+            result["saved_to"] = save_path
 
-    def evaluate_tasks(
-        self, 
-        responses: list[dict[str, str]], 
-        response_format: str = "auto",
-        dataset: str = None
-    ) -> dict:
-        """
-        Evaluate a batch of task responses against their ground truth from the dataset.
-        
-        Args:
-            responses: List of dicts, each containing {"task_id": "...", "response": "..."}
-            response_format: Expected format ("json", "xml", "auto", etc.)
-            dataset: Optional name/path of dataset to use (defaults to server config)
-            
-        Returns:
-            Dictionary with evaluation metrics (accuracy, etc.)
-        """
-        payload = {
-            "responses": responses,
-            "format": response_format
-        }
-        if dataset:
-            payload["dataset"] = dataset
-            
-        response = requests.post(
-            f"{self._base}/evaluate/tasks",
-            json=payload,
-            timeout=self._timeout
-        )
-        response.raise_for_status()
-        
-        return response.json()
+        return result
 
     def get_eval_tasks(self, max_samples: int = None, shuffle: bool = True) -> list[dict]:
         """
-        Fetch a list of evaluation tasks from the server.
-        
-        Args:
-            max_samples: Maximum number of tasks to fetch. If None, fetches all.
-            shuffle: Whether to shuffle the tasks before returning.
-            
-        Returns:
-            List of task dictionaries containing 'task_id', 'question', 'context', etc.
-            
-        Example:
-            ```python
-            client = DIPGSafetyEnv("http://localhost:8000")
-            tasks = client.get_eval_tasks(max_samples=10)
-            for task in tasks:
-                print(task['question'])
-            ```
+        Fetch task list (using the coordinated /eval/tasks endpoint).
         """
         params = {"shuffle": str(shuffle).lower()}
         if max_samples is not None:
@@ -300,28 +185,11 @@ class DIPGSafetyEnv(HTTPEnvClient[DIPGAction, DIPGObservation]):
             timeout=self._timeout
         )
         response.raise_for_status()
-        
-        # The endpoint returns {"tasks": [...], "total_tasks": ...}
         return response.json().get("tasks", [])
     
     def get_metrics_summary(self) -> dict:
         """
-        Get summary of environment metrics and configuration.
-        
-        Returns:
-            Dictionary with environment configuration
-            
-        Example:
-            ```python
-            client = DIPGSafetyEnv("http://localhost:8000")
-            summary = client.get_metrics_summary()
-            print(f"Current format: {summary['response_format']}")
-            ```
+        Get environment configuration from integrated state.
         """
-        response = requests.get(
-            f"{self._base}/metrics/summary",
-            timeout=self._timeout
-        )
-        response.raise_for_status()
-        
-        return response.json()
+        state = self.state()
+        return getattr(state, 'config', {})

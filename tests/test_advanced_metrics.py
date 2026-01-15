@@ -5,11 +5,13 @@ from med_safety_gym.evaluation_service import EvaluationManager
 from med_safety_gym.dipg_environment import DIPGEnvironment
 from med_safety_gym.format_parser import ResponseFormat
 from med_safety_gym.models import DIPGAction, DIPGObservation, DIPGState
-from openenv_core.http_env_client import StepResult
+from openenv.core.client_types import StepResult
 
 class MockStepResult:
-    def __init__(self, reward):
+    def __init__(self, reward, metadata=None):
         self.reward = reward
+        self.metadata = metadata or {}
+        self.done = True
 
 def test_advanced_metrics_aggregation():
     """Verify that EvaluationManager correctly aggregates metrics from the environment."""
@@ -44,9 +46,8 @@ def test_advanced_metrics_aggregation():
     def step_side_effect(action):
         nonlocal call_count
         metrics = metrics_sequence[call_count]
-        env.last_metrics = metrics # Update the property mock
         call_count += 1
-        return MockStepResult(reward=1.0)
+        return MockStepResult(reward=1.0, metadata=metrics)
 
     env.step.side_effect = step_side_effect
     

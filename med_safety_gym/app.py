@@ -2,7 +2,7 @@
 import os
 import sys
 import logging
-from openenv_core.env_server import create_app
+from openenv.core.env_server import create_app
 from .dipg_environment import DIPGEnvironment
 from .format_parser import ResponseFormat
 from .models import DIPGAction, DIPGObservation
@@ -135,35 +135,8 @@ def get_environment() -> DIPGEnvironment:
         
     return env
 
+# Fix: openenv_core expects an instance, not a factory function
 app = create_app(get_environment, DIPGAction, DIPGObservation, env_name="dipg_safety_env")
-
-@app.post("/evaluate", response_model=EvaluationResult)
-async def evaluate_batch(request: EvaluationRequest):
-    num_items = len(request.evaluations) if request.evaluations else len(request.responses)
-    if num_items > MAX_EVALUATION_ITEMS:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=413, detail=f"Payload too large. Maximum {MAX_EVALUATION_ITEMS} items allowed.")
-
-    env = get_environment()
-    eval_manager = EvaluationManager(env)
-
-    if request.evaluations is not None:
-        return eval_manager.evaluate_with_ground_truth(
-            evaluations=request.evaluations,
-            response_format=request.format,
-            save_path=request.save_path
-        )
-    return eval_manager.evaluate_batch(
-        responses=request.responses,
-        response_format=request.format,
-        save_path=request.save_path
-    )
-
-@app.get("/metrics/summary")
-async def get_metrics_summary():
-    env = get_environment()
-    eval_manager = EvaluationManager(env)
-    return eval_manager.get_metrics_summary()
 
 @app.get("/eval/tasks")
 async def get_eval_tasks(max_samples: int = None, shuffle: bool = True):
@@ -174,74 +147,6 @@ async def get_eval_tasks(max_samples: int = None, shuffle: bool = True):
         "total_tasks": len(tasks),
         "dataset_size": len(env.dataset)
     }
-
-@app.get("/tasks")
-async def get_tasks(dataset: str = None, count: int = 100):
-    env = get_environment()
-    raw_tasks = env.get_eval_tasks(max_samples=count, shuffle=False)
-    tasks = []
-    for task in raw_tasks:
-        tasks.append({
-            "task_id": task["task_id"],
-            "question": task["question"],
-            "context": task.get("context", "")
-        })
-    config = get_config()
-    return {
-        "tasks": tasks,
-        "dataset": dataset or config["dataset_path"],
-        "total_count": len(tasks)
-    }
-
-from pydantic import BaseModel
-from typing import List, Optional
-
-class TaskResponse(BaseModel):
-    task_id: str
-    response: str
-
-class EvaluateTasksRequest(BaseModel):
-    responses: List[TaskResponse]
-    format: str = "auto"
-    dataset: Optional[str] = None
-
-@app.post("/evaluate/tasks")
-async def evaluate_tasks(request: EvaluateTasksRequest):
-    if len(request.responses) > MAX_EVALUATION_ITEMS:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=413, detail=f"Too many responses. Maximum {MAX_EVALUATION_ITEMS} allowed.")
-    
-    env = get_environment()
-    eval_manager = EvaluationManager(env)
-    all_tasks = env.get_eval_tasks(max_samples=None, shuffle=False)
-    task_map = {task['task_id']: task for task in all_tasks}
-
-    evaluations = []
-    for resp in request.responses:
-        task = task_map.get(resp.task_id)
-        if task:
-             from .evaluation_service import GroundTruth, EvaluationItem
-             gt = GroundTruth(
-                context=task.get("context", ""),
-                question=task.get("question", ""),
-                expected_answer=task.get("expected_answer", {})
-             )
-             evaluations.append(EvaluationItem(response=resp.response, ground_truth=gt))
-
-    if not evaluations:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail="No valid evaluations found. Check task_ids.")
-
-    try:
-        result = eval_manager.evaluate_with_ground_truth(
-            evaluations=evaluations,
-            response_format=request.format
-        )
-        return {"metrics": result.model_dump()}
-    except Exception as e:
-        logging.error(f"Evaluation failed: {e}", exc_info=True)
-        from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail=str(e))
 
 def main():
     import uvicorn

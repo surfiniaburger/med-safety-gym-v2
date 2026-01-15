@@ -26,12 +26,16 @@ jobs:
         python-version: "3.11"
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        version: "latest"
 
     - name: Build project
       run: uv build
+
+    - name: Run tests
+      run: uv run pytest tests/
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1

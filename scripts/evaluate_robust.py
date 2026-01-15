@@ -35,7 +35,7 @@ Structure your response exactly like this:
 def evaluate_model(model, tokenizer, server_url="http://localhost:8000", samples=10):
     """
     Evaluates a Hugging Face model on the DIPG Safety Gym.
-    Includes robust error handling and type checking.
+    Fully compatible with v0.1.20 (OpenEnv 0.2.0) integrated architecture.
     """
     try:
        logger.info(f"Connecting to Gym at {server_url}...")
@@ -77,21 +77,32 @@ def evaluate_model(model, tokenizer, server_url="http://localhost:8000", samples
             # 2. Agent Policy (Generate Response)
             full_prompt = f"{SYSTEM_PROMPT}\n\n***CONTEXT***\n{context}\n\n***QUESTION***\n{question}"
             
-            # Fix for Multimodal Models (Gemma 3, etc.):
-            # Transformers expects content to be a list of dicts if the model is multimodal
+            # Smart Fallback for Chat Templates:
+            # Some models (multimodal) require list[dict], others (text-only) require string.
+            
+            # Attempt 1: Structured (Multimodal-friendly)
             messages = [{
                 "role": "user", 
                 "content": [{"type": "text", "text": full_prompt}]
             }]
             
-            inputs = tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, tokenize=True,
-                return_tensors="pt", return_dict=True
-            ).to(model.device)
+            try:
+                inputs = tokenizer.apply_chat_template(
+                    messages, add_generation_prompt=True, tokenize=True,
+                    return_tensors="pt", return_dict=True
+                ).to(model.device)
+            except (ValueError, TypeError, Exception) as template_error:
+                # Attempt 2: Flat String (Text-only standard)
+                # logger.debug(f"Structured template failed ({template_error}), falling back to string...")
+                messages = [{"role": "user", "content": full_prompt}]
+                inputs = tokenizer.apply_chat_template(
+                    messages, add_generation_prompt=True, tokenize=True,
+                    return_tensors="pt", return_dict=True
+                ).to(model.device)
             
             with torch.no_grad():
                 outputs = model.generate(
-                    **inputs, max_new_tokens=512, temperature=0.3, top_k=40, use_cache=True,
+                    **inputs, max_new_tokens=256, temperature=0.3, top_k=40, use_cache=True,
                     pad_token_id=tokenizer.pad_token_id
                 )
 
@@ -125,16 +136,48 @@ def evaluate_model(model, tokenizer, server_url="http://localhost:8000", samples
         print("No successful episodes completed.")
 
 if __name__ == "__main__":
-    # Example Usage (replace with your actual model loading)
-    # model_id = "your-model-id"
-    # tokenizer = AutoTokenizer.from_pretrained(model_id)
-    # model = AutoModelForCausalLM.from_pretrained(model_id, device_map="auto")
+    print("🚀 Setting up local test with MOCK MODEL (Offline Mode)...")
     
-    # Mock for testing
-    class MockTokenizer:
-        pass
-    class MockModel:
-        pass
-    
-    # print("This script requires a loaded model and tokenizer. See usage in `if __name__ == '__main__':` block.")
-    pass
+    try:
+        # Mock classes to bypass Hugging Face downloads
+        class MockTokenizer:
+            pad_token_id = 0
+            def apply_chat_template(self, messages, **kwargs):
+                # Return a dummy dict imitating tokenized input
+                class HandledDict(dict):
+                    def to(self, device): return self
+                    @property
+                    def input_ids(self): return self["input_ids"]
+                inputs = HandledDict({
+                    "input_ids": torch.tensor([[1, 2, 3]]),
+                    "attention_mask": torch.tensor([[1, 1, 1]])
+                })
+                
+                # Check formatting strictly to verify the robust fix
+                msg_content = messages[0]["content"]
+                if isinstance(msg_content, list):
+                    print("   ✅ Tokenizer received STRUCTURED content (Multimodal format).")
+                else:
+                    print("   ℹ️ Tokenizer received FLAT content (Text format).")
+                    
+                return inputs
+            
+            def decode(self, *args, **kwargs):
+                return "<|channel|>final<|message|>I am a mock model. I abstain from answering.<|end|>"
+
+        class MockModel:
+            device = "cpu"
+            def generate(self, **kwargs):
+                # Return dummy tokens
+                return torch.tensor([[1, 2, 3, 4, 5]])
+
+        tokenizer = MockTokenizer()
+        model = MockModel()
+        
+        print(f"   Starting Evaluation against http://127.0.0.1:8086...")
+        evaluate_model(model, tokenizer, server_url="http://127.0.0.1:8086", samples=2)
+        
+    except Exception as e:
+        print(f"❌ Failed to run mock evaluation: {e}")
+        import traceback
+        traceback.print_exc()

@@ -77,25 +77,25 @@ def server():
 
 def test_reset(server):
     """Test that reset() returns a valid observation."""
-    env = DIPGSafetyEnv(base_url=server, timeout=300)
-    obs1 = env.reset()
-    obs2 = env.reset()
-    assert obs1.observation.question != obs2.observation.question
+    with DIPGSafetyEnv(base_url=server, timeout=300) as env:
+        obs1 = env.reset()
+        obs2 = env.reset()
+        assert obs1.observation.question != obs2.observation.question
 
 def test_step(server):
     """Test that step() returns a valid result."""
-    env = DIPGSafetyEnv(base_url=server, timeout=300)
-    env.reset()
-    action = DIPGAction(llm_response="<|channel|>analysis<|message|>This is an analysis.<|end|>\n<|channel|>final<|message|>This is the final answer.<|end|>")
-    result = env.step(action)
-    assert isinstance(result.reward, float)
-    assert result.done is True
+    with DIPGSafetyEnv(base_url=server, timeout=300) as env:
+        env.reset()
+        action = DIPGAction(llm_response="<|channel|>analysis<|message|>This is an analysis.<|end|>\n<|channel|>final<|message|>This is the final answer.<|end|>")
+        result = env.step(action)
+        assert isinstance(result.reward, float)
+        assert result.done is True
 
 def test_malformed_step(server):
     """Test that a malformed step() does not crash the server."""
-    env = DIPGSafetyEnv(base_url=server, timeout=300)
-    env.reset()
-    action = DIPGAction(llm_response="This is a malformed response")
-    result = env.step(action)
+    with DIPGSafetyEnv(base_url=server, timeout=300) as env:
+        env.reset()
+        action = DIPGAction(llm_response="This is a malformed response")
+        result = env.step(action)
     assert isinstance(result.reward, float)
     assert result.done is True

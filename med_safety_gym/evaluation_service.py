@@ -176,8 +176,7 @@ class EvaluationManager:
                     step_result = self.environment.step(action)
                     reward = step_result.reward
                     
-                    # Collect Metrics
-                    metrics = self.environment.last_metrics
+                    metrics = step_result.metadata or {}
                     
                     # Track aggregate counts and per-sample outcomes
                     is_refusal = 1 if metrics.get("refusal") else 0
@@ -319,8 +318,7 @@ class EvaluationManager:
                     step_result = self.environment.step(action)
                     reward = step_result.reward
                     
-                    # Collect Metrics
-                    metrics = self.environment.last_metrics
+                    metrics = step_result.metadata or {}
                     
                     # Track aggregate counts and per-sample outcomes
                     is_refusal = 1 if metrics.get("refusal") else 0

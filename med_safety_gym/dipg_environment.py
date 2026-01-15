@@ -5,38 +5,15 @@ import random
 from pathlib import Path
 import importlib
 
-# --- StepResult Import --- #
-StepResult = None
-_STEP_RESULT_PATHS = [
-    'openenv_core.http_env_client',
-    'openenv.core.client_types',
-    'openenv_core.client_types',
-    'openenv_core',
-]
-
-for path in _STEP_RESULT_PATHS:
-    try:
-        module = importlib.import_module(path)
-        if hasattr(module, 'StepResult'):
-            StepResult = module.StepResult
-            break
-    except (ImportError, ModuleNotFoundError):
-        continue
-
-if StepResult is None:
-    # Last resort shim if StepResult is not available
-    class StepResult:
-        def __init__(self, observation, reward, done, info=None):
-            self.observation = observation
-            self.reward = reward
-            self.done = done
-            self.info = info or {}
+# StepResult is deprecated in 0.2.0 for Environment.reset/step returns.
+# We keep it as a client-side concept but the server expects raw Observations.
 
 # --- Environment Import --- #
 Environment = None
 _ENVIRONMENT_PATHS = [
-    'openenv_core.env_server',
     'openenv.core.env_server.interfaces',
+    'openenv.core.env_server',
+    'openenv_core.env_server',
 ]
 
 for path in _ENVIRONMENT_PATHS:
@@ -151,7 +128,6 @@ class DIPGEnvironment(Environment):
         self._dataset_index = 0
         
         # Metrics storage
-        self._last_metrics = {}
 
     def _load_dataset(self, path: str) -> Dataset:
         """Loads a dataset from a local path or the Hugging Face Hub."""
@@ -313,7 +289,10 @@ class DIPGEnvironment(Environment):
                         current_question=question,
                         expected_answer={"final": assistant_content, "proof": proof}
                     )
-                    return DIPGObservation(context=context, question=question)
+                    obs = DIPGObservation(context=context, question=question)
+                    obs.reward = None
+                    obs.done = False
+                    return obs
 
                 logger.warning(f"Could not parse using Markdown or XML at index {idx}. Skipping.")
             except (KeyError, IndexError) as e:
@@ -321,7 +300,7 @@ class DIPGEnvironment(Environment):
 
         raise RuntimeError(f"Could not find a valid entry in the dataset after {max_attempts} attempts.")
     
-    def step(self, action: DIPGAction) -> StepResult:
+    def step(self, action: DIPGAction) -> DIPGObservation:
         logger.info(f"Received action: {action.llm_response}")
         
         try:
@@ -346,22 +325,24 @@ class DIPGEnvironment(Environment):
                     self._state.expected_answer
                 )
             
-            self._last_metrics = metrics
             
-            return StepResult(
-                observation=DIPGObservation(context="", question=""), # Terminal observation
-                reward=total_reward,
+            return DIPGObservation(
+                context="", 
+                question="", 
+                metadata=metrics,
                 done=True,
+                reward=total_reward
             )
             
         except Exception as e:
             logger.error(f"CRITICAL ERROR in step(): {e}", exc_info=True)
             # Failsafe return to prevent 500 errors
-            return StepResult(
-                observation=DIPGObservation(context="", question=""), 
-                reward=self.missing_answer_penalty,
+            return DIPGObservation(
+                context="", 
+                question="", 
+                metadata={"error": str(e), "safe": False},
                 done=True,
-                info={"error": str(e), "safe": False}
+                reward=self.missing_answer_penalty
             )
 
     def _parse_response(self, llm_response: str) -> dict:
@@ -619,12 +600,24 @@ class DIPGEnvironment(Environment):
 
     @property
     def state(self) -> DIPGState:
+        self._state.config = {
+            "environment": "DIPG Safety Gym",
+            "response_format": self.response_format.value,
+            "reward_configuration": {
+                "hallucinated_trace_penalty": self.hallucinated_trace_penalty,
+                "missing_trace_penalty": self.missing_trace_penalty,
+                "proof_inconsistency_penalty": self.proof_inconsistency_penalty,
+                "incorrect_answer_penalty": self.incorrect_answer_penalty,
+                "correct_abstention_reward": self.correct_abstention_reward,
+                "verifiable_trace_reward": self.verifiable_trace_reward,
+                "correct_synthesis_reward": self.correct_synthesis_reward,
+                "exact_format_reward": self.exact_format_reward,
+                "format_mismatch_penalty": self.format_mismatch_penalty,
+            },
+            "dataset_size": len(self.dataset) if hasattr(self, 'dataset') else None
+        }
         return self._state
         
-    @property
-    def last_metrics(self) -> dict:
-        """Returns metrics from the last step."""
-        return self._last_metrics
 
     def set_state(self, state: DIPGState):
         self._state = state

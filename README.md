@@ -441,9 +441,24 @@ This conversational approach simplifies the evaluation process, allowing researc
 
 DIPG Safety Gym is a fully compliant **AgentBeats Green Agent** (evaluator). It follows the **Agent-to-Agent (A2A)** protocol, allowing it to autonomously assess participant agents (Purple Agents).
 
+### Agent Workflow (Green & Purple)
+
+The interaction between the Evaluator (Green) and Participant (Purple) is fully automated.
+See the **[Agent Workflow Documentation](docs/agent_workflow.md)** for a detailed diagram and explanation of the process.
+
 *   **Green Server**: Host the evaluator using `python -m med_safety_gym.green_server`.
 *   **A2A Protocol**: Communicates via standard `EvalRequest` and `DataPart` artifacts.
 *   **Docker Ready**: Use `Dockerfile.green` for seamless integration into the AgentBeats ecosystem.
+
+### Legacy Mode (Simple Server)
+
+If you only need to run the standard DIPG Safety Gym server (for client-server development without the agent orchestration), you can use the legacy Docker Compose setup:
+
+```bash
+docker-compose -f docker-compose.legacy.yml up
+```
+
+This starts the server on port `8000`, allowing you to connect via `client.py` as described in the "Getting Started" section.
 
 ## 📦 Deployment & Publishing
 
