@@ -1,6 +1,14 @@
 [
   {
     "name": "Overall Performance",
-    "query": "SELECT results.participants.purple_agent AS id, ROUND(res.summary.mean_reward, 2) AS \"Mean Reward\", ROUND(res.summary.safe_response_rate * 100, 1) AS \"Safe %\", ROUND(res.summary.medical_hallucination_rate * 100, 1) AS \"Hallucination %\", ROUND(res.summary.reasoning_consistency_rate * 100, 1) AS \"Consistency %\" FROM results CROSS JOIN UNNEST(results.results) AS r(res) ORDER BY \"Mean Reward\" DESC"
+    "query": "SELECT id, ROUND(mean_reward, 2) AS \"Mean Reward\", ROUND(safe_rate * 100, 1) AS \"Safe %\", ROUND(hallucination_rate * 100, 1) AS \"Hallucination %\" FROM (SELECT results.participants.purple_agent AS id, res.summary.mean_reward, res.summary.safe_response_rate AS safe_rate, res.summary.medical_hallucination_rate AS hallucination_rate FROM results CROSS JOIN UNNEST(results.results) AS r(res) WHERE res.summary IS NOT NULL UNION ALL SELECT results.participants.purple_agent AS id, inner_res.summary.mean_reward, inner_res.summary.safe_response_rate AS safe_rate, inner_res.summary.medical_hallucination_rate AS hallucination_rate FROM results CROSS JOIN UNNEST(results.results) AS r(outer_res) CROSS JOIN UNNEST(outer_res.results) AS ir(inner_res)) ORDER BY \"Mean Reward\" DESC"
+  },
+  {
+    "name": "Safety Breakdown",
+    "query": "SELECT id, ROUND(consistency_rate * 100, 1) AS \"Consistency %\", ROUND(refusal_rate * 100, 1) AS \"Refusal %\", total_responses AS \"Samples\" FROM (SELECT results.participants.purple_agent AS id, res.summary.reasoning_consistency_rate AS consistency_rate, res.summary.refusal_rate, res.summary.total_responses FROM results CROSS JOIN UNNEST(results.results) AS r(res) WHERE res.summary IS NOT NULL UNION ALL SELECT results.participants.purple_agent AS id, inner_res.summary.reasoning_consistency_rate AS consistency_rate, inner_res.summary.refusal_rate, inner_res.summary.total_responses FROM results CROSS JOIN UNNEST(results.results) AS r(outer_res) CROSS JOIN UNNEST(outer_res.results) AS ir(inner_res)) ORDER BY \"Consistency %\" DESC"
+  },
+  {
+    "name": "Reward Distribution",
+    "query": "SELECT id, ROUND(min_r, 1) AS \"Min\", ROUND(median_r, 1) AS \"Median\", ROUND(max_r, 1) AS \"Max\", ROUND(std_r, 2) AS \"Std Dev\" FROM (SELECT results.participants.purple_agent AS id, res.summary.min_reward AS min_r, res.summary.median_reward AS median_r, res.summary.max_reward AS max_r, res.summary.std_reward AS std_r FROM results CROSS JOIN UNNEST(results.results) AS r(res) WHERE res.summary IS NOT NULL UNION ALL SELECT results.participants.purple_agent AS id, inner_res.summary.min_reward AS min_r, inner_res.summary.median_reward AS median_r, inner_res.summary.max_reward AS max_r, inner_res.summary.std_reward AS std_r FROM results CROSS JOIN UNNEST(results.results) AS r(outer_res) CROSS JOIN UNNEST(outer_res.results) AS ir(inner_res)) ORDER BY \"Median\" DESC"
   }
 ]
