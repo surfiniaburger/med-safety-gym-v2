@@ -136,9 +136,6 @@ def evaluate_model(model, tokenizer, server_url="http://localhost:8000", samples
         print("No successful episodes completed.")
 
 if __name__ == "__main__":
-    print("🚀 Setting up local test with Qwen/Qwen2.5-0.5B-Instruct...")
-    
-if __name__ == "__main__":
     print("🚀 Setting up local test with MOCK MODEL (Offline Mode)...")
     
     try:

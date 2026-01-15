@@ -12,6 +12,8 @@ for the environment server. Its primary job is to handle the communication:
 
 import requests
 import statistics
+import json
+import os
 from typing import Any, Dict, Generic, Optional, Type, TypeVar
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -162,8 +164,6 @@ class DIPGSafetyEnv(EnvClient[DIPGAction, DIPGObservation, DIPGState]):
         }
         
         if save_path:
-            import json
-            import os
             os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
             with open(save_path, 'w') as f:
                 json.dump(result, f, indent=2)
