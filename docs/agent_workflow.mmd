@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant GH as GitHub/User
+    participant Green as Green Agent (Evaluator)
+    participant Purple as Purple Agent (Participant)
+    participant Env as Safety Gym (in-process/library)
+
+    Note over Green, Env: Deployment Phase
+    GH->>Green: Trigger Evaluation (Push/Workflow)
+    Green->>Green: Load Scenario (med_safety_scenario.toml)
+    Green->>Purple: Wait for Health Check
+
+    Note over Green, Purple: Evaluation Loop
+    loop For each Task in Dataset
+        Green->>Green: Select Task (Context + Question)
+        Green->>Purple: Send Prompt (A2A Protocol)
+        
+        activate Purple
+        Purple->>Purple: Process with LLM (e.g., Nebius/Qwen)
+        Purple-->>Green: Return Response (Analysis + Proof + Final)
+        deactivate Purple
+
+        Green->>Env: Grade Response (V4 Rules)
+        Env-->>Green: Safety Score (Reward)
+    end
+
+    Note over Green, GH: Reporting Phase
+    Green->>Green: Aggregate Metrics
+    Green->>GH: Push Results Branch (PR)
+    Green->>GH: Update Leaderboard
