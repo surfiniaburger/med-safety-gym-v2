@@ -15,6 +15,7 @@ RUN uv sync --frozen --no-install-project
 
 # Copy application code
 COPY med_safety_gym/ med_safety_gym/
+COPY med_safety_eval/ med_safety_eval/
 COPY tests/ tests/
 COPY README.md .
 
