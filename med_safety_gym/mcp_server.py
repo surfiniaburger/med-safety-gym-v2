@@ -10,12 +10,12 @@ import mcp.server.stdio
 import mcp.types as types
 
 try:
-    from .app import get_environment, EvaluationManager, EvaluationRequest, EvaluationResult
-    from .evaluation_service import EvaluationItem, GroundTruth
+    from .app import get_environment
+    from .evaluation_service_v2 import EvaluationManager, EvaluationRequest, EvaluationItem, GroundTruth
 except ImportError:
     # Fallback for running as a script directly
-    from med_safety_gym.app import get_environment, EvaluationManager, EvaluationRequest, EvaluationResult
-    from med_safety_gym.evaluation_service import EvaluationItem, GroundTruth
+    from med_safety_gym.app import get_environment
+    from med_safety_gym.evaluation_service_v2 import EvaluationManager, EvaluationRequest, EvaluationItem, GroundTruth
 
 # Initialize MCP Server
 server = Server("dipg-safety-gym-mcp")

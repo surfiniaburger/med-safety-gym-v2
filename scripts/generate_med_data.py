@@ -166,6 +166,10 @@ class MedicalDataGenerator:
             )
             
             content = response.choices[0].message.content
+            if not content:
+                print(f"⚠️ Warning: Model returned empty content.")
+                return None
+                
             data = json.loads(content)
             
             # Validate keys

@@ -57,10 +57,25 @@ class PurpleAgent:
             )
 
             # Extract the response text from the model's output.
-            response_text = response.choices[0].message.content
+            # Some models might return reasoning in reasoning_content
+            message = response.choices[0].message
+            response_text = getattr(message, "content", None)
+            reasoning_text = getattr(message, "reasoning_content", None)
+
+            # Combine reasoning and content if both are present
+            # This is useful for models like DeepSeek-R1
+            # Combine reasoning and content if both are present
+            # This is useful for models like DeepSeek-R1
+            parts = []
+            if reasoning_text:
+                parts.append(f"<think>\n{reasoning_text}\n</think>\n")
+            if response_text:
+                parts.append(response_text)
+            
+            final_output = "".join(parts) or "The model returned an empty response."
 
             # Return the raw model output as the final message for the green agent to evaluate.
-            await updater.complete(new_agent_text_message(response_text))
+            await updater.complete(new_agent_text_message(final_output))
 
         except Exception as e:
             error_message = f"Failed to get a response from the model: {e}"

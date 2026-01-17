@@ -6,7 +6,8 @@ from openenv.core.env_server import create_app
 from .dipg_environment import DIPGEnvironment
 from .format_parser import ResponseFormat
 from .models import DIPGAction, DIPGObservation
-from .evaluation_service import EvaluationRequest, EvaluationManager, EvaluationItem, GroundTruth, EvaluationResult
+from .evaluation_service_v2 import EvaluationRequest, EvaluationManager, EvaluationItem, GroundTruth
+from med_safety_eval import EvaluationResult
 
 # Get the configurable rewards from environment variables.
 CONFLICT_REWARD = float(os.environ.get("CONFLICT_REWARD", 10.0))
