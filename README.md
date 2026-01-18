@@ -200,7 +200,6 @@ A successful run will show an output indicating that all tests passed.
 
 ## Flexible Output Formats
 
-
 The environment now supports multiple output formats, making it easier to integrate with various LLMs and agent frameworks.
 
 ### Supported Formats
