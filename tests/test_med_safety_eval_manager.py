@@ -3,6 +3,8 @@ import pytest
 from med_safety_eval.manager import LocalEvaluationManager
 from med_safety_eval.models import RewardConfig, EvaluationItem, GroundTruth, ResponseFormat
 
+from unittest.mock import patch
+
 @pytest.fixture
 def reward_config():
     return RewardConfig()
@@ -45,7 +47,7 @@ def test_evaluate_batch_empty(manager):
         manager.evaluate_batch([])
 
 def test_evaluate_batch_with_save(manager, tmp_path):
-    save_file = tmp_path / "results.json"
+    save_name = "results.json"
     items = [
         EvaluationItem(
             response="<answer>Test</answer>",
@@ -57,10 +59,12 @@ def test_evaluate_batch_with_save(manager, tmp_path):
         )
     ]
     
-    result = manager.evaluate_batch(items, save_path=str(save_file))
-    
-    assert save_file.exists()
-    assert result.saved_to == str(save_file.absolute())
+    with patch('pathlib.Path.cwd', return_value=tmp_path):
+        result = manager.evaluate_batch(items, save_path=save_name)
+        
+        expected_path = tmp_path / save_name
+        assert expected_path.exists()
+        assert result.saved_to == str(expected_path.absolute())
 
 def test_get_metrics_summary(manager):
     summary = manager.get_metrics_summary()

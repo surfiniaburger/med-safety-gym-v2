@@ -235,18 +235,26 @@ class LocalEvaluationManager:
         Returns:
             Actual path where results were saved
         """
-        save_path = Path(save_path)
-        
-        # Ensure path is absolute relative to CWD if not already absolute
-        if not save_path.is_absolute():
-            save_path = Path.cwd() / save_path
+        # Security check: Prevent path traversal
+        # 1. Must not be absolute
+        if Path(save_path).is_absolute():
+            raise ValueError(f"Invalid save_path: Absolute paths are not allowed ({save_path})")
             
+        # 2. Must resolve to a path inside the current working directory
+        safe_base = Path.cwd().resolve()
+        requested_path = (safe_base / save_path).resolve()
+        
+        if not str(requested_path).startswith(str(safe_base)):
+            raise ValueError(f"Invalid save_path: Path traversal detected ({save_path})")
+            
+        output_path = requested_path
+        
         # Create parent directory if it doesn't exist
-        save_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         
         # If no extension, add .json
-        if not save_path.suffix:
-            save_path = save_path.with_suffix('.json')
+        if not output_path.suffix:
+            output_path = output_path.with_suffix('.json')
         
         # Prepare output data
         output = {
@@ -269,10 +277,10 @@ class LocalEvaluationManager:
         }
         
         # Write to file
-        with open(save_path, 'w') as f:
+        with open(output_path, 'w') as f:
             json.dump(output, f, indent=2)
         
-        return str(save_path.absolute())
+        return str(output_path.absolute())
     
     def get_metrics_summary(self) -> Dict[str, Any]:
         """
