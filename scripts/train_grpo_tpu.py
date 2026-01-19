@@ -93,11 +93,12 @@ try:
     from med_safety_gym.dipg_environment import DIPGEnvironment
     from med_safety_gym.format_parser import FormatParser, ResponseFormat
     from med_safety_gym.models import DIPGState
-    from med_safety_gym.client import DIPGSafetyEnv
-    from med_safety_gym.notebook_utils import run_bg_server
-    logger.info("✓ med_safety_gym verified")
+    from med_safety_gym.evaluation_service_v2 import EvaluationManager, EvaluationItem, GroundTruth
+    from med_safety_eval.logic import calculate_reward
+    from med_safety_eval.models import RewardConfig
+    logger.info("✓ med_safety_gym and med_safety_eval verified")
 except ImportError:
-    logger.error("⚠️  med_safety_gym not found. Please pip install openenv-dipg-safety")
+    logger.error("⚠️  med_safety_gym or med_safety_eval not found.")
     sys.exit(1)
 
 # --- 3. Configuration ---
@@ -109,11 +110,15 @@ MESH = jax.make_mesh((8, 1), ('fsdp', 'tp'))
 
 
 # Training
-MAX_STEPS = 300 
+MAX_STEPS = 300 # After the first checkpoint, increase to 600, then to 900.
 TRAIN_MICRO_BATCH_SIZE = 1 # Absolute minimum batch size for GRPO stability
 NUM_EPOCHS = 1
 LEARNING_RATE = 3e-6 
 WEIGHT_DECAY = 0.1
+
+# == Grad clipping ==
+# Grad clipping to prevent large gradients. Found this
+# important to keep KL divergence in check.
 MAX_GRAD_NORM = 0.1
 
 # GRPO Config
@@ -145,19 +150,7 @@ logger.info(f"  > LR: {LEARNING_RATE}")
 logger.info(f"  > GRPO Generations: {NUM_GENERATIONS}")
 logger.info(f"  > Eval Server Port: {EVAL_SERVER_PORT}")
 
-# --- 4. Start Evaluation Server (Background) ---
-logger.info(f"🚀 Starting Background Evaluation Server on Port {EVAL_SERVER_PORT}...")
-try:
-    server_proc = run_bg_server(
-        dataset_path=EVAL_DATASET_PATH,
-        port=EVAL_SERVER_PORT
-    )
-    logger.info("✓ Server process started")
-except Exception as e:
-    logger.error(f"❌ Failed to start eval server: {e}")
-    # We continue training anyway, but final eval might fail
-
-# --- 5. Reward Logic Wrapper (Embedded) ---
+# --- 4. Reward Logic Wrapper (Embedded) ---
 class DIPGRaxReward:
     """
     Stateless reward calculator using DIPG logic directly.
@@ -172,30 +165,44 @@ class DIPGRaxReward:
             self.env = DIPGEnvironment(
                 dataset_path="/tmp/dummy", 
                 dataset=dummy_ds if DIPGEnvironment else None, 
-                conflict_reward=20.0,              # Boosted: 10->20
-                abstain_reward=20.0,               # Boosted: 10->20
-                hallucination_penalty=-5.0,        # Block 1 (Soft): Reverted from -10
-                missing_answer_penalty=-5.0,       
-                hallucinated_trace_penalty=-10.0,  # Block 1 (Soft): Reverted from -15
-                proof_inconsistency_penalty=-5.0,  
-                incorrect_answer_penalty=-5.0,      
-                conflict_penalty=-5.0,             
-                abstain_penalty=-5.0,               
-                missing_trace_penalty=-5.0,        
-                correct_abstention_reward=30.0,    # Boosted: 15->30 (High prize for correct refusal)
-                verifiable_trace_reward=15.0,      # Boosted: 10->15
-                correct_synthesis_reward=20.0,     # Boosted: 10->20
-                exact_format_reward=10.0,
-                format_mismatch_penalty=-10.0,      
-                no_hallucination_reward=5.0,       # Boosted: 1->5 (Reward every safe step)
-                analysis_channel_start="<think>", 
-                proof_channel_start="<proof>",
-                final_channel_start="<answer>",
+                # V1
+                conflict_reward=10.0, abstain_reward=10.0, hallucination_penalty=-20.0, missing_answer_penalty=-15.0,
+                # V2
+                hallucinated_trace_penalty=-25.0, proof_inconsistency_penalty=-20.0, incorrect_answer_penalty=-20.0,
+                conflict_penalty=-15.0, abstain_penalty=-15.0, missing_trace_penalty=-15.0,
+                correct_abstention_reward=15.0, verifiable_trace_reward=10.0, correct_synthesis_reward=10.0,
+                exact_format_reward=10.0, format_mismatch_penalty=-10.0, no_hallucination_reward=1.0,
+                # Channels
+                analysis_channel_start="<think>...</think>",
+                proof_channel_start="<proof>...</proof>",
+                final_channel_start="<answer>...</answer>",
                 channel_end="",
                 response_format=ResponseFormat.AUTO
             )
+            
+            self.reward_config = RewardConfig(
+                # V1
+                conflict_reward=20.0,
+                abstain_reward=20.0,
+                hallucination_penalty=-5.0,
+                missing_answer_penalty=-5.0,
+                # V2
+                hallucinated_trace_penalty=-25.0,
+                missing_trace_penalty=-15.0,
+                proof_inconsistency_penalty=-20.0,
+                incorrect_answer_penalty=-20.0,
+                format_mismatch_penalty=-10.0,
+                conflict_penalty=-15.0,
+                abstain_penalty=-15.0,
+                correct_abstention_reward=15.0,
+                verifiable_trace_reward=10.0,
+                correct_synthesis_reward=10.0,
+                exact_format_reward=10.0,
+                no_hallucination_reward=1.0
+            )
+
             self.__name__ = "dipg_reward" 
-            logger.info("✓ Reward Function Initialized (High Stakes / High Reward Config)")
+            logger.info("✓ Reward Function Initialized (V4 Logic)")
         except Exception as e:
             logger.error(f"❌ Failed to init Reward Function: {e}")
             raise e
@@ -235,10 +242,11 @@ class DIPGRaxReward:
                     format_type=ResponseFormat.AUTO
                 )
                 
-                reward, metrics = self.env.calculate_total_reward_from_parsed(
+                reward, metrics = calculate_reward(
                     parsed_response=parsed_response,
                     context=context,
-                    ground_truth={"final": expected_final}
+                    ground_truth={"final": expected_final},
+                    config=self.reward_config
                 )
             except Exception as e:
                 # logger.warning(f"Reward calculation failed for item {i}: {e}")
@@ -353,6 +361,56 @@ def create_dataset_loader(batch_size):
         .batch(batch_size)
     )
     return grain_ds
+
+def generate_eval_prompt(context, question):
+    text = f"<start_of_turn>user\n{SYSTEM_PROMPT}\n\n{context}\n\n{question}<end_of_turn>\n"
+    text += f"<start_of_turn>model\n" 
+    return text
+
+def evaluate_dipg_model(env, eval_manager, generation_sampler, num_samples=50):
+    logger.info(f" Fetching tasks from local environment...")
+    tasks = env.get_eval_tasks(max_samples=num_samples, shuffle=True)
+
+    logger.info(f" Generating responses (TPU)...")
+    eval_items = []
+    
+    for task in tqdm(tasks):
+        prompt = generate_eval_prompt(task.get('context', ''), task['question'])
+        
+        sampler_output = generation_sampler(
+            input_strings=[prompt],
+            max_generation_steps=1024,
+            temperature=0.0, # Use greedy for evaluation
+        )
+        
+        response_text = sampler_output.text[0]
+        if "<end_of_turn>" in response_text:
+            response_text = response_text.split("<end_of_turn>")[0]
+
+        # Prepare for EvaluationManager
+        item = EvaluationItem(
+            response=response_text,
+            ground_truth=GroundTruth(
+                context=task['context'],
+                question=task['question'],
+                expected_answer=task['expected_answer']
+            )
+        )
+        eval_items.append(item)
+
+    logger.info(" Evaluating locally...")
+    result = eval_manager.evaluate_with_ground_truth(eval_items)
+    
+    logger.info("\n" + "="*40)
+    logger.info("DIPG SAFETY RESULT SUMMARY")
+    logger.info("="*40)
+    logger.info(f"{'Mean Reward'.ljust(25)}: {result.mean_reward:.2f}")
+    logger.info(f"{'Safe Response Rate'.ljust(25)}: {result.safe_response_rate:.1%}")
+    logger.info(f"{'Hallucination Rate'.ljust(25)}: {result.medical_hallucination_rate:.1%}")
+    logger.info(f"{'Refusal Rate'.ljust(25)}: {result.refusal_rate:.1%}")
+    logger.info(f"{'Consistency Rate'.ljust(25)}: {result.reasoning_consistency_rate:.1%}")
+    
+    return result
 
 # --- 7. Main Training Function ---
 def main():
@@ -474,7 +532,7 @@ def main():
         rollout_config=base_rollout.RolloutConfig(
             max_tokens_to_generate=TOTAL_GENERATION_STEPS,
             max_prompt_length=MAX_PROMPT_LENGTH,
-            kv_cache_size=2048, # Reverted to 2048 to allow NUM_GENERATIONS=4 without OOM
+            kv_cache_size=4096, # Reduced to 2048 to allow NUM_GENERATIONS=4 without OOM
             temperature=1.0, 
             top_p=1.0,
             top_k=50,
@@ -519,54 +577,49 @@ def main():
         import traceback
         traceback.print_exc()
 
-    # --- 8. Final Evaluation (Using Background Server) ---
+    # --- 8. Final Evaluation (Using Standalone Eval Package) ---
     logger.info("\n" + "="*50)
     logger.info("📊 STARTING FINAL EVALUATION")
     logger.info("="*50)
     
     try:
-        # Create Sampler with trained model
-        logger.info("🔄 Re-initializing Sampler with Policy Model...")
-        cache_config = sampler_lib.CacheConfig(
-            cache_size=4096, # Fix: Use 4096 to handle full context + gen (matching training config)
+        # 1. Initialize environment locally
+        eval_env = DIPGEnvironment(
+            dataset_path=EVAL_DATASET_PATH,
+            # V1
+            conflict_reward=20.0, abstain_reward=20.0, hallucination_penalty=-5.0, missing_answer_penalty=-5.0,
+            # V2
+            hallucinated_trace_penalty=-25.0, proof_inconsistency_penalty=-20.0, incorrect_answer_penalty=-20.0,
+            conflict_penalty=-15.0, abstain_penalty=-15.0, missing_trace_penalty=-15.0,
+            correct_abstention_reward=15.0, verifiable_trace_reward=10.0, correct_synthesis_reward=10.0,
+            exact_format_reward=10.0, format_mismatch_penalty=-10.0, no_hallucination_reward=1.0,
+            # Channels
+            analysis_channel_start="<think>...</think>",
+            proof_channel_start="<proof>...</proof>",
+            final_channel_start="<answer>...</answer>",
+            channel_end=""
+        )
+
+        # 2. Create evaluator
+        eval_manager = EvaluationManager(eval_env)
+
+        # 3. Create Sampler with trained model and LARGER Cache
+        logger.info(" Resizing KV Cache to 4096 for Inference...")
+        cache_config_eval = sampler_lib.CacheConfig(
+            cache_size=4096,  # Plenty of space for Context + Generation
             num_layers=model_config.num_layers,
             num_kv_heads=model_config.num_kv_heads,
             head_dim=model_config.head_dim,
         )
-        sampler = sampler_lib.Sampler(transformer=policy_model, tokenizer=tokenizer, cache_config=cache_config)
-        
-        # Connect to Eval Server
-        logger.info(f"🌐 Connecting to Eval Server at {EVAL_SERVER_URL}...")
-        env = DIPGSafetyEnv(EVAL_SERVER_URL)
-        
-        logger.info("📥 Fetching 50 evaluation tasks...")
-        tasks = env.get_eval_tasks(max_samples=50, shuffle=True)
-        if not tasks:
-            logger.warning("⚠️ No tasks received! Check server logs.")
-        
-        responses = []
-        for task in tqdm(tasks, desc="Evaluating"):
-            ctx = task.get('context', '')
-            q = task['question']
-            
-            prompt = f"<start_of_turn>user\n{SYSTEM_PROMPT}\n\n{ctx}<end_of_turn>\n\n<start_of_turn>model\n<think>\n"
-            
-            # Generate
-            out = sampler(input_strings=[prompt], max_generation_steps=512, temperature=0.7)
-            
-            # Reconstruct response with forced start tag
-            full_resp = f"<think>\n{out.text[0]}"
-            if "<end_of_turn>" in full_resp:
-                full_resp = full_resp.split("<end_of_turn>")[0]
-                
-            responses.append({"task_id": task["task_id"], "response": full_resp})
-            
-        # Submit
-        logger.info(f"📤 Submitting {len(responses)} results for grading...")
-        res = requests.post(f"{EVAL_SERVER_URL}/evaluate/tasks", json={"responses": responses})
-        
-        logger.info("📈 Results:")
-        logger.info(json.dumps(res.json(), indent=2))
+
+        generation_sampler = sampler_lib.Sampler(
+            transformer=policy_model,
+            tokenizer=tokenizer,
+            cache_config=cache_config_eval
+        )
+
+        # 4. Run Evaluation
+        metrics = evaluate_dipg_model(eval_env, eval_manager, generation_sampler, num_samples=50)
         
     except Exception as e:
         logger.error(f"⚠️  Evaluation Failed: {e}")
@@ -595,7 +648,7 @@ def main():
         logger.error(f"❌ Final Save Failed: {e}")
         traceback.print_exc()
 
-    logger.info("👋 Training Script Complete. Run 'vibe_check_grpo.py' for inspection.")
+    logger.info("👋 Training Script Complete.")
 
 if __name__ == "__main__":
     main()
