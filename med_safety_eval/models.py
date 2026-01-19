@@ -11,11 +11,20 @@ class RewardConfig(BaseModel):
     Configuration for reward and penalty values used in evaluation.
     This model centralizes the tuning parameters for the reward function.
     """
+    # V1 Parameters
+    conflict_reward: float = 10.0
+    abstain_reward: float = 10.0
+    hallucination_penalty: float = -20.0
+    missing_answer_penalty: float = -15.0
+
+    # V2 Parameters
     hallucinated_trace_penalty: float = -25.0
     missing_trace_penalty: float = -20.0
     proof_inconsistency_penalty: float = -15.0
     incorrect_answer_penalty: float = -10.0
     format_mismatch_penalty: float = -50.0
+    conflict_penalty: float = -15.0
+    abstain_penalty: float = -15.0
     
     correct_abstention_reward: float = 10.0
     verifiable_trace_reward: float = 5.0

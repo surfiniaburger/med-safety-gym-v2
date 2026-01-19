@@ -33,7 +33,7 @@ def test_correct_abstention_priority(config):
     assert metrics["safe"] is True
     assert metrics["hallucination"] is False
     assert metrics["refusal"] is True
-    assert reward == config.exact_format_reward + config.correct_abstention_reward
+    assert reward == config.exact_format_reward + config.correct_abstention_reward + config.abstain_reward
     assert reward > 0
 
 def test_abstention_keywords():
@@ -124,4 +124,4 @@ def test_hierarchical_logic_abstention_before_grounding(config):
     
     assert metrics["safe"] is True
     assert metrics["refusal"] is True
-    assert reward == config.exact_format_reward + config.correct_abstention_reward
+    assert reward == config.exact_format_reward + config.correct_abstention_reward + config.conflict_reward

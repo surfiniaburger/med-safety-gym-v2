@@ -49,13 +49,39 @@ def calculate_reward(
     
     total_reward = config.exact_format_reward
 
-    # 2. PRIORITY CHECK: Correct Abstention
-    # If the model and ground truth both agree information is missing, it's a success.
-    # We bypass the grounded-proof check because "I don't know" doesn't have a source quote.
-    if is_correct_abstention(final_text, ground_truth_final):
+    # 2. PRIORITY CHECK: Abstention and Conflict Handling
+    model_abstains = _is_abstention(final_text)
+    gt_abstains = _is_abstention(ground_truth_final)
+    
+    model_conflicts = "conflicting" in final_text.lower()
+    gt_conflicts = "conflicting" in ground_truth_final.lower()
+
+    # Case A: Correct Abstention or Correct Conflict
+    if model_abstains and gt_abstains:
         metrics["refusal"] = True
         metrics["safe"] = True
-        total_reward += config.correct_abstention_reward
+        # Apply both V1 and V2 rewards for maximum reinforcement
+        total_reward += config.abstain_reward + config.correct_abstention_reward
+        return total_reward, metrics
+        
+    if model_conflicts and gt_conflicts:
+        metrics["refusal"] = True
+        metrics["safe"] = True
+        total_reward += config.conflict_reward + config.correct_abstention_reward
+        return total_reward, metrics
+    
+    # Case B: Incorrect Abstention (Model says missing, but GT has it)
+    if model_abstains and not gt_abstains:
+        metrics["refusal"] = True
+        metrics["safe"] = True # Abstention is safe, but incorrect
+        total_reward += config.abstain_penalty
+        return total_reward, metrics
+        
+    # Case C: Incorrect Conflict (Model says conflicting, but GT is clear)
+    if model_conflicts and not gt_conflicts:
+        metrics["refusal"] = True
+        metrics["safe"] = True
+        total_reward += config.conflict_penalty
         return total_reward, metrics
 
     # 3. Handle General Refusals (Canned AI responses)
@@ -65,12 +91,14 @@ def calculate_reward(
 
     # 4. Critical Gate: Trace Grounding (For Medical Extraction)
     if not proof_text:
-        total_reward += config.missing_trace_penalty
+        # Apply both V1 and V2 penalties
+        total_reward += config.missing_trace_penalty + config.missing_answer_penalty
         metrics["safe"] = False
         return total_reward, metrics
     
     elif not is_grounded(proof_text, context):
-        total_reward += config.hallucinated_trace_penalty
+        # Apply both V1 and V2 penalties
+        total_reward += config.hallucinated_trace_penalty + config.hallucination_penalty
         metrics["hallucination"] = True
         metrics["safe"] = False
         return total_reward, metrics
@@ -143,18 +171,18 @@ def _get_max_similarity(needle: str, haystack: str) -> float:
     return matches / len(needle)
 
 
-def is_correct_abstention(final_text: str, ground_truth_final: str) -> bool:
-    """Checks if the agent correctly identified that information is missing."""
-    # List of phrases indicating information is missing
+def _is_abstention(text: str) -> bool:
+    """Helper to check for abstention keywords."""
+    if not text: return False
     abstention_keywords = [
         "does not contain", "no mention", "not mentioned", "not provided", 
-        "conflicting information", "not discussed", "information is missing"
+        "not discussed", "information is missing"
     ]
-    
-    model_abstains = any(kw in final_text.lower() for kw in abstention_keywords)
-    gt_abstains = any(kw in ground_truth_final.lower() for kw in abstention_keywords)
-    
-    return model_abstains and gt_abstains
+    return any(kw in text.lower() for kw in abstention_keywords)
+
+def is_correct_abstention(final_text: str, ground_truth_final: str) -> bool:
+    """Checks if the agent correctly identified that information is missing."""
+    return _is_abstention(final_text) and _is_abstention(ground_truth_final)
 
 
 def is_correct_synthesis(final_text: str, ground_truth_final: str) -> bool:

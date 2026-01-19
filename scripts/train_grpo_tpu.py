@@ -181,11 +181,19 @@ class DIPGRaxReward:
             )
             
             self.reward_config = RewardConfig(
+                # V1
+                conflict_reward=20.0,
+                abstain_reward=20.0,
+                hallucination_penalty=-5.0,
+                missing_answer_penalty=-5.0,
+                # V2
                 hallucinated_trace_penalty=-25.0,
                 missing_trace_penalty=-15.0,
                 proof_inconsistency_penalty=-20.0,
                 incorrect_answer_penalty=-20.0,
                 format_mismatch_penalty=-10.0,
+                conflict_penalty=-15.0,
+                abstain_penalty=-15.0,
                 correct_abstention_reward=15.0,
                 verifiable_trace_reward=10.0,
                 correct_synthesis_reward=10.0,
@@ -579,7 +587,7 @@ def main():
         eval_env = DIPGEnvironment(
             dataset_path=EVAL_DATASET_PATH,
             # V1
-            conflict_reward=10.0, abstain_reward=10.0, hallucination_penalty=-20.0, missing_answer_penalty=-15.0,
+            conflict_reward=20.0, abstain_reward=20.0, hallucination_penalty=-5.0, missing_answer_penalty=-5.0,
             # V2
             hallucinated_trace_penalty=-25.0, proof_inconsistency_penalty=-20.0, incorrect_answer_penalty=-20.0,
             conflict_penalty=-15.0, abstain_penalty=-15.0, missing_trace_penalty=-15.0,

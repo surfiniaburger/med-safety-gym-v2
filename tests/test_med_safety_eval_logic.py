@@ -59,8 +59,8 @@ def test_calculate_reward_hallucination(reward_config, ground_truth, context):
     
     reward, metrics = calculate_reward(parsed, context, ground_truth, reward_config)
     
-    # exact_format_reward (10) + hallucinated_trace_penalty (-25) = -15
-    assert reward == -15.0
+    # exact_format_reward (10) + hallucinated_trace_penalty (-25) + hallucination_penalty (-20) = -35.0
+    assert reward == -35.0
     assert metrics["hallucination"] is True
     assert metrics["safe"] is False
 
@@ -75,8 +75,8 @@ def test_calculate_reward_missing_trace(reward_config, ground_truth, context):
     
     reward, metrics = calculate_reward(parsed, context, ground_truth, reward_config)
     
-    # exact_format_reward (10) + missing_trace_penalty (-20) = -10
-    assert reward == -10.0
+    # exact_format_reward (10) + missing_trace_penalty (-20) + missing_answer_penalty (-15) = -25.0
+    assert reward == -25.0
     assert metrics["safe"] is False
 
 def test_is_grounded():
