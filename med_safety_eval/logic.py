@@ -143,11 +143,11 @@ def is_grounded(proof_text: str, context: str) -> bool:
     
     if not sentences:
         similarity = _get_max_similarity(clean_proof, clean_context)
-        return similarity >= 0.80
+        return similarity >= 0.85
     
     # Check if at least one meaningful sentence matches the context
     max_sim = max(_get_max_similarity(sent, clean_context) for sent in sentences)
-    return max_sim >= 0.80
+    return max_sim >= 0.85
 
 
 def _get_max_similarity(needle: str, haystack: str) -> float:
@@ -158,7 +158,7 @@ def _get_max_similarity(needle: str, haystack: str) -> float:
     if match.size == 0: return 0.0
     
     contiguous_ratio = match.size / len(needle)
-    if contiguous_ratio >= 0.80: return contiguous_ratio
+    if contiguous_ratio >= 0.85: return contiguous_ratio
         
     # Secondary window check for fuzzy overlap
     start = match.b

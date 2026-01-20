@@ -285,7 +285,8 @@ test
         valid = DIPGResponse(
             analysis="test analysis",
             proof="test proof",
-            final="test final"
+            final="test final",
+            original_response="test original"
         )
         assert valid.analysis == "test analysis"
         
@@ -293,12 +294,13 @@ test
         empty = DIPGResponse(
             analysis="",
             proof="",
-            final=""
+            final="",
+            original_response=""
         )
         assert empty.analysis == ""     
         
         # Whitespace-only should be stripped to empty
-        whitespace = DIPGResponse(analysis="   ", proof="test", final="test")
+        whitespace = DIPGResponse(analysis="   ", proof="test", final="test", original_response="")
         assert whitespace.analysis == ""
     
     def test_parse_json_with_extra_fields(self, parser):

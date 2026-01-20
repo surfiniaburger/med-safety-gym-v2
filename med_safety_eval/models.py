@@ -2,7 +2,7 @@
 Data models for the standalone medical safety evaluation library.
 """
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 
@@ -90,6 +90,13 @@ class ParsedResponse(BaseModel):
     final: str = Field(..., description="The final, conclusive answer from the model.")
     original_response: str = Field(..., description="The raw, original response string.")
     format_error: bool = Field(default=False, description="Flag indicating if the response failed to parse.")
+
+    @field_validator('analysis', 'proof', 'final')
+    @classmethod
+    def strip_whitespace(cls, v: Optional[str]) -> str:
+        if v is None:
+            return ""
+        return v.strip()
 
 
 class ResponseFormat(str, Enum):

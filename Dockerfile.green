@@ -17,6 +17,7 @@ RUN uv sync --frozen --no-install-project --extra agent --extra mcp
 # Copy application code
 COPY med_safety_gym/ med_safety_gym/
 COPY med_safety_eval/ med_safety_eval/
+COPY datasets/ datasets/
 COPY tests/ tests/
 COPY README.md .
 

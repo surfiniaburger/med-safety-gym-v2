@@ -16,6 +16,8 @@ import xml.etree.ElementTree as ET
 import re
 from enum import Enum
 
+# Import ParsedResponse from standalone library
+from med_safety_eval.models import ParsedResponse as DIPGResponse
 
 class ResponseFormat(str, Enum):
     """Supported response formats"""
@@ -24,25 +26,6 @@ class ResponseFormat(str, Enum):
     YAML = "yaml"
     CUSTOM_TAGS = "custom_tags"
     AUTO = "auto"
-
-
-class DIPGResponse(BaseModel):
-    """
-    Normalized internal representation of a DIPG Safety response.
-    
-    This is format-agnostic - the same structure is used regardless of
-    whether the input was JSON, XML, YAML, or custom tags.
-    """
-    analysis: str = Field(default="", description="Reasoning about the medical context")
-    proof: str = Field(default="", description="Direct quote from context")
-    final: str = Field(default="", description="Final answer to the question")
-    
-    @field_validator('analysis', 'proof', 'final')
-    @classmethod
-    def strip_whitespace(cls, v: str) -> str:
-        if v is None:
-            return ""
-        return v.strip()
 
 
 class FormatParser:
@@ -96,7 +79,7 @@ class FormatParser:
         }
         parser_func = parser_map.get(format_type)
         if parser_func:
-            return parser_func(response)
+            return parser_func(response, original_response=response)
         else:
             raise ValueError(f"Unsupported format: {format_type}")
     
@@ -134,7 +117,7 @@ class FormatParser:
         # Default to custom tags for backward compatibility
         return ResponseFormat.CUSTOM_TAGS
     
-    def _parse_json(self, response: str) -> DIPGResponse:
+    def _parse_json(self, response: str, original_response: str = "") -> DIPGResponse:
         """Parse JSON format with robustness improvements"""
         cleaned_response = response.strip()
         
@@ -173,13 +156,13 @@ class FormatParser:
                 if target_field not in normalized_data:
                      normalized_data[target_field] = ""
             
-            return DIPGResponse(**normalized_data)
+            return DIPGResponse(original_response=original_response, **normalized_data)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON format: {e}")
         except ValidationError as e:
             raise ValueError(f"JSON validation failed: {e}")
     
-    def _parse_xml(self, response: str) -> DIPGResponse:
+    def _parse_xml(self, response: str, original_response: str = "") -> DIPGResponse:
         """Parse XML-like format using Robust Regex (ignore strict XML rules)"""
         # We use regex to be resilient to malformed XML, attributes, or fragments
         cleaned_response = response.strip()
@@ -206,24 +189,25 @@ class FormatParser:
         data = {
             "analysis": analysis_text,
             "proof": proof_text,
-            "final": final_text
+            "final": final_text,
+            "original_response": original_response
         }
         
         return DIPGResponse(**data)
     
-    def _parse_yaml(self, response: str) -> DIPGResponse:
+    def _parse_yaml(self, response: str, original_response: str = "") -> DIPGResponse:
         """Parse YAML format"""
         try:
             data = yaml.safe_load(response.strip())
             if not isinstance(data, dict):
                 raise ValueError("YAML must be a dictionary")
-            return DIPGResponse(**data)
+            return DIPGResponse(original_response=original_response, **data)
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML format: {e}")
         except ValidationError as e:
             raise ValueError(f"YAML validation failed: {e}")
     
-    def _parse_custom_tags(self, response: str) -> DIPGResponse:
+    def _parse_custom_tags(self, response: str, original_response: str = "") -> DIPGResponse:
         """Parse custom tag format (backward compatibility)"""
         channels = {}
         
@@ -237,7 +221,8 @@ class FormatParser:
         data = {
             "analysis": channels.get("analysis", ""),
             "proof": channels.get("proof", ""),
-            "final": channels.get("final", "")
+            "final": channels.get("final", ""),
+            "original_response": original_response
         }
         
         try:

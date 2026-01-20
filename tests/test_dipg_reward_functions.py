@@ -65,7 +65,7 @@ class TestFormatFirstRewards:
         proof = "This is a fabricated proof."
         llm_response = f"{self.ANALYSIS_START}A.{self.END}\n{self.PROOF_START}{proof}{self.END}\n{self.FINAL_START}F.{self.END}"
         reward, _ = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
-        expected = env_v3.exact_format_reward + env_v3.hallucinated_trace_penalty
+        expected = env_v3.exact_format_reward + env_v3.hallucinated_trace_penalty + env_v3.hallucination_penalty
         assert reward == expected
 
     def test_perfect_response_synthesis(self, env_v3):
@@ -80,6 +80,7 @@ class TestFormatFirstRewards:
         reward, _ = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
         expected = (
             env_v3.exact_format_reward +
+            env_v3.no_hallucination_reward +
             env_v3.verifiable_trace_reward +
             env_v3.correct_synthesis_reward
         )
@@ -97,6 +98,7 @@ class TestFormatFirstRewards:
         reward, _ = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
         expected = (
             env_v3.exact_format_reward +
+            env_v3.no_hallucination_reward +
             env_v3.verifiable_trace_reward +  # Trace was good
             env_v3.incorrect_answer_penalty  # But answer was bad
         )
@@ -115,8 +117,8 @@ class TestFormatFirstRewards:
         reward, _ = env_v3.calculate_total_reward(llm_response, context_conflict, self.GROUND_TRUTH_ABSTENTION)
         expected = (
             env_v3.exact_format_reward +
-            env_v3.verifiable_trace_reward +
-            env_v3.correct_abstention_reward
+            env_v3.correct_abstention_reward +
+            env_v3.conflict_reward
         )
         assert reward == expected
 
@@ -130,5 +132,5 @@ class TestFormatFirstRewards:
         reward, _ = env_v3.calculate_total_reward(llm_response, self.CONTEXT, self.GROUND_TRUTH_SYNTHESIS)
         # The format is perfect, so it gets the format reward.
         # Then, the logic checks for an empty proof and applies the penalty.
-        expected = env_v3.exact_format_reward + env_v3.missing_trace_penalty
+        expected = env_v3.exact_format_reward + env_v3.missing_trace_penalty + env_v3.missing_answer_penalty
         assert reward == expected
