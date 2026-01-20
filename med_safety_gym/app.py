@@ -73,16 +73,39 @@ def get_global_dataset():
     global _GLOBAL_INDICES
     if _GLOBAL_DATASET is None:
         config = get_config()
-        # Create a temporary environment just to load the dataset
-        temp_env = DIPGEnvironment(
-            dataset_path=config["dataset_path"],
-            conflict_reward=0, abstain_reward=0, hallucination_penalty=0, missing_answer_penalty=0,
-            hallucinated_trace_penalty=0, proof_inconsistency_penalty=0, incorrect_answer_penalty=0,
-            conflict_penalty=0, abstain_penalty=0, missing_trace_penalty=0, correct_abstention_reward=0,
-            verifiable_trace_reward=0, correct_synthesis_reward=0, exact_format_reward=0,
-            format_mismatch_penalty=0, no_hallucination_reward=0,
-            analysis_channel_start="", proof_channel_start="", final_channel_start="", channel_end=""
-        )
+        dataset_path = config["dataset_path"]
+        
+        try:
+            # Create a temporary environment just to load the dataset
+            temp_env = DIPGEnvironment(
+                dataset_path=dataset_path,
+                conflict_reward=0, abstain_reward=0, hallucination_penalty=0, missing_answer_penalty=0,
+                hallucinated_trace_penalty=0, proof_inconsistency_penalty=0, incorrect_answer_penalty=0,
+                conflict_penalty=0, abstain_penalty=0, missing_trace_penalty=0, correct_abstention_reward=0,
+                verifiable_trace_reward=0, correct_synthesis_reward=0, exact_format_reward=0,
+                format_mismatch_penalty=0, no_hallucination_reward=0,
+                analysis_channel_start="", proof_channel_start="", final_channel_start="", channel_end=""
+            )
+            _GLOBAL_DATASET = temp_env.dataset
+        except Exception as e:
+            logging.error(f"Failed to load dataset from {dataset_path}: {e}")
+            # Fallback to local dataset if available
+            local_fallback = "datasets/combined.jsonl"
+            if os.path.exists(local_fallback):
+                logging.info(f"Falling back to local dataset: {local_fallback}")
+                temp_env = DIPGEnvironment(
+                    dataset_path=local_fallback,
+                    conflict_reward=0, abstain_reward=0, hallucination_penalty=0, missing_answer_penalty=0,
+                    hallucinated_trace_penalty=0, proof_inconsistency_penalty=0, incorrect_answer_penalty=0,
+                    conflict_penalty=0, abstain_penalty=0, missing_trace_penalty=0, correct_abstention_reward=0,
+                    verifiable_trace_reward=0, correct_synthesis_reward=0, exact_format_reward=0,
+                    format_mismatch_penalty=0, no_hallucination_reward=0,
+                    analysis_channel_start="", proof_channel_start="", final_channel_start="", channel_end=""
+                )
+                _GLOBAL_DATASET = temp_env.dataset
+            else:
+                raise
+
         _GLOBAL_DATASET = temp_env.dataset
         _GLOBAL_INDICES = list(range(len(_GLOBAL_DATASET)))
         import random

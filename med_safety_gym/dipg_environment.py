@@ -2,8 +2,14 @@
 
 import json
 import random
+import os
+import time
 from pathlib import Path
 import importlib
+
+# Increase Hugging Face Hub timeout
+os.environ["HF_HUB_READ_TIMEOUT"] = os.environ.get("HF_HUB_READ_TIMEOUT", "60")
+os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = os.environ.get("HF_HUB_DOWNLOAD_TIMEOUT", "60")
 
 # StepResult is deprecated in 0.2.0 for Environment.reset/step returns.
 # We keep it as a client-side concept but the server expects raw Observations.
@@ -134,35 +140,47 @@ class DIPGEnvironment(Environment):
         # Metrics storage
 
     def _load_dataset(self, path: str) -> Dataset:
-        """Loads a dataset from a local path or the Hugging Face Hub."""
-        try:
-            # Check if it's a local file that's empty (for unit tests)
-            if Path(path).exists() and Path(path).stat().st_size == 0:
-                # Return an empty dataset for unit tests
-                return Dataset.from_dict({"messages": []})
-            
-            # Check if it's a local file path
-            if Path(path).exists():
-                # Load local JSONL file
-                return load_dataset('json', data_files=path, split='train')
-            else:
-                # Assume it's a HuggingFace dataset ID
-                try:
-                    return load_dataset(path, split="train")
-                except ValueError:
-                    # Fallback for evaluation datasets that might only have 'test'
-                    ds_dict = load_dataset(path)
-                    if "test" in ds_dict:
-                        return ds_dict["test"]
-                    elif len(ds_dict) > 0:
-                        # Return the first available split, sorting for determinism.
-                        return ds_dict[sorted(ds_dict.keys())[0]]
-                    else:
-                        raise ValueError(f"Dataset at {path} is empty (no splits found).")
-        except ValueError:
-            raise
-        except Exception as e:
-            raise FileNotFoundError(f"Could not load dataset from path: {path}. Error: {e}") from e
+        """Loads a dataset from a local path or the Hugging Face Hub with retries."""
+        max_retries = 3
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                # Check if it's a local file that's empty (for unit tests)
+                if Path(path).exists() and Path(path).stat().st_size == 0:
+                    # Return an empty dataset for unit tests
+                    return Dataset.from_dict({"messages": []})
+                
+                # Check if it's a local file path
+                if Path(path).exists():
+                    # Load local JSONL file
+                    return load_dataset('json', data_files=path, split='train')
+                else:
+                    # Assume it's a HuggingFace dataset ID
+                    try:
+                        return load_dataset(path, split="train")
+                    except ValueError:
+                        # Fallback for evaluation datasets that might only have 'test'
+                        ds_dict = load_dataset(path)
+                        if "test" in ds_dict:
+                            return ds_dict["test"]
+                        elif len(ds_dict) > 0:
+                            # Return the first available split, sorting for determinism.
+                            return ds_dict[sorted(ds_dict.keys())[0]]
+                        else:
+                            raise ValueError(f"Dataset at {path} is empty (no splits found).")
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Attempt {attempt + 1}/{max_retries} failed to load dataset '{path}': {e}")
+                if attempt < max_retries - 1:
+                    # Exponential backoff
+                    sleep_time = 2 ** attempt
+                    logger.info(f"Retrying in {sleep_time} seconds...")
+                    time.sleep(sleep_time)
+                else:
+                    break
+        
+        raise FileNotFoundError(f"Could not load dataset from path: {path}. Error: {last_error}") from last_error
 
     def get_eval_tasks(self, max_samples: int = None, shuffle: bool = True):
         """
