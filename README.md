@@ -74,6 +74,8 @@ pip install "openenv-dipg-safety[mcp]"
 
 The reward system has undergone significant evolution to better enforce safe and reliable behavior, moving from a simple outcome-based model to a sophisticated, hierarchical, process-based curriculum.
 
+![Evaluation Logic Flow Diagram](docs/visualizations/logic_flow.png)
+
 ### V1: Outcome-Based Scoring
 
 The initial reward system focused on the final output. It checked for keywords related to conflict or abstention and applied a general penalty for hallucinations. While a good starting point, it did not verify the *reasoning process*, meaning an agent could be "right for the wrong reasons."
