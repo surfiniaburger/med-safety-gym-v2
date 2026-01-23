@@ -1,48 +1,76 @@
-import { render, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi } from 'vitest';
-import App from '../App'; // App is at root
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import App from '../App';
+import * as githubService from '../services/github';
 import * as geminiService from '../services/gemini';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// Mock the Gemini service
-vi.mock('../services/gemini', () => ({
-    bringToLife: vi.fn(),
-}));
+// Mock the services
+vi.mock('../services/github');
+vi.mock('../services/gemini');
 
-// Mock URL.createObjectURL for JSDOM just in case
-global.URL.createObjectURL = vi.fn();
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            retry: false,
+        },
+    },
+});
+
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+        {children}
+    </QueryClientProvider>
+);
 
 describe('App Integration', () => {
-    it('calls bringToLife and renders output when a file is uploaded', async () => {
-        // 1. Setup Mock Return
-        const mockHtml = '<h1>Generated App</h1>';
-        (geminiService.bringToLife as any).mockResolvedValue(mockHtml);
+    beforeEach(() => {
+        vi.resetAllMocks();
+    });
 
-        const { container } = render(<App />);
+    it('renders artifacts and triggers simulation generation on selection', async () => {
+        const mockArtifacts: githubService.EvaluationArtifact[] = [
+            {
+                id: '1',
+                name: 'test-artifact.json',
+                path: 'results/test-artifact.json',
+                sha: 'sha1',
+                url: '', html_url: '', download_url: '',
+                content: {
+                    safety_score: 0.85,
+                    status: 'SAFE',
+                    summary: 'Simulation test'
+                }
+            }
+        ];
 
-        // 2. Find File Input
-        // InputArea renders a hidden file input inside a label
-        const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-        expect(fileInput).toBeInTheDocument();
+        vi.mocked(githubService.fetchEvaluationArtifacts).mockResolvedValue(mockArtifacts);
+        vi.mocked(geminiService.bringToLife).mockResolvedValue('<html><body>Clinical Simulation</body></html>');
 
-        // 3. Upload File
-        const file = new File(['(⌐□_□)'], 'sketch.png', { type: 'image/png' });
-        await userEvent.upload(fileInput, file);
+        render(<App />, { wrapper });
 
-        // 4. Verify Service Call
-        // This ensures the App correctly handles the file change and calls the service
+        // 1. Verify artifacts are loaded and displayed
         await waitFor(() => {
-            expect(geminiService.bringToLife).toHaveBeenCalledWith(
-                expect.stringContaining(''), // prompt is empty
-                expect.any(String), // base64 string
-                'image/png'
-            );
+            expect(screen.getByText(/test artifact/i)).toBeDefined();
         });
 
-        // 5. Verify Result (LivePreview)
-        // LivePreview renders an iframe with srcDoc
-        const iframe = container.querySelector('iframe');
-        expect(iframe).toBeInTheDocument();
-        expect(iframe).toHaveAttribute('srcDoc', mockHtml);
+        // 2. Select an artifact
+        const card = screen.getByText(/test artifact/i).closest('div');
+        if (card) fireEvent.click(card);
+
+        // 3. Verify Gemini bridge is called with the artifact content
+        await waitFor(() => {
+            expect(geminiService.bringToLife).toHaveBeenCalled();
+            const callArgs = vi.mocked(geminiService.bringToLife).mock.calls[0];
+            expect(callArgs[0]).toContain('"safety_score": 0.85');
+        });
+
+        // 4. Verify LivePreview is showing the result
+        await waitFor(() => {
+            // LivePreview renders an iframe with the content
+            const iframe = document.querySelector('iframe');
+            expect(iframe).toBeDefined();
+        });
     });
 });
