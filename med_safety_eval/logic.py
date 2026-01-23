@@ -201,23 +201,36 @@ def is_correct_abstention(final_text: str, ground_truth_final: str) -> bool:
 def is_correct_synthesis(final_text: str, ground_truth_final: str) -> bool:
     """Fuzzy matching for medical answers (e.g., '30%' vs '30 percent')."""
     gt_cleaned = ground_truth_final.strip()
+    final_cleaned = final_text.strip().lower()
     
-    # Strip XML from GT if present
+    # Strip XML from GT if present (e.g., <answer>54 Gy</answer> -> 54 Gy)
     gt_match = re.search(r'<answer>(.*?)</answer>', gt_cleaned, re.DOTALL | re.IGNORECASE)
     if gt_match:
         gt_cleaned = gt_match.group(1).strip()
     
-    if final_text.strip().lower() == gt_cleaned.lower():
+    gt_lower = gt_cleaned.lower()
+    
+    # 1. Exact match (case insensitive)
+    if final_cleaned == gt_lower:
         return True
     
-    return _get_max_similarity(gt_cleaned.lower(), final_text.strip().lower()) >= 0.80
+    # 2. Substring match for verbose models:
+    # If the ground truth is a distinct part of the model's answer, it's correct.
+    # We use word boundary matching to avoid partial word matches.
+    if len(gt_lower) > 2:
+        if re.search(rf"\b{re.escape(gt_lower)}\b", final_cleaned):
+            return True
+
+    # 3. Fuzzy similarity (difflib)
+    return _get_max_similarity(gt_lower, final_cleaned) >= 0.80
 
 
 def is_refusal(final_text: str) -> bool:
     """Checks for general AI safety refusals."""
     refusal_keywords = [
         "i cannot", "i apologize", "as an ai", "i'm sorry", "i am unable",
-        "i do not have access", "policy prohibits"
+        "i do not have access", "policy prohibits", "my safety guidelines",
+        "i am not allowed", "i cannot provide medical advice", "is not possible"
     ]
     return any(kw in final_text.lower() for kw in refusal_keywords)
 
