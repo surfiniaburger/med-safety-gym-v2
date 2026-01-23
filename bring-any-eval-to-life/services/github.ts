@@ -54,12 +54,15 @@ export async function fetchEvaluationArtifacts(): Promise<EvaluationArtifact[]> 
             return [];
         }
 
-        // 2. Filter for .json files with type guard
-        const jsonFiles = files.filter((file: any): file is GitHubContent =>
-            typeof file.name === 'string' &&
-            file.name.endsWith('.json') &&
-            file.type === 'file'
-        );
+        // 2. Filter for .json files and sort by name descending (latest first)
+        const jsonFiles = files
+            .filter((file: any): file is GitHubContent =>
+                typeof file.name === 'string' &&
+                file.name.endsWith('.json') &&
+                file.type === 'file'
+            )
+            .sort((a, b) => b.name.localeCompare(a.name)) // Latest first
+            .slice(0, 5); // Only latest 5
 
         // 3. Fetch content for each file
         const artifacts: EvaluationArtifact[] = await Promise.all(
