@@ -211,7 +211,7 @@ const App: React.FC = () => {
             rel="noopener noreferrer"
             className="text-zinc-700 hover:text-zinc-400 text-xs font-mono transition-colors"
           >
-            SYSTEM STATUS: OPERATIONAL // @surfiniaburger
+            @surfiniaburger
           </a>
         </div>
       </div>
