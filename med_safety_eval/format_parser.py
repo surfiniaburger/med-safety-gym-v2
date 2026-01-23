@@ -17,16 +17,35 @@ class FormatParser:
     """
 
     def __init__(self):
+        # Define tag aliases centrally for easier maintenance.
+        self.tag_aliases = {
+            "analysis": ["think", "analysis", "reasoning", "thought"],
+            "proof": ["proof", "trace", "evidence", "quote"],
+            "final": ["answer", "final", "conclusion", "result"],
+        }
+        
         # Pre-compile regex for efficiency, supporting multiple tag names for flexibility.
         self.tag_patterns = {
-            "analysis": re.compile(r"<(?:think|analysis|reasoning|thought)>(.*?)</(?:think|analysis|reasoning|thought)>", re.DOTALL | re.IGNORECASE),
-            "proof": re.compile(r"<(?:proof|trace|evidence|quote)>(.*?)</(?:proof|trace|evidence|quote)>", re.DOTALL | re.IGNORECASE),
-            "final": re.compile(r"<(?:answer|final|conclusion|result)>(.*?)</(?:answer|final|conclusion|result)>", re.DOTALL | re.IGNORECASE),
+            key: re.compile(rf"<(?:{'|'.join(aliases)})>(.*?)</(?:{'|'.join(aliases)})>", re.DOTALL | re.IGNORECASE)
+            for key, aliases in self.tag_aliases.items()
         }
+        
         # Regex pattern for custom tag format (backward compatibility)
         self.custom_tag_pattern = re.compile(
             r'<\|channel\|>(\w+)<\|message\|>(.*?)<\|end\|>',
             re.DOTALL
+        )
+        
+        # Build the fallback regex pattern for all closing tags
+        # We exclude 'final' tags here because this regex is used when the <final> tag is MISSING.
+        all_other_aliases = []
+        for key, aliases in self.tag_aliases.items():
+            if key != "final":
+                all_other_aliases.extend(aliases)
+        
+        self.fallback_closing_tag_pattern = re.compile(
+            rf"</(?:{'|'.join(all_other_aliases)})>", 
+            re.IGNORECASE
         )
 
     def parse(
@@ -101,14 +120,29 @@ class FormatParser:
             else:
                 extracted[key] = None
 
-        # The 'final' answer is mandatory. If it's missing, it's a format error.
+        # The 'final' answer is mandatory.
         if extracted.get("final") is None:
+            # ROBUSTNESS FALLBACK: If <answer> is missing, look for text after the last closed tag
+            # Models often forget the final tag but provide the text.
+            last_tag_match = list(self.fallback_closing_tag_pattern.finditer(response_text))
+            if last_tag_match:
+                last_pos = last_tag_match[-1].end()
+                remaining_text = response_text[last_pos:].strip()
+                if remaining_text and len(remaining_text) > 2:
+                    return ParsedResponse(
+                        analysis=extracted.get("analysis"),
+                        proof=extracted.get("proof"),
+                        final=remaining_text,
+                        original_response=response_text,
+                        format_error=False,
+                    )
+
             return ParsedResponse(
                 analysis=extracted.get("analysis"),
                 proof=extracted.get("proof"),
-                final=f"FORMAT_ERROR: Missing <answer> tag. Original response: {response_text}",
+                final=remaining_text if remaining_text and len(remaining_text) > 2 else f"FORMAT_ERROR: Missing <answer> tag and no text after other tags. Original response: {response_text}",
                 original_response=response_text,
-                format_error=True,
+                format_error=False if remaining_text and len(remaining_text) > 2 else True,
             )
 
         return ParsedResponse(
