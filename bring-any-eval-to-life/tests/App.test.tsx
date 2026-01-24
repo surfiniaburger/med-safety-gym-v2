@@ -9,6 +9,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // Mock the services
 vi.mock('../services/github');
 vi.mock('../services/gemini');
+vi.mock('../components/Gauntlet/GauntletView', () => ({
+    GauntletView: vi.fn(() => <div data-testid="gauntlet-view">Gauntlet View Mock</div>)
+}));
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -66,11 +69,9 @@ describe('App Integration', () => {
             expect(callArgs[0]).toContain('"safety_score": 0.85');
         });
 
-        // 4. Verify LivePreview is showing the result
+        // 4. Verify Gauntlet View is mounted
         await waitFor(() => {
-            // LivePreview renders an iframe with the content
-            const iframe = document.querySelector('iframe');
-            expect(iframe).toBeDefined();
+            expect(screen.getByTestId('gauntlet-view')).toBeDefined();
         });
     });
 });

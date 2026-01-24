@@ -78,15 +78,24 @@ export async function fetchEvaluationArtifacts(): Promise<EvaluationArtifact[]> 
                 };
 
                 try {
-                    const contentResponse = await fetch(file.download_url);
+                    // Use the GitHub API URL instead of raw.githubusercontent.com to avoid timeouts
+                    const contentResponse = await fetch(file.url);
                     if (contentResponse.ok) {
-                        const jsonContent = await contentResponse.json();
-                        artifact.content = jsonContent as EvaluationContent;
+                        const fileData = await contentResponse.json();
+                        if (fileData.content) {
+                            // Decode base64 content
+                            const base64Content = fileData.content.replace(/\s/g, '');
+                            const decodedString = atob(base64Content);
+                            artifact.content = JSON.parse(decodedString) as EvaluationContent;
+                            console.log(`Successfully fetched and decoded content for ${file.name}`, artifact.content);
+                        } else {
+                            console.error(`Received no content from API for ${file.name}`);
+                        }
                     } else {
-                        console.error(`Failed to fetch content for ${file.name}: ${contentResponse.statusText}`);
+                        console.error(`Failed to fetch content via API for ${file.name}: ${contentResponse.statusText}`);
                     }
                 } catch (err) {
-                    console.error(`Error parsing content for ${file.name}`, err);
+                    console.error(`Error processing content via API for ${file.name}`, err);
                 }
 
                 return artifact;

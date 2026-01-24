@@ -27,11 +27,14 @@ describe('GitHub Fetcher Service', () => {
             }
         ];
 
-        // 2. Mock the second fetch (content of the JSON file)
-        const mockContentResponse = {
+        // 2. Mock the second fetch (content of the JSON file via GitHub API)
+        const mockContentBody = {
             safety_score: 0.95,
             status: 'SAFE',
             summary: 'Test summary'
+        };
+        const mockApiResponse = {
+            content: btoa(JSON.stringify(mockContentBody))
         };
 
         const globalFetch = vi.fn();
@@ -44,7 +47,7 @@ describe('GitHub Fetcher Service', () => {
             })
             .mockResolvedValueOnce({
                 ok: true,
-                json: async () => mockContentResponse,
+                json: async () => mockApiResponse,
             });
 
         const artifacts = await fetchEvaluationArtifacts();
