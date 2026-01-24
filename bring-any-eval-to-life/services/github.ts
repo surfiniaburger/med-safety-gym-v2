@@ -42,14 +42,14 @@ interface CacheData {
 export async function fetchEvaluationArtifacts(): Promise<EvaluationArtifact[]> {
     try {
         // 1. Check cache
-        const cached = localStorage.getItem(CACHE_KEY);
         let cacheData: CacheData | null = null;
-        if (cached) {
-            try {
+        try {
+            const cached = localStorage.getItem(CACHE_KEY);
+            if (cached) {
                 cacheData = JSON.parse(cached);
-            } catch (e) {
-                console.error('Failed to parse cache', e);
             }
+        } catch (e) {
+            console.warn('Failed to read or parse cache from localStorage.', e);
         }
 
         const headers: Record<string, string> = {};
@@ -143,7 +143,11 @@ export async function fetchEvaluationArtifacts(): Promise<EvaluationArtifact[]> 
             etag: etag,
             timestamp: Date.now()
         };
-        localStorage.setItem(CACHE_KEY, JSON.stringify(newCacheData));
+        try {
+            localStorage.setItem(CACHE_KEY, JSON.stringify(newCacheData));
+        } catch (e) {
+            console.warn('Failed to save cache to localStorage.', e);
+        }
 
         return artifacts;
 

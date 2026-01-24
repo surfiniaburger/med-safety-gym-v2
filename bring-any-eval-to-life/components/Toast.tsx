@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XMarkIcon, ExclamationTriangleIcon, InformationCircleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 
@@ -36,13 +36,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const showToast = useCallback((message: string, type: ToastType = 'info', duration: number = 5000) => {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { id, message, type, duration }]);
-
-    if (duration !== Infinity) {
-      setTimeout(() => {
-        hideToast(id);
-      }, duration);
-    }
-  }, [hideToast]);
+  }, []);
 
   return (
     <ToastContext.Provider value={{ showToast, hideToast }}>
@@ -59,6 +53,16 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 };
 
 const ToastItem: React.FC<{ toast: Toast; onHide: (id: string) => void }> = ({ toast, onHide }) => {
+  useEffect(() => {
+    if (toast.duration && toast.duration !== Infinity) {
+      const timerId = setTimeout(() => {
+        onHide(toast.id);
+      }, toast.duration);
+
+      return () => clearTimeout(timerId);
+    }
+  }, [toast.id, toast.duration, onHide]);
+
   const icons = {
     info: <InformationCircleIcon className="w-5 h-5 text-blue-400" />,
     success: <CheckCircleIcon className="w-5 h-5 text-emerald-400" />,
