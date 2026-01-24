@@ -21,6 +21,7 @@ export interface EvaluationContent {
 const GITHUB_OWNER = 'surfiniaburger';
 const GITHUB_REPO = 'med-safety-gym';
 const RESULTS_PATH = 'results';
+const CACHE_KEY = 'github_artifacts_cache';
 
 interface GitHubContent {
     name: string;
@@ -32,12 +33,40 @@ interface GitHubContent {
     download_url: string;
 }
 
+interface CacheData {
+    data: EvaluationArtifact[];
+    etag: string | null;
+    timestamp: number;
+}
+
 export async function fetchEvaluationArtifacts(): Promise<EvaluationArtifact[]> {
     try {
-        // 1. Fetch list of files in the results directory
+        // 1. Check cache
+        const cached = localStorage.getItem(CACHE_KEY);
+        let cacheData: CacheData | null = null;
+        if (cached) {
+            try {
+                cacheData = JSON.parse(cached);
+            } catch (e) {
+                console.error('Failed to parse cache', e);
+            }
+        }
+
+        const headers: Record<string, string> = {};
+        if (cacheData?.etag) {
+            headers['If-None-Match'] = cacheData.etag;
+        }
+
+        // 2. Fetch list of files in the results directory
         const response = await fetch(
-            `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${RESULTS_PATH}`
+            `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${RESULTS_PATH}`,
+            { headers }
         );
+
+        // 3. Handle 304 Not Modified
+        if (response.status === 304 && cacheData) {
+            return cacheData.data;
+        }
 
         if (!response.ok) {
             if (response.status === 404) {
@@ -47,6 +76,7 @@ export async function fetchEvaluationArtifacts(): Promise<EvaluationArtifact[]> 
             throw new Error(`GitHub API error: ${response.statusText}`);
         }
 
+        const etag = response.headers.get('ETag');
         const files = await response.json();
 
         if (!Array.isArray(files)) {
@@ -54,7 +84,7 @@ export async function fetchEvaluationArtifacts(): Promise<EvaluationArtifact[]> 
             return [];
         }
 
-        // 2. Filter for .json files and sort by name descending (latest first)
+        // 4. Filter for .json files and sort by name descending (latest first)
         const jsonFiles = files
             .filter((file: any): file is GitHubContent =>
                 typeof file.name === 'string' &&
@@ -64,9 +94,15 @@ export async function fetchEvaluationArtifacts(): Promise<EvaluationArtifact[]> 
             .sort((a, b) => b.name.localeCompare(a.name)) // Latest first
             .slice(0, 5); // Only latest 5
 
-        // 3. Fetch content for each file
+        // 5. Fetch content for each file
         const artifacts: EvaluationArtifact[] = await Promise.all(
             jsonFiles.map(async (file) => {
+                // Check if we already have this file in cache by SHA
+                const cachedArtifact = cacheData?.data.find(a => a.sha === file.sha);
+                if (cachedArtifact && cachedArtifact.content) {
+                    return cachedArtifact;
+                }
+
                 const artifact: EvaluationArtifact = {
                     id: file.sha,
                     name: file.name,
@@ -101,15 +137,18 @@ export async function fetchEvaluationArtifacts(): Promise<EvaluationArtifact[]> 
             })
         );
 
-        // Sort by name or date if needed (optional)
+        // 6. Update cache
+        const newCacheData: CacheData = {
+            data: artifacts,
+            etag: etag,
+            timestamp: Date.now()
+        };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(newCacheData));
+
         return artifacts;
 
     } catch (error) {
         console.error('Failed to fetch evaluation artifacts:', error);
-        // Return empty array or throw based on preference. 
-        // For UI resilience, returning empty array with logged error is often better, 
-        // but throwing allows React Query to handle error state.
-        // Let's throw to let the caller handle the error state.
         throw error;
     }
 }

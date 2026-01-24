@@ -381,7 +381,10 @@ const App: React.FC = () => {
       <LivePreview
         creation={activeCreation}
         isLoading={isGenerating}
-        isFocused={view === 'simulator' || (view === 'selection' && isGenerating)}
+        isFocused={
+          view === 'simulator' ||
+          (view === 'selection' && (isGenerating || activeCreation !== null))
+        }
         onReset={view === 'simulator' ? handleSolveNode : handleReset}
         title={view === 'simulator' ? "Intervention: NEURO-SIM Dashboard" : undefined}
       />
