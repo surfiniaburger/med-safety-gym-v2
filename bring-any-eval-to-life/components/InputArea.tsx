@@ -4,6 +4,7 @@
 */
 import React, { useCallback, useState, useEffect } from 'react';
 import { ArrowUpTrayIcon, SparklesIcon, CpuChipIcon } from '@heroicons/react/24/outline';
+import { useToast } from './Toast';
 
 interface InputAreaProps {
   onGenerate: (prompt: string, file?: File) => void;
@@ -42,12 +43,13 @@ const CyclingText = () => {
 
 export const InputArea: React.FC<InputAreaProps> = ({ onGenerate, isGenerating, disabled = false }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const { showToast } = useToast();
 
   const handleFile = (file: File) => {
     if (file.type.startsWith('image/') || file.type === 'application/pdf') {
       onGenerate("", file);
     } else {
-      alert("Please upload an image or PDF.");
+      showToast("Please upload an image or PDF.", "warning");
     }
   };
 
