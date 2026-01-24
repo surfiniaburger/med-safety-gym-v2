@@ -423,19 +423,25 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
     const [agentPosition, setAgentPosition] = useState(new THREE.Vector3());
     const [agentProgress, setAgentProgress] = useState(0);
 
+    // Memoize setAgentState to prevent re-creating on every render
+    const setAgentState = React.useCallback((pos: THREE.Vector3, progress: number) => {
+        setAgentPosition(pos);
+        setAgentProgress(progress);
+    }, []);
+
+    // Memoize context value to prevent unnecessary re-renders of consumers
+    const contextValue = React.useMemo(() => ({
+        agentPosition,
+        agentProgress,
+        setAgentState,
+        onComplete
+    }), [agentPosition, agentProgress, setAgentState, onComplete]);
+
     return (
         <div className="w-full h-full relative font-sans select-none overflow-hidden">
             {/* Cinematic Camera Control */}
             <Canvas shadows dpr={[1, 2]}>
-                <GauntletContext.Provider value={{
-                    agentPosition,
-                    agentProgress,
-                    setAgentState: (pos, progress) => {
-                        setAgentPosition(pos);
-                        setAgentProgress(progress);
-                    },
-                    onComplete
-                }}>
+                <GauntletContext.Provider value={contextValue}>
                     <CinematicCamera />
                     <PerspectiveCamera makeDefault position={[-20, 10, 20]} />
                     <Starfield />
