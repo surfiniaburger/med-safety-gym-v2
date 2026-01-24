@@ -15,10 +15,9 @@ const TestComponent = ({ message, duration }: { message: string, duration?: numb
 describe('Toast Component', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    // Mock crypto.randomUUID for jsdom
-    if (typeof crypto.randomUUID !== 'function') {
-      (crypto as any).randomUUID = () => Math.random().toString(36).substring(2);
-    }
+    // Mock crypto.randomUUID for jsdom with deterministic IDs
+    let idCounter = 0;
+    (crypto as any).randomUUID = () => `test-uuid-${idCounter++}`;
   });
 
   it('should show and then auto-dismiss a toast', async () => {
@@ -55,6 +54,7 @@ describe('Toast Component', () => {
   });
 
   it('should clear timer on unmount', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { unmount } = render(
       <ToastProvider>
         <TestComponent message="Test Message" duration={1000} />
@@ -70,9 +70,12 @@ describe('Toast Component', () => {
 
     unmount();
     
-    // If there was a memory leak or error on unmount, vitest/testing-library would likely complain or fail here
+    // Advance timers to check for delayed state updates on unmounted component
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 });
