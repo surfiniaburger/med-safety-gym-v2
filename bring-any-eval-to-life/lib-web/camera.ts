@@ -2,24 +2,29 @@ import * as THREE from 'three';
 
 /**
  * Calculates dynamic agent speed based on reward values.
+ * Phase 10/13: Calibrated for ultra slow-mo enjoyability.
  */
 export const calculateCinematicSpeed = (reward: number): number => {
     if (reward < 0) return 0.2; // Slow-mo near danger
-    if (reward > 40) return 1.5; // Turbo for high success
-    return 0.5; // Standard speed
+    if (reward > 40) return 1.0; // Stabilized turbo
+    return 0.15; // Ultra slow-mo for standard positive rewards
 };
 
 /**
  * Generates a camera offset relative to the agent position.
- * Uses a sine wave to create subtle "swerving" and twists.
+ * Phase 13/14: Precise horizontal centering and Midline stability.
  */
 export const getCameraOffset = (progress: number): THREE.Vector3 => {
-    // Phase 8: Adjust framing so Step 0 starts on the far left
-    // We shift the X offset positively as we progress
-    const xOffset = -8 + (progress * 0.5);
-    const swerve = Math.sin(progress * 0.4) * 6;
-    const vertical = Math.cos(progress * 0.2) * 3 + 6;
+    // Dynamic X shift to keep Step 0 anchored left initially
+    const xOffset = -5 + (progress * 0.2);
 
-    // Roller coaster feel: Camera follows but also drifts
-    return new THREE.Vector3(xOffset, vertical, 14 + swerve);
+    // Controlled swerve for "roller coaster" feel
+    const swerve = Math.sin(progress * 0.4) * 6;
+
+    // Phase 14: Recalibrated vertical centering.
+    // By setting vertical to 0 and looking at agentPos, 
+    // the path resides in the horizontal midline.
+    const vertical = 0;
+
+    return new THREE.Vector3(xOffset, vertical, 15 + swerve);
 };

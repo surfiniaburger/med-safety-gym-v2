@@ -16,18 +16,28 @@ import {
     ExclamationTriangleIcon,
     BoltIcon,
     ArrowRightIcon,
-    ShieldCheckIcon
+    ShieldCheckIcon,
+    PauseIcon,
+    PlayIcon as PlayIconOutline
 } from '@heroicons/react/24/outline';
 import { calculateCinematicSpeed, getCameraOffset } from '../../lib-web/camera';
+
+enum GauntletState {
+    WARMUP_ENTRY,
+    EVALUATION_PULSE,
+    TRANSITION,
+    TRAJECTORY_ACTIVE
+}
 
 const Starfield = () => {
     const starCount = 3000;
     const positions = useMemo(() => {
         const coords = new Float32Array(starCount * 3);
+        const range = 300; // Increased range for centering flexibility
         for (let i = 0; i < starCount; i++) {
-            coords[i * 3] = (Math.random() - 0.5) * 200;
-            coords[i * 3 + 1] = (Math.random() - 0.5) * 200;
-            coords[i * 3 + 2] = (Math.random() - 0.5) * 200;
+            coords[i * 3] = (Math.random() - 0.5) * range;
+            coords[i * 3 + 1] = (Math.random() - 0.5) * range;
+            coords[i * 3 + 2] = (Math.random() - 0.5) * range;
         }
         return coords;
     }, []);
@@ -50,8 +60,66 @@ const Starfield = () => {
                     itemSize={3}
                 />
             </bufferGeometry>
-            <pointsMaterial size={0.1} color="#ffffff" transparent opacity={0.6} sizeAttenuation />
+            <pointsMaterial size={0.12} color="#ffffff" transparent opacity={0.4} sizeAttenuation />
         </points>
+    );
+};
+
+const WarmupAgents = ({ state }: { state: GauntletState }) => {
+    const purpleRef = useRef<THREE.Group>(null);
+    const greenRef = useRef<THREE.Group>(null);
+    const pulseRef = useRef<THREE.PointLight>(null);
+
+    useFrame((threeState) => {
+        const time = threeState.clock.getElapsedTime();
+
+        if (state === GauntletState.WARMUP_ENTRY) {
+            // Purple model agent enters from far left
+            if (purpleRef.current) {
+                purpleRef.current.position.x = THREE.MathUtils.lerp(purpleRef.current.position.x, -10, 0.02);
+                purpleRef.current.position.y = Math.sin(time * 2) * 0.5;
+            }
+        }
+
+        if (state === GauntletState.EVALUATION_PULSE || state === GauntletState.TRANSITION) {
+            // Green evaluator agent circles the purple one
+            if (greenRef.current && purpleRef.current) {
+                const angle = time * 3;
+                greenRef.current.position.x = purpleRef.current.position.x + Math.cos(angle) * 3;
+                greenRef.current.position.z = purpleRef.current.position.z + Math.sin(angle) * 3;
+                greenRef.current.position.y = Math.sin(time * 4) * 1;
+            }
+            // Pulsing evaluation light
+            if (pulseRef.current) {
+                pulseRef.current.intensity = Math.sin(time * 10) * 5 + 5;
+            }
+        }
+    });
+
+    return (
+        <group>
+            {/* Purple Model Agent - Only visible during early warmup */}
+            {(state === GauntletState.WARMUP_ENTRY || state === GauntletState.EVALUATION_PULSE) && (
+                <group ref={purpleRef} position={[-40, 0, 0]}>
+                    <Sphere args={[0.4, 32, 32]}>
+                        <meshStandardMaterial color="#845ef7" emissive="#845ef7" emissiveIntensity={2} />
+                    </Sphere>
+                    <pointLight intensity={2} color="#845ef7" distance={10} />
+                </group>
+            )}
+            {/* Green Evaluator Agent */}
+            {(state === GauntletState.EVALUATION_PULSE || state === GauntletState.TRANSITION) && (
+                <group ref={greenRef}>
+                    <Sphere args={[0.3, 16, 16]}>
+                        <meshStandardMaterial color="#40c057" emissive="#40c057" emissiveIntensity={3} />
+                    </Sphere>
+                    <pointLight ref={pulseRef} distance={8} color="#40c057" />
+                    <Trail width={1} length={4} color={new THREE.Color("#40c057")}>
+                        <mesh />
+                    </Trail>
+                </group>
+            )}
+        </group>
     );
 };
 
@@ -301,19 +369,35 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
         );
     }
 
-    const spacing = 6;
+    const spacing = 3;
     const points = useMemo(() => {
-        return rewards.map((r, i) => new THREE.Vector3(i * spacing, r * 0.5, 0));
+        // Phase 14: Midline centering - rewards are scaled to +/- range but centered on Y=0
+        return rewards.map((r, i) => new THREE.Vector3(i * spacing, r * 0.4, 0));
     }, [rewards, spacing]);
 
     const currentReward = rewards[activeStepIndex];
     const isFailedNode = currentReward < 0 && !solvedNodes.includes(activeStepIndex);
     const [isInternalPaused, setIsInternalPaused] = useState(isFailedNode);
+    const [isManualPaused, setIsManualPaused] = useState(false);
     const [showRestored, setShowRestored] = useState(false);
+    const [gameState, setGameState] = useState<GauntletState>(GauntletState.WARMUP_ENTRY);
+
+    // Phase 11: Warmup Sequence Timing
+    useEffect(() => {
+        const entryTimeout = setTimeout(() => setGameState(GauntletState.EVALUATION_PULSE), 2000);
+        const pulseTimeout = setTimeout(() => setGameState(GauntletState.TRANSITION), 5000);
+        const trajectoryTimeout = setTimeout(() => setGameState(GauntletState.TRAJECTORY_ACTIVE), 6500);
+
+        return () => {
+            clearTimeout(entryTimeout);
+            clearTimeout(pulseTimeout);
+            clearTimeout(trajectoryTimeout);
+        };
+    }, []);
 
     useEffect(() => {
-        setIsInternalPaused(isFailedNode);
-    }, [isFailedNode, activeStepIndex]);
+        setIsInternalPaused(isFailedNode || gameState !== GauntletState.TRAJECTORY_ACTIVE || isManualPaused);
+    }, [isFailedNode, activeStepIndex, gameState, isManualPaused]);
 
     // Phase 4: Detect resolution
     const lastSolvedCount = useRef(solvedNodes.length);
@@ -333,6 +417,8 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                 <PerspectiveCamera makeDefault position={[-20, 10, 20]} />
                 <Starfield />
 
+                <WarmupAgents state={gameState} />
+
                 <OrbitControls
                     enablePan={true}
                     minDistance={5}
@@ -343,29 +429,33 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                 />
 
                 <color attach="background" args={['#050505']} />
-                <fog attach="fog" args={['#050505', 10, 50]} />
+                <fog attach="fog" args={['#050505', 10, 100]} />
 
                 <ambientLight intensity={0.5} />
                 <pointLight position={[10, 10, 10]} intensity={1.5} color="#4dabf7" castShadow />
                 <directionalLight position={[-5, 5, 5]} intensity={0.5} color="#ffffff" />
 
-                <NeuralPathway points={points} rewards={rewards} solvedNodes={solvedNodes} />
+                {(gameState === GauntletState.TRAJECTORY_ACTIVE || gameState === GauntletState.TRANSITION) && (
+                    <>
+                        <NeuralPathway points={points} rewards={rewards} solvedNodes={solvedNodes} />
 
-                {points.map((p, i) => (
-                    rewards[i] < 0 && (
-                        <BarrierNode key={`barrier-${i}`} position={p} active={!solvedNodes.includes(i)} />
-                    )
-                ))}
+                        {points.map((p, i) => (
+                            rewards[i] < 0 && (
+                                <BarrierNode key={`barrier-${i}`} position={p} active={!solvedNodes.includes(i)} />
+                            )
+                        ))}
 
-                <PathAgent
-                    points={points}
-                    rewards={rewards}
-                    currentIndex={activeStepIndex}
-                    isPaused={isInternalPaused}
-                    onProgress={onActiveStepChange}
-                />
+                        <PathAgent
+                            points={points}
+                            rewards={rewards}
+                            currentIndex={activeStepIndex}
+                            isPaused={isInternalPaused}
+                            onProgress={onActiveStepChange}
+                        />
 
-                <ContactShadows opacity={0.4} scale={100} blur={2} far={10} resolution={256} color="#000000" />
+                        <ContactShadows opacity={0.4} scale={100} blur={2} far={10} resolution={256} color="#000000" />
+                    </>
+                )}
             </Canvas>
 
             {/* UI Overlays */}
@@ -478,7 +568,15 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setIsManualPaused(!isManualPaused)}
+                            className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white transition-all pointer-events-auto"
+                            title={isManualPaused ? "Resume Simulation" : "Pause Simulation"}
+                        >
+                            {isManualPaused ? <PlayIconOutline className="w-5 h-5" /> : <PauseIcon className="w-5 h-5" />}
+                        </button>
+
                         {rewards[activeStepIndex] >= 0 && (
                             <button
                                 onClick={() => onIntervene(activeStepIndex)}
@@ -487,7 +585,7 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                                 <ShieldCheckIcon className="w-3.5 h-3.5" /> Sanity Test
                             </button>
                         )}
-                        <div className="flex items-center gap-2 overflow-x-auto max-w-[200px] scrollbar-hide">
+                        <div className="flex items-center gap-2 overflow-x-auto max-w-[150px] scrollbar-hide">
                             {rewards.map((_, i) => (
                                 <div
                                     key={i}

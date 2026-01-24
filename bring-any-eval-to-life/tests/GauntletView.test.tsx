@@ -46,6 +46,12 @@ describe('GauntletView Phase 3 (Glitch & UI)', () => {
         expect(screen.getByText(/Sanity Test/i)).toBeDefined();
     });
 
+    it('renders the "Pause" button during active simulation', () => {
+        render(<GauntletView {...defaultProps} activeStepIndex={0} />);
+        // Checking for button title or text
+        expect(screen.getByTitle(/Pause Simulation/i) || screen.getByText(/Pause/i)).toBeDefined();
+    });
+
     it('does NOT show the intervention modal if the node is already solved', () => {
         render(<GauntletView {...defaultProps} solvedNodes={[1]} />);
         expect(screen.queryByText(/Hallucination Detected/i)).toBeNull();
