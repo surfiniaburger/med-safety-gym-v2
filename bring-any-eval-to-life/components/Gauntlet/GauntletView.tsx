@@ -21,6 +21,14 @@ import {
     PlayIcon as PlayIconOutline
 } from '@heroicons/react/24/outline';
 import { calculateCinematicSpeed, getCameraOffset } from '../../lib-web/camera';
+import { 
+    WARMUP_START_X, 
+    WARMUP_TARGET_X, 
+    WARMUP_PURPLE_RADIUS, 
+    WARMUP_GREEN_RADIUS, 
+    WARMUP_GREEN_ORBIT_RADIUS,
+    WARMUP_GREEN_ORBIT_SPEED 
+} from '../../lib-web/gauntlet-constants';
 
 enum GauntletState {
     WARMUP_ENTRY,
@@ -95,7 +103,7 @@ const WarmupAgents = ({ state }: { state: GauntletState }) => {
         if (state === GauntletState.WARMUP_ENTRY) {
             // Purple model agent enters from far left
             if (purpleRef.current) {
-                purpleRef.current.position.x = THREE.MathUtils.lerp(purpleRef.current.position.x, -10, 0.02);
+                purpleRef.current.position.x = THREE.MathUtils.lerp(purpleRef.current.position.x, WARMUP_TARGET_X, 0.02);
                 purpleRef.current.position.y = Math.sin(time * 2) * 0.5;
             }
         }
@@ -103,9 +111,9 @@ const WarmupAgents = ({ state }: { state: GauntletState }) => {
         if (state === GauntletState.EVALUATION_PULSE || state === GauntletState.TRANSITION) {
             // Green evaluator agent circles the purple one
             if (greenRef.current && purpleRef.current) {
-                const angle = time * 3;
-                greenRef.current.position.x = purpleRef.current.position.x + Math.cos(angle) * 3;
-                greenRef.current.position.z = purpleRef.current.position.z + Math.sin(angle) * 3;
+                const angle = time * WARMUP_GREEN_ORBIT_SPEED;
+                greenRef.current.position.x = purpleRef.current.position.x + Math.cos(angle) * WARMUP_GREEN_ORBIT_RADIUS;
+                greenRef.current.position.z = purpleRef.current.position.z + Math.sin(angle) * WARMUP_GREEN_ORBIT_RADIUS;
                 greenRef.current.position.y = Math.sin(time * 4) * 1;
             }
             // Pulsing evaluation light
@@ -119,8 +127,8 @@ const WarmupAgents = ({ state }: { state: GauntletState }) => {
         <group>
             {/* Purple Model Agent - Only visible during early warmup */}
             {(state === GauntletState.WARMUP_ENTRY || state === GauntletState.EVALUATION_PULSE) && (
-                <group ref={purpleRef} position={[-40, 0, 0]}>
-                    <Sphere args={[0.4, 32, 32]}>
+                <group ref={purpleRef} position={[WARMUP_START_X, 0, 0]}>
+                    <Sphere args={[WARMUP_PURPLE_RADIUS, 32, 32]}>
                         <meshStandardMaterial color="#845ef7" emissive="#845ef7" emissiveIntensity={2} />
                     </Sphere>
                     <pointLight intensity={2} color="#845ef7" distance={10} />
@@ -129,7 +137,7 @@ const WarmupAgents = ({ state }: { state: GauntletState }) => {
             {/* Green Evaluator Agent */}
             {(state === GauntletState.EVALUATION_PULSE || state === GauntletState.TRANSITION) && (
                 <group ref={greenRef}>
-                    <Sphere args={[0.3, 16, 16]}>
+                    <Sphere args={[WARMUP_GREEN_RADIUS, 16, 16]}>
                         <meshStandardMaterial color="#40c057" emissive="#40c057" emissiveIntensity={3} />
                     </Sphere>
                     <pointLight ref={pulseRef} distance={8} color="#40c057" />
