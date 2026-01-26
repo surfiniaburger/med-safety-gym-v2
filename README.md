@@ -504,6 +504,6 @@ The end-to-end flow is as follows:
 1.  **Agent-to-Agent Assessment:** A Green (Evaluator) Agent assesses a Purple (Subject) Agent against a set of clinical tasks.
 2.  **Result Generation:** The system scores the subject's performance, calculating rewards based on correctness, grounding, and the ability to abstain from hallucination. The final output is a JSON "Safety Artifact".
 3.  **Interactive Visualization:** A frontend application fetches these artifacts and uses Gemini to generate a playable, sandboxed clinical simulation based on the data.
-4.  **3D Cinematic Gauntlet:** Simultaneously, the system visualizes the model's reward trajectory as a 3D "Neural Path," allowing for a post-mortem analysis of its decision-making process.
+4.  **3D Cinematic Gauntlet:** The system also visualizes the model's reward trajectory as a 3D "Neural Path," allowing for a post-mortem analysis of its decision-making process.
 
 ![Bring Any Evaluation to Life Flow](docs/visualizations/bring_any_eval_to_life_flow.png)
