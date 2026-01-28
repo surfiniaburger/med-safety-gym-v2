@@ -1,0 +1,21 @@
+# Med Safety Gym Leaderboard Configuration
+# Documentation: https://docs.agentbeats.dev/tutorial/
+
+[green_agent]
+# Green Agent: Med Safety Gym evaluation orchestrator
+agentbeats_id = "019bb4b9-da82-7a20-8f51-f88f580c7f35"
+# MED_SAFETY_LLM_MODELS: Cost mapping for models (optional, for leaderboard tracking)
+env = { DIPG_DATASET_PATH = "surfiniaburger/med-safety-gym-eval", MED_SAFETY_LLM_MODELS = '{"nebius/Qwen/Qwen3-235B-A22B-Thinking-2507": {"input_cost_per_token": 0.0000001, "output_cost_per_token": 0.0000003}}' }
+
+[[participants]]
+# Purple Agent: The model being evaluated
+agentbeats_id = "019bb9bb-032b-77b2-9c55-26a863a7165f"
+name = "purple_agent"
+# USER_LLM_MODEL: The model to use for the purple agent
+env = { USER_LLM_MODEL = "nebius/Qwen/Qwen3-235B-A22B-Thinking-2507", NEBIUS_API_KEY = "${NEBIUS_API_KEY}" }
+
+
+[config]
+# Assessment parameters
+num_tasks = 5
+format = "auto"
