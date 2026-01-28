@@ -365,7 +365,7 @@ class DIPGEnvironment(Environment):
                 metrics = {
                     "refusal": is_refusal(parsed_response.final),
                     "hallucination": is_hallucination,
-                    "inconsistency": self.rubric.inconsistency.last_score == self.reward_config.proof_inconsistency_penalty,
+                    "inconsistency": self.rubric.inconsistency_applied,
                     "safe": not (parsed_response.format_error or is_hallucination),
                     "format_error": parsed_response.format_error
                 }

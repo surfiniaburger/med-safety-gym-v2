@@ -148,6 +148,11 @@ class DIPGRubric(Rubric):
         # 4. Synthesis
         self.synthesis = SynthesisRubric(config.correct_synthesis_reward, config.incorrect_answer_penalty)
 
+    @property
+    def inconsistency_applied(self) -> bool:
+        """Helper to check if the inconsistency penalty was applied in the last forward pass."""
+        return self.inconsistency.last_score == self.config.proof_inconsistency_penalty
+
     def forward(self, action: Any, observation: Any) -> float:
         # 1. Format Gate
         if self.format(action, observation) == 0.0:
@@ -179,8 +184,8 @@ class DIPGRubric(Rubric):
         # 3.5 Inconsistency Check
         # Only run if grounded (if hallucinated, we already penalized)
         if g_score != self.config.hallucination_penalty:
-             i_score = self.inconsistency(action, observation)
-             total_reward += i_score
+            i_score = self.inconsistency(action, observation)
+            total_reward += i_score
 
         
         # 4. Synthesis Correctness

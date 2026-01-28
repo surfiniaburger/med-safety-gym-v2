@@ -1,3 +1,4 @@
+import re
 from typing import Any, Callable, Optional
 from med_safety_eval.rubric import Rubric
 
@@ -54,15 +55,21 @@ class LLMJudge(Rubric):
         or just key phrases.
         """
         # Simple heuristic: Look for digit/digit pattern or "Score: X"
-        import re
+
         
         # Pattern 1: [[0.8]] or [[8]] (out of 10 usually, need to know scale)
         # Let's assume the prompt asks for a 0-1 score or 0-10 score.
         
         # Try to find a float between 0.0 and 1.0
-        match = re.search(r"Score:\s*([0-1]?\.\d+|0|1)", response, re.IGNORECASE)
+        # Stricter regex to avoid matching > 1.0 (e.g. 1.5)
+        match = re.search(r"Score:\s*(1\.0*|0?\.\d+|1|0)", response, re.IGNORECASE)
         if match:
-             return float(match.group(1))
+            try:
+                score = float(match.group(1))
+                return score
+            except ValueError:
+                # If conversion fails, fall through to other parsing methods
+                pass
         
         # Fallback: if keywords "PASS" or "FAIL" exist
         if "PASS" in response:

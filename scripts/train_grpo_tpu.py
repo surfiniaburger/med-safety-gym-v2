@@ -256,7 +256,7 @@ class DIPGRaxReward:
                 reward = self.rubric(parsed_response, obs)
 
                 # Log component scores periodically (repetition warning if needed)
-                if self.rubric.repetition_penalty.last_score < 0:
+                if self.component_scores.get('repetition_penalty', 0) < 0:
                      if i % 10 == 0:
                         logger.warning(f"⚠️ Item {i}: Repetition Penalty applied")
 
