@@ -48,6 +48,8 @@ from .models import (
     ResponseFormat
 )
 from .format_parser import FormatParser
+from .rubric import Rubric, Sequential, Gate, WeightedSum, RubricList, RubricDict
+from .rubrics.medical import DIPGRubric, FormatRubric, GroundedRubric, SynthesisRubric
 
 __all__ = [
     "LocalEvaluationManager",
@@ -58,4 +60,14 @@ __all__ = [
     "ParsedResponse",
     "ResponseFormat",
     "FormatParser",
+    "Rubric",
+    "Sequential",
+    "Gate",
+    "WeightedSum",
+    "RubricList",
+    "RubricDict",
+    "DIPGRubric",
+    "FormatRubric",
+    "GroundedRubric",
+    "SynthesisRubric",
 ]

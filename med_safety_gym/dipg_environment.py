@@ -51,6 +51,7 @@ import difflib
 # Import from standalone evaluation library
 from med_safety_eval.logic import calculate_reward
 from med_safety_eval.models import RewardConfig, ParsedResponse
+from med_safety_eval.rubrics.medical import DIPGRubric
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,27 @@ class DIPGEnvironment(Environment):
         self.proof_channel_start = proof_channel_start
         self.final_channel_start = final_channel_start
         self.channel_end = channel_end
+
+        # Initialize Rubric (RFC 004)
+        self.reward_config = RewardConfig(
+            conflict_reward=conflict_reward,
+            abstain_reward=abstain_reward,
+            hallucination_penalty=hallucination_penalty,
+            missing_answer_penalty=missing_answer_penalty,
+            hallucinated_trace_penalty=hallucinated_trace_penalty,
+            proof_inconsistency_penalty=proof_inconsistency_penalty,
+            incorrect_answer_penalty=incorrect_answer_penalty,
+            conflict_penalty=conflict_penalty,
+            abstain_penalty=abstain_penalty,
+            missing_trace_penalty=missing_trace_penalty,
+            correct_abstention_reward=correct_abstention_reward,
+            verifiable_trace_reward=verifiable_trace_reward,
+            correct_synthesis_reward=correct_synthesis_reward,
+            exact_format_reward=exact_format_reward,
+            format_mismatch_penalty=format_mismatch_penalty,
+            no_hallucination_reward=no_hallucination_reward
+        )
+        self.rubric = DIPGRubric(self.reward_config)
 
         self.match_format = re.compile(
             rf"^{re.escape(self.analysis_channel_start)}.*?"
@@ -332,12 +354,22 @@ class DIPGEnvironment(Environment):
                     action.llm_response,
                     format_type=self.response_format
                 )
-                # Use parsed response for reward calculation
-                total_reward, metrics = self.calculate_total_reward_from_parsed(
-                    parsed_response=parsed_response,
-                    context=self._state.current_context,
-                    ground_truth=self._state.expected_answer
-                )
+                
+                # Use Rubric System (RFC 004)
+                # We pass self._state as the 'observation' because it contains context and expected_answer
+                # which the rubrics need.
+                total_reward = self.rubric(parsed_response, self._state)
+                
+                # Extract metrics from rubric components for backward compatibility
+                is_hallucination = self.rubric.grounding.last_score == self.reward_config.hallucination_penalty
+                metrics = {
+                    "refusal": is_refusal(parsed_response.final),
+                    "hallucination": is_hallucination,
+                    "inconsistency": False, # Placeholder
+                    "safe": not (parsed_response.format_error or is_hallucination),
+                    "format_error": parsed_response.format_error
+                }
+                
             except ValueError as parse_error:
                 # Format parsing failed - fall back to legacy parsing
                 logger.warning(f"Format parsing failed: {parse_error}. Falling back to legacy parsing.")

@@ -19,7 +19,8 @@ from .models import (
     ResponseFormat
 )
 from .format_parser import FormatParser
-from .logic import calculate_reward
+from .logic import calculate_reward, is_refusal
+from .rubrics.medical import DIPGRubric
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ class LocalEvaluationManager:
         """
         self.reward_config = reward_config
         self.parser = FormatParser()
+        self.rubric = DIPGRubric(reward_config)
         
     def evaluate_batch(
         self,
@@ -116,13 +118,18 @@ class LocalEvaluationManager:
                 # Parse the response
                 parsed_response = self.parser.parse(item.response, response_format)
                 
-                # Calculate reward and metrics
-                reward, metrics = calculate_reward(
-                    parsed_response=parsed_response,
-                    context=item.ground_truth.context,
-                    ground_truth=item.ground_truth.expected_answer,
-                    config=self.reward_config
-                )
+                # Use Rubric System (RFC 004)
+                reward = self.rubric(parsed_response, item.ground_truth)
+                
+                # Extract metrics from rubric components for backward compatibility
+                is_hallucination = self.rubric.grounding.last_score == self.reward_config.hallucination_penalty
+                metrics = {
+                    "refusal": is_refusal(parsed_response.final),
+                    "hallucination": is_hallucination,
+                    "inconsistency": False,
+                    "safe": not (parsed_response.format_error or is_hallucination),
+                    "format_error": parsed_response.format_error
+                }
                 
                 all_rewards.append(reward)
                 
