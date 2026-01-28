@@ -99,7 +99,7 @@ class Sequential(Rubric):
         score = 0.0
         for child in self.children():
             score = child(action, observation)
-            if score == 0.0:
+            if score <= 0.0:
                 return 0.0
         return score
 

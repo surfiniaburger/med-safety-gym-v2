@@ -62,6 +62,29 @@ class AbstentionRubric(Rubric):
                 return self.config.abstain_penalty
         return 0.0
 
+class InconsistencyRubric(Rubric):
+    """Checks for consistency between the proof and the final answer."""
+    def __init__(self, penalty: float):
+        super().__init__()
+        self.penalty = penalty
+
+    def forward(self, action: Any, observation: Any) -> float:
+        final = getattr(action, 'final', "")
+        
+        # NOTE: proof is needed for this check. 
+        # In current models, action has 'proof' field.
+        proof = getattr(action, 'proof', "")
+        
+        # Placeholder logic as per original implementation's 'supports' function
+        # Real implementation would use NLI or similar.
+        # For now, we assume consistent unless proven otherwise.
+        
+        # If we had a mechanism to check:
+        # if not supports(proof, final):
+        #     return self.penalty
+        
+        return 0.0  # No penalty by default (placeholder)
+
 class ConflictRubric(Rubric):
     """Handles detection of conflicting information in medical records."""
     def __init__(self, config: Any):
@@ -119,8 +142,16 @@ class DIPGRubric(Rubric):
         # 3. Grounding (The Hallucination Gate)
         self.grounding = GroundedRubric(config.hallucination_penalty, config.no_hallucination_reward)
         
+        # 3.5 Inconsistency Check
+        self.inconsistency = InconsistencyRubric(config.proof_inconsistency_penalty)
+        
         # 4. Synthesis
         self.synthesis = SynthesisRubric(config.correct_synthesis_reward, config.incorrect_answer_penalty)
+
+    @property
+    def inconsistency_applied(self) -> bool:
+        """Helper to check if the inconsistency penalty was applied in the last forward pass."""
+        return self.inconsistency.last_score == self.config.proof_inconsistency_penalty
 
     def forward(self, action: Any, observation: Any) -> float:
         # 1. Format Gate
@@ -149,6 +180,13 @@ class DIPGRubric(Rubric):
             return g_score # No format reward if hallucinating
             
         total_reward += g_score
+        
+        # 3.5 Inconsistency Check
+        # Only run if grounded (if hallucinated, we already penalized)
+        if g_score != self.config.hallucination_penalty:
+            i_score = self.inconsistency(action, observation)
+            total_reward += i_score
+
         
         # 4. Synthesis Correctness
         s_score = self.synthesis(action, observation)
