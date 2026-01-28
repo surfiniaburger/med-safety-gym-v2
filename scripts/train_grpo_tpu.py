@@ -184,18 +184,29 @@ class DIPGRaxReward:
 
             # Initialize Rubric
             from med_safety_eval.rubrics.medical import DIPGRubric
+            from med_safety_eval.rubrics.text_quality import LengthPenaltyRubric, RepetitionPenaltyRubric
+            
             self.rubric = DIPGRubric(self.reward_config)
+            
+            # Composition: Add text quality checks
+            # We treat them as part of the overall rubric system now
+            self.rubric.length_penalty = LengthPenaltyRubric(max_words=450, penalty=-10.0)
+            self.rubric.repetition_penalty = RepetitionPenaltyRubric(min_line_length=15, penalty=-5.0)
+            
             self.parser = FormatParser()
             
             # Observability: Track component scores
+            # Observability: Track component scores
             self.component_scores = {}
-            def log_hook(rubric, action, obs, score):
-                name = next(n for n, r in self.rubric.named_rubrics() if r is rubric)
-                if name: # Only log named children
+            
+            def create_log_hook(name):
+                def log_hook(rubric, action, obs, score):
                     self.component_scores[name] = score
+                return log_hook
 
-            for _, r in self.rubric.named_rubrics():
-                r.register_forward_hook(log_hook)
+            for name, r in self.rubric.named_rubrics():
+                if name: # Only log named children
+                    r.register_forward_hook(create_log_hook(name))
 
             self.__name__ = "dipg_reward" 
             logger.info("✓ Reward Function Initialized (Rubric Mode)")
@@ -221,13 +232,13 @@ class DIPGRaxReward:
             context = gt_data.get("context", "")
             expected_final = gt_data.get("final", "")
             
-            # Mock observation for rubric
-            class MockObs:
-                def __init__(self, c, f):
-                    self.context = c
-                    self.expected_answer = {"final": f}
-            
-            obs = MockObs(context, expected_final)
+            # Create GroundTruth for rubric (reusing existing model)
+            from med_safety_eval.models import GroundTruth
+            obs = GroundTruth(
+                context=context,
+                question="", # Not used by rubric
+                expected_answer={"final": expected_final}
+            )
             
             try:
                 # 1. Parse the XML structure
@@ -235,20 +246,18 @@ class DIPGRaxReward:
                     completion,
                     format_type=ResponseFormat.AUTO
                 )
+                # Ensure original_response is set for length/repetition checks
+                if not parsed_response.original_response:
+                    parsed_response.original_response = completion
                 
                 # 2. Calculate Reward using Rubric System
+                # Note: valid_rubric includes the new length/repetition checks automatically
+                # because we attached them as children of self.rubric!
                 reward = self.rubric(parsed_response, obs)
 
-                # 3. REPETITION & LENGTH PENALTY
-                word_count = len(completion.split())
-                if word_count > 450:
-                    reward -= 10.0
-                
-                # Penalty for duplicate lines (Infinite math logic)
-                lines = [l.strip() for l in completion.split('\n') if len(l.strip()) > 15]
-                if len(lines) != len(set(lines)):
-                    reward -= 5.0
-                    if i % 10 == 0:
+                # Log component scores periodically (repetition warning if needed)
+                if self.rubric.repetition_penalty.last_score < 0:
+                     if i % 10 == 0:
                         logger.warning(f"⚠️ Item {i}: Repetition Penalty applied")
 
                 # Log component scores periodically
