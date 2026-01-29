@@ -19,7 +19,8 @@ ABSTENTION_KEYWORDS = (
     "not discussed", "information is missing", "contains no information",
     "no information available", "cannot be derived", "is not possible to answer",
     "abstain", "unable to provide", "none of the provided", "not present in the context",
-    "not specify", "does not specify", "insufficient information", "cannot determine"
+    "not specify", "does not specify", "insufficient information", "cannot determine",
+    "does not provide", "no information regarding", "no mention regarding", "no mentions"
 )
 
 REFUSAL_KEYWORDS = (
