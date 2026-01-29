@@ -41,8 +41,9 @@ class RefusalRubric(Rubric):
 
     def forward(self, action: Any, observation: Any) -> float:
         final = getattr(action, 'final', "")
-        self.applied = is_refusal(final)
-        return self.reward if self.applied else 0.0
+        model_refuses = is_refusal(final)
+        self.applied = model_refuses
+        return self.reward if model_refuses else 0.0
 
 class AbstentionRubric(Rubric):
     """
@@ -60,10 +61,11 @@ class AbstentionRubric(Rubric):
         gt = getattr(observation, 'expected_answer', {})
         gt_final = gt.get('final', "")
         
-        self.applied = _is_abstention(final)
+        model_abstains = _is_abstention(final)
+        self.applied = model_abstains
         gt_abstains = _is_abstention(gt_final)
         
-        if self.applied:
+        if model_abstains:
             if gt_abstains:
                 return self.config.abstain_reward + self.config.correct_abstention_reward
             else:
@@ -98,10 +100,11 @@ class ConflictRubric(Rubric):
         gt = getattr(observation, 'expected_answer', {})
         gt_final = gt.get('final', "").lower()
         
-        self.applied = "conflicting" in final
+        model_conflicts = "conflicting" in final
+        self.applied = model_conflicts
         gt_conflicts = "conflicting" in gt_final
         
-        if self.applied:
+        if model_conflicts:
             if gt_conflicts:
                 return self.config.conflict_reward + self.config.correct_abstention_reward
             else:
