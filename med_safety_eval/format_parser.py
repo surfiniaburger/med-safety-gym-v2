@@ -21,7 +21,7 @@ class FormatParser:
         self.tag_aliases = {
             "analysis": ["think", "analysis", "reasoning", "thought"],
             "proof": ["proof", "trace", "evidence", "quote"],
-            "final": ["answer", "final", "conclusion", "result"],
+            "final": ["answer", "final", "conclusion", "result", "final_answer"],
         }
         
         # Shared template for XML-like tag extraction
@@ -79,17 +79,15 @@ class FormatParser:
         if format_type == ResponseFormat.AUTO:
             format_type = self._detect_format(response_text)
 
-        if format_type == ResponseFormat.CUSTOM_TAGS:
-            return self._parse_custom_tags_legacy(response_text)
-        elif format_type in [ResponseFormat.XML]:
-            return self._parse_xml_tags(response_text)
-        elif format_type == ResponseFormat.JSON:
-            return self._parse_json(response_text)
-        elif format_type == ResponseFormat.YAML:
-            return self._parse_yaml(response_text)
+        parser_map = {
+            ResponseFormat.CUSTOM_TAGS: self._parse_custom_tags,
+            ResponseFormat.XML: self._parse_xml,
+            ResponseFormat.JSON: self._parse_json,
+            ResponseFormat.YAML: self._parse_yaml,
+        }
         
-        # Fallback to XML tags
-        return self._parse_xml_tags(response_text)
+        parser_func = parser_map.get(format_type, self._parse_xml)
+        return parser_func(response_text, original_response=response_text)
 
     def _detect_format(self, response: str) -> ResponseFormat:
         """Auto-detect the format of the response"""
@@ -103,18 +101,18 @@ class FormatParser:
         if response_stripped.startswith('{') or '```json' in response_stripped.lower() or (response_stripped.startswith('```') and '{' in response_stripped):
             return ResponseFormat.JSON
         
-        # Check for YAML (has key: value structure for required fields)
-        if all(field in response_stripped for field in ['analysis:', 'proof:', 'final:']) or '```yaml' in response_stripped.lower():
-            return ResponseFormat.YAML
-
         # Check for XML/Custom Tags (contains closing tags)
         if '</' in response_stripped and '>' in response_stripped:
              return ResponseFormat.XML
+
+        # Check for YAML (has key: value structure for required fields)
+        if all(field in response_stripped for field in ['analysis:', 'proof:', 'final:']) or '```yaml' in response_stripped.lower():
+            return ResponseFormat.YAML
         
         # Default to XML tags
         return ResponseFormat.XML
 
-    def _parse_xml_tags(self, response_text: str) -> ParsedResponse:
+    def _parse_xml(self, response_text: str, original_response: str = "") -> ParsedResponse:
         """
         Parses a response expected to contain XML-like tags.
         
@@ -162,15 +160,15 @@ class FormatParser:
                         analysis=extracted.get("analysis"),
                         proof=extracted.get("proof"),
                         final=remaining_text,
-                        original_response=response_text,
+                        original_response=original_response or response_text,
                         format_error=False,
                     )
 
             return ParsedResponse(
                 analysis=extracted.get("analysis"),
                 proof=extracted.get("proof"),
-                final=f"FORMAT_ERROR: Missing <answer> tag and no text after other tags. Original response: {response_text}",
-                original_response=response_text,
+                final=f"FORMAT_ERROR: Missing <answer> tag and no text after other tags. Original response: {original_response or response_text}",
+                original_response=original_response or response_text,
                 format_error=True,
             )
 
@@ -178,11 +176,11 @@ class FormatParser:
             analysis=extracted.get("analysis"),
             proof=extracted.get("proof"),
             final=extracted["final"],
-            original_response=response_text,
+            original_response=original_response or response_text,
             format_error=False,
         )
 
-    def _parse_custom_tags_legacy(self, response_text: str) -> ParsedResponse:
+    def _parse_custom_tags(self, response_text: str, original_response: str = "") -> ParsedResponse:
         """
         Parses a response using the legacy <|channel|> format.
         """
@@ -200,8 +198,8 @@ class FormatParser:
             return ParsedResponse(
                 analysis=analysis,
                 proof=proof,
-                final=f"FORMAT_ERROR: Missing final channel in custom tags. Original: {response_text}",
-                original_response=response_text,
+                final=f"FORMAT_ERROR: Missing final channel in custom tags. Original: {original_response or response_text}",
+                original_response=original_response or response_text,
                 format_error=True
             )
 
@@ -209,11 +207,11 @@ class FormatParser:
             analysis=analysis,
             proof=proof,
             final=final,
-            original_response=response_text,
+            original_response=original_response or response_text,
             format_error=False
         )
 
-    def _parse_json(self, response_text: str) -> ParsedResponse:
+    def _parse_json(self, response_text: str, original_response: str = "") -> ParsedResponse:
         """Parses a JSON response with robustness improvements."""
         cleaned_response = response_text.strip()
         
@@ -246,8 +244,8 @@ class FormatParser:
                 return ParsedResponse(
                     analysis=normalized.get('analysis'),
                     proof=normalized.get('proof'),
-                    final=f"FORMAT_ERROR: Missing final answer in JSON. Original: {response_text}",
-                    original_response=response_text,
+                    final=f"FORMAT_ERROR: Missing final answer in JSON. Original: {original_response or response_text}",
+                    original_response=original_response or response_text,
                     format_error=True
                 )
 
@@ -255,17 +253,17 @@ class FormatParser:
                 analysis=normalized.get('analysis'),
                 proof=normalized.get('proof'),
                 final=str(normalized['final']),
-                original_response=response_text,
+                original_response=original_response or response_text,
                 format_error=False
             )
         except Exception as e:
             return ParsedResponse(
                 final=f"FORMAT_ERROR: JSON parse failed: {str(e)}",
-                original_response=response_text,
+                original_response=original_response or response_text,
                 format_error=True
             )
 
-    def _parse_yaml(self, response_text: str) -> ParsedResponse:
+    def _parse_yaml(self, response_text: str, original_response: str = "") -> ParsedResponse:
         """Parses a YAML response."""
         try:
             data = yaml.safe_load(response_text.strip())
@@ -290,8 +288,8 @@ class FormatParser:
                 return ParsedResponse(
                     analysis=normalized.get('analysis'),
                     proof=normalized.get('proof'),
-                    final=f"FORMAT_ERROR: Missing final answer in YAML. Original: {response_text}",
-                    original_response=response_text,
+                    final=f"FORMAT_ERROR: Missing final answer in YAML. Original: {original_response or response_text}",
+                    original_response=original_response or response_text,
                     format_error=True
                 )
 
@@ -299,12 +297,12 @@ class FormatParser:
                 analysis=normalized.get('analysis'),
                 proof=normalized.get('proof'),
                 final=str(normalized['final']),
-                original_response=response_text,
+                original_response=original_response or response_text,
                 format_error=False
             )
         except Exception as e:
             return ParsedResponse(
                 final=f"FORMAT_ERROR: YAML parse failed: {str(e)}",
-                original_response=response_text,
+                original_response=original_response or response_text,
                 format_error=True
             )

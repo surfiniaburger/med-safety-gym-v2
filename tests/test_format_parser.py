@@ -53,19 +53,18 @@ class TestFormatParser:
     def test_parse_json_invalid_syntax(self, parser):
         """Test parsing invalid JSON syntax"""
         invalid_json = '{"analysis": "test", "proof": "test"'  # Missing closing brace
-        
-        with pytest.raises(ValueError, match="Invalid JSON"):
-            parser.parse(invalid_json, ResponseFormat.JSON)
+        # Should now return FORMAT_ERROR instead of raising
+        result = parser.parse(invalid_json, ResponseFormat.JSON)
+        assert "FORMAT_ERROR" in result.final
     
     def test_parse_json_missing_field(self, parser):
         """Test parsing JSON with missing required field"""
         incomplete_json = '{"analysis": "test", "proof": "test"}'  # Missing 'final'
-        
-        # Should now succeed with empty final
+        # Should now succeed with error message in final
         result = parser.parse(incomplete_json, ResponseFormat.JSON)
         assert result.analysis == "test"
         assert result.proof == "test"
-        assert result.final == ""
+        assert "FORMAT_ERROR" in result.final
     
     def test_parse_json_empty_field(self, parser):
         """Test parsing JSON with empty field"""
@@ -129,9 +128,9 @@ class TestFormatParser:
         assert isinstance(result, DIPGResponse)
         # It should extract analysis since the tag is technically closed </analysis> (regex pattern)
         assert result.analysis == "test"
-        # Others should be empty
+        # Others should be empty (or error if final)
         assert result.proof == ""
-        assert result.final == ""
+        assert "FORMAT_ERROR" in result.final
 
     def test_parse_xml_with_placeholders_in_think_block(self, parser):
         """Tests that the parser correctly ignores placeholder tags inside a think block."""
@@ -317,11 +316,11 @@ test
 test
 <|end|>'''  # Missing 'final' channel
 
-        # Should now succeed with empty final
+        # Should now succeed with error message in final
         result = parser.parse(incomplete_custom, ResponseFormat.CUSTOM_TAGS)
         assert result.analysis == "test"
         assert result.proof == "test"
-        assert result.final == ""
+        assert "FORMAT_ERROR" in result.final
     
     # ==================================================================================
     # Auto-Detection Tests

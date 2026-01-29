@@ -29,12 +29,33 @@ REFUSAL_KEYWORDS = (
 
 
 def _clean_for_matching(text: str) -> str:
-    """Helper to remove markdown, quotes, and bullets to allow for robust matching."""
+    """
+    Helper to remove markdown, quotes, symbols, and normalize whitespace
+    to allow for robust matching across different character sets.
+    """
     if not text: return ""
-    # Remove quotes, various hyphens (including non-breaking \u2011), and bullets
-    text = re.sub(r'[\"\'\-\u2011\*•]', '', text)
-    # Collapse all whitespace characters (including non-breaking spaces \u202f)
-    return " ".join(text.split()).lower()
+    
+    # 1. Normalize Unicode symbols to common ASCII-ish equivalents
+    replacements = {
+        r'[\"\'\’\‘\”\“]': '',           # Quotes
+        r'[\-\u2011\u2013\u2014\u00ad]': '', # All types of hyphens/dashes
+        r'[\*\•\·]': '',                 # Bullets
+        r'\u2265': '>=',                 # Greater than or equal
+        r'\u2264': '<=',                 # Less than or equal
+        r'\u2260': '!=',                 # Not equal
+        r'\u2248': '~',                  # Approximately equal
+        r'\u00b1': '+/-',                # Plus-minus
+        r'\u2026': '...',                # Ellipsis
+        r'\u00b0': ' degrees',           # Degree symbol
+    }
+    
+    text = text.lower()
+    for pattern, replacement in replacements.items():
+        text = re.sub(pattern, replacement, text)
+    
+    # 2. Collapse all whitespace (including Unicode NBSP, etc.)
+    # \s in modern regex handles many Unicode spaces, but we use split/join for safety
+    return " ".join(text.split()).strip()
 
 def calculate_reward(
     parsed_response: "ParsedResponse",
@@ -216,30 +237,39 @@ def is_correct_abstention(final_text: str, ground_truth_final: str) -> bool:
 
 
 def is_correct_synthesis(final_text: str, ground_truth_final: str) -> bool:
-    """Fuzzy matching for medical answers (e.g., '30%' vs '30 percent')."""
-    gt_cleaned = ground_truth_final.strip()
-    final_cleaned = final_text.strip().lower()
+    """
+    Fuzzy matching for medical answers (e.g., '30%' vs '30 percent').
+    Implements bidirectional matching to handle concise model responses.
+    """
+    gt_cleaned = _clean_for_matching(ground_truth_final)
+    final_cleaned = _clean_for_matching(final_text)
     
     # Strip XML from GT if present (e.g., <answer>54 Gy</answer> -> 54 Gy)
-    gt_match = re.search(r'<answer>(.*?)</answer>', gt_cleaned, re.DOTALL | re.IGNORECASE)
-    if gt_match:
-        gt_cleaned = gt_match.group(1).strip()
+    gt_xml_match = re.search(r'<answer>(.*?)</answer>', gt_cleaned, re.DOTALL | re.IGNORECASE)
+    if gt_xml_match:
+        gt_cleaned = _clean_for_matching(gt_xml_match.group(1))
     
-    gt_lower = gt_cleaned.lower()
-    
-    # 1. Exact match (case insensitive)
-    if final_cleaned == gt_lower:
+    if not gt_cleaned or not final_cleaned:
+        return False
+
+    # 1. Exact match (post-normalization)
+    if final_cleaned == gt_cleaned:
         return True
     
-    # 2. Substring match for verbose models:
+    # 2. Bidirectional Substring Match
     # If the ground truth is a distinct part of the model's answer, it's correct.
+    # OR if the model's answer is a distinct part of the ground truth (concise answer).
     # We use word boundary matching to avoid partial word matches.
-    if len(gt_lower) > 2:
-        if re.search(rf"\b{re.escape(gt_lower)}\b", final_cleaned):
+    if len(gt_cleaned) > 2 and len(final_cleaned) > 2:
+        # Model provides more detail than needed
+        if re.search(rf"\b{re.escape(gt_cleaned)}\b", final_cleaned):
+            return True
+        # Model is concise (Answer is a keyword/phrase in GT)
+        if re.search(rf"\b{re.escape(final_cleaned)}\b", gt_cleaned):
             return True
 
     # 3. Fuzzy similarity (difflib)
-    return _get_max_similarity(gt_lower, final_cleaned) >= 0.80
+    return _get_max_similarity(gt_cleaned, final_cleaned) >= 0.80
 
 
 def is_refusal(final_text: str) -> bool:
