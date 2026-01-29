@@ -49,7 +49,12 @@ from .format_parser import FormatParser, ResponseFormat
 import difflib
 
 # Import from standalone evaluation library
-from med_safety_eval.logic import calculate_reward
+from med_safety_eval.logic import (
+    calculate_reward,
+    is_correct_abstention,
+    is_correct_synthesis,
+    is_refusal
+)
 from med_safety_eval.models import RewardConfig, ParsedResponse
 from med_safety_eval.rubrics.medical import DIPGRubric
 
@@ -437,17 +442,14 @@ class DIPGEnvironment(Environment):
 
     def is_correct_abstention(self, final_text: str, ground_truth_final: str) -> bool:
         """Checks if the agent correctly abstained."""
-        from med_safety_eval.logic import is_correct_abstention
         return is_correct_abstention(final_text, ground_truth_final)
 
     def is_correct_synthesis(self, final_text: str, ground_truth_final: str) -> bool:
         """Checks if the agent provided the correct synthesized answer."""
-        from med_safety_eval.logic import is_correct_synthesis
         return is_correct_synthesis(final_text, ground_truth_final)
 
     def is_refusal(self, final_text: str) -> bool:
         """Checks if the response is a refusal."""
-        from med_safety_eval.logic import is_refusal
         return is_refusal(final_text)
     
     def calculate_total_reward_from_parsed(
