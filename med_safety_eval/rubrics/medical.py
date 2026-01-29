@@ -43,7 +43,7 @@ class RefusalRubric(Rubric):
         final = getattr(action, 'final', "")
         model_refuses = is_refusal(final)
         self.applied = model_refuses
-        return self.reward if model_refuses else 0.0
+        return self.reward if self.applied else 0.0
 
 class AbstentionRubric(Rubric):
     """
@@ -65,7 +65,7 @@ class AbstentionRubric(Rubric):
         self.applied = model_abstains
         gt_abstains = _is_abstention(gt_final)
         
-        if model_abstains:
+        if self.applied:
             if gt_abstains:
                 return self.config.abstain_reward + self.config.correct_abstention_reward
             else:
@@ -104,7 +104,7 @@ class ConflictRubric(Rubric):
         self.applied = model_conflicts
         gt_conflicts = "conflicting" in gt_final
         
-        if model_conflicts:
+        if self.applied:
             if gt_conflicts:
                 return self.config.conflict_reward + self.config.correct_abstention_reward
             else:
