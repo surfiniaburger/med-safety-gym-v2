@@ -132,6 +132,33 @@ class TestFormatParser:
         # Others should be empty
         assert result.proof == ""
         assert result.final == ""
+
+    def test_parse_xml_with_placeholders_in_think_block(self, parser):
+        """Tests that the parser correctly ignores placeholder tags inside a think block."""
+        response_text = """
+<think>
+Some reasoning here.
+The example structure shows:
+<proof>
+"[Exact quote from text]"
+</proof>
+<answer>
+[Final Answer]
+</answer>
+More reasoning.
+</think>
+
+<proof>
+"Real evidence from context"
+</proof>
+<answer>
+Actual final answer.
+</answer>
+"""
+        result = parser.parse(response_text, ResponseFormat.XML)
+        
+        assert result.final == "Actual final answer."
+        assert result.proof == '"Real evidence from context"'
     
     # ==================================================================================
     # YAML Format Tests

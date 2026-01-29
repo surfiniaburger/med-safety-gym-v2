@@ -171,14 +171,16 @@ class FormatParser:
             # Try each tag alias
             for tag in tags:
                 # Regex for <tag>CONTENT</tag> or <tag attr="...">CONTENT</tag>
-                # Using dotall to capture newlines
                 pattern = f"<{tag}(?:\\s+[^>]*)?>(.*?)</{tag}>"
-                matches = re.findall(pattern, cleaned_response, re.IGNORECASE | re.DOTALL)
-                if matches:
-                    # Join all occurrences (e.g. multiple proofs)
-                    # Use a space if it's single line, or newline if multiline? 
-                    # Generally newline separation is safer for proofs.
-                    return "\n".join(m.strip() for m in matches if m.strip())
+                
+                # ROBUSTNESS IMPROVEMENT: Take the LAST match to avoid placeholder extraction
+                # from thinking blocks.
+                last_match = None
+                for m in re.finditer(pattern, cleaned_response, re.IGNORECASE | re.DOTALL):
+                    last_match = m
+                
+                if last_match:
+                    return last_match.group(1).strip()
             return ""
 
         # Map aliases

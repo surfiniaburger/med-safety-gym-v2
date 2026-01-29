@@ -114,18 +114,17 @@ class FormatParser:
         """
         extracted: Dict[str, Optional[str]] = {}
         for key, pattern in self.tag_patterns.items():
-            matches = list(pattern.finditer(response_text))
-            if matches:
-                # ROBUSTNESS IMPROVEMENT: 
-                # For proof and final, take the LAST occurrence. This prevents extracting 
-                # placeholder tags that might be mentioned as examples in the thinking block.
-                # For analysis (think), take the FIRST occurrence (usually the primary block).
-                if key == "analysis":
-                    extracted[key] = matches[0].group(1).strip()
-                else:
-                    extracted[key] = matches[-1].group(1).strip()
+            if key == "analysis":
+                # For analysis/think, we only need the first match
+                match = pattern.search(response_text)
+                extracted[key] = match.group(1).strip() if match else None
             else:
-                extracted[key] = None
+                # For proof and final, we take the LAST match to avoid placeholder extraction
+                # Iterating through matches without converting to a list is more memory efficient
+                last_match = None
+                for m in pattern.finditer(response_text):
+                    last_match = m
+                extracted[key] = last_match.group(1).strip() if last_match else None
 
         # The 'final' answer is mandatory.
         if extracted.get("final") is None:
