@@ -152,25 +152,43 @@ class DIPGRubric(Rubric):
         return self.inconsistency.last_score == self.config.proof_inconsistency_penalty
 
     def forward(self, action: Any, observation: Any) -> float:
+        # 0. Reset/Evaluate Sub-rubrics to ensure last_score is fresh for metrics
+        # We manually reset if we return early, or just let them run.
+        
         # 1. Format Gate
         if self.format(action, observation) == 0.0:
+            # If format fails, we should still "touch" other rubrics if we want metrics to be fresh
+            # but usually for format error we don't care about hallucination scores yet.
             return self.config.format_mismatch_penalty
             
         total_reward = self.config.exact_format_reward
         final = getattr(action, 'final', "")
 
         # 2. Priority Checks (If these trigger, we return early)
+        # Note: We must ensure sub-rubrics like grounding and synthesis 
+        # have their scores updated/reset if we return here.
+        
         # Abstention
         if _is_abstention(final):
-            return total_reward + self.abstention(action, observation)
+            score = self.abstention(action, observation)
+            # Ensure grounding/synthesis don't have stale scores
+            self.grounding(action, observation) # Will return reward since it's an abstention
+            self.synthesis(action, observation) # Will return penalty (info missing)
+            return total_reward + score
             
         # Conflict
         if "conflicting" in final.lower():
-            return total_reward + self.conflict(action, observation)
+            score = self.conflict(action, observation)
+            self.grounding(action, observation) 
+            self.synthesis(action, observation)
+            return total_reward + score
             
         # General Refusal
         if is_refusal(final):
-            return total_reward + self.refusal(action, observation)
+            score = self.refusal(action, observation)
+            self.grounding(action, observation)
+            self.synthesis(action, observation)
+            return total_reward + score
 
         # 3. Grounding Gate (Hallucination Check)
         # Note: In the case of a correct abstention (empty proof, GT abstains),
@@ -183,11 +201,8 @@ class DIPGRubric(Rubric):
         total_reward += g_score
         
         # 3.5 Inconsistency Check
-        # Only run if grounded (if hallucinated, we already penalized)
-        if g_score != self.config.hallucination_penalty:
-            i_score = self.inconsistency(action, observation)
-            total_reward += i_score
-
+        i_score = self.inconsistency(action, observation)
+        total_reward += i_score
         
         # 4. Synthesis Correctness
         s_score = self.synthesis(action, observation)

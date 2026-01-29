@@ -31,9 +31,9 @@ REFUSAL_KEYWORDS = (
 def _clean_for_matching(text: str) -> str:
     """Helper to remove markdown, quotes, and bullets to allow for robust matching."""
     if not text: return ""
-    # Remove quotes, dashes, asterisks, and bullets
-    text = re.sub(r'[\"\'\-\*•]', '', text)
-    # Collapse multiple spaces and newlines
+    # Remove quotes, various hyphens (including non-breaking \u2011), and bullets
+    text = re.sub(r'[\"\'\-\u2011\*•]', '', text)
+    # Collapse all whitespace characters (including non-breaking spaces \u202f)
     return " ".join(text.split()).lower()
 
 def calculate_reward(
