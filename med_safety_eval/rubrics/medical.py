@@ -173,11 +173,11 @@ class DIPGRubric(Rubric):
             return total_reward + self.refusal(action, observation)
 
         # 3. Grounding Gate (Hallucination Check)
+        # Note: In the case of a correct abstention (empty proof, GT abstains),
+        # GroundedRubric returns a reward, so this gate is correctly passed.
+        # If g_score is the hallucination penalty, we return early.
         g_score = self.grounding(action, observation)
         if g_score == self.config.hallucination_penalty:
-            # Special case: if proof is missing but it was a verified GT abstention,
-            # GroundedRubric now returns reward, so we don't return early.
-            # But we still want to be careful.
             return g_score # No format reward if hallucinating
             
         total_reward += g_score
