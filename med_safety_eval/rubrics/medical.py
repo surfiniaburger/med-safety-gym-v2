@@ -167,20 +167,17 @@ class DIPGRubric(Rubric):
         # 2. Priority Checks (If these trigger, we return early)
         # Note: We must ensure sub-rubrics like grounding and synthesis 
         # have their scores updated/reset if we return here.
-        score = 0.0
-        early_return = False
+        priority_check_rubric = None
         
         if _is_abstention(final):
-            score = self.abstention(action, observation)
-            early_return = True
+            priority_check_rubric = self.abstention
         elif "conflicting" in final.lower():
-            score = self.conflict(action, observation)
-            early_return = True
+            priority_check_rubric = self.conflict
         elif is_refusal(final):
-            score = self.refusal(action, observation)
-            early_return = True
+            priority_check_rubric = self.refusal
             
-        if early_return:
+        if priority_check_rubric:
+            score = priority_check_rubric(action, observation)
             # Ensure grounding/synthesis don't have stale scores
             self.grounding(action, observation)
             self.synthesis(action, observation)
