@@ -111,29 +111,49 @@ class FormatParser:
     def _parse_xml_tags(self, response_text: str) -> ParsedResponse:
         """
         Parses a response expected to contain XML-like tags.
+        
+        This implementation uses a 'Thought-Stripping' strategy:
+        1. Extract the first thinking/analysis block.
+        2. Remove all thinking blocks from the text to prevent extracting nested examples.
+        3. Extract proof and final answer from the sanitized text.
         """
         extracted: Dict[str, Optional[str]] = {}
-        for key, pattern in self.tag_patterns.items():
-            if key == "analysis":
-                # For analysis/think, we only need the first match
-                match = pattern.search(response_text)
-                extracted[key] = match.group(1).strip() if match else None
+        
+        # 1. Extract analysis (thought) from the original text (first match)
+        analysis_pattern = self.tag_patterns["analysis"]
+        analysis_match = analysis_pattern.search(response_text)
+        extracted["analysis"] = analysis_match.group(1).strip() if analysis_match else None
+        
+        # 2. Strip ALL thinking blocks from the text to prevent nesting issues
+        # Using a list of matches allows us to safely remove them without index shifts
+        sanitized_text = response_text
+        for m in analysis_pattern.finditer(response_text):
+            sanitized_text = sanitized_text.replace(m.group(0), "")
+            
+        # 3. Extract other tags from the sanitized text
+        for key in ["proof", "final"]:
+            pattern = self.tag_patterns[key]
+            if key == "proof":
+                # RESTORE AGGREGATION: Collect all valid occurrences of proof
+                # This ensures we don't regress if multiple proofs are provided.
+                matches = [m.group(1).strip() for m in pattern.finditer(sanitized_text) if m.group(1).strip()]
+                extracted[key] = "\n".join(matches) if matches else None
             else:
-                # For proof and final, we take the LAST match to avoid placeholder extraction
-                # Iterating through matches without converting to a list is more memory efficient
+                # ROBUSTNESS: For the final answer, still take the LAST occurrence 
+                # in the sanitized text as a safety against multi-stage logic.
                 last_match = None
-                for m in pattern.finditer(response_text):
+                for m in pattern.finditer(sanitized_text):
                     last_match = m
                 extracted[key] = last_match.group(1).strip() if last_match else None
 
         # The 'final' answer is mandatory.
         if extracted.get("final") is None:
             # ROBUSTNESS FALLBACK: If <answer> is missing, look for text after the last closed tag
-            # Models often forget the final tag but provide the text.
-            last_tag_match = list(self.fallback_closing_tag_pattern.finditer(response_text))
+            # in the SANITIZED text (which now excludes thoughts).
+            last_tag_match = list(self.fallback_closing_tag_pattern.finditer(sanitized_text))
             if last_tag_match:
                 last_pos = last_tag_match[-1].end()
-                remaining_text = response_text[last_pos:].strip()
+                remaining_text = sanitized_text[last_pos:].strip()
                 if remaining_text and len(remaining_text) > 2:
                     return ParsedResponse(
                         analysis=extracted.get("analysis"),
@@ -146,9 +166,9 @@ class FormatParser:
             return ParsedResponse(
                 analysis=extracted.get("analysis"),
                 proof=extracted.get("proof"),
-                final=remaining_text if remaining_text and len(remaining_text) > 2 else f"FORMAT_ERROR: Missing <answer> tag and no text after other tags. Original response: {response_text}",
+                final=f"FORMAT_ERROR: Missing <answer> tag and no text after other tags. Original response: {response_text}",
                 original_response=response_text,
-                format_error=False if remaining_text and len(remaining_text) > 2 else True,
+                format_error=True,
             )
 
         return ParsedResponse(

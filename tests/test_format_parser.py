@@ -159,6 +159,45 @@ Actual final answer.
         
         assert result.final == "Actual final answer."
         assert result.proof == '"Real evidence from context"'
+
+    def test_parse_xml_with_multiple_proofs(self, parser):
+        """Tests that multiple proof tags are aggregated correctly."""
+        response_text = """
+<proof>
+Evidence 1
+</proof>
+<answer>Partial answer</answer>
+<proof>
+Evidence 2
+</proof>
+<answer>
+Final categorical answer.
+</answer>
+"""
+        result = parser.parse(response_text, ResponseFormat.XML)
+        
+        # Should aggregate proofs
+        assert "Evidence 1" in result.proof
+        assert "Evidence 2" in result.proof
+        # Should pick the LAST answer
+        assert result.final == "Final categorical answer."
+
+    def test_parse_xml_with_multiple_thought_blocks_stripping(self, parser):
+        """Tests that all thought blocks are stripped before content extraction."""
+        response_text = """
+<think>Initial thoughts with <answer>Fake 1</answer></think>
+Some text.
+<thought>Correction with <answer>Fake 2</answer></thought>
+<proof>Real Proof</proof>
+<answer>Real Answer</answer>
+"""
+        result = parser.parse(response_text, ResponseFormat.XML)
+        
+        # Should pick the FIRST thought block for analysis
+        assert "Initial thoughts" in result.analysis
+        # Should NOT pick Fake 1 or Fake 2
+        assert result.final == "Real Answer"
+        assert result.proof == "Real Proof"
     
     # ==================================================================================
     # YAML Format Tests

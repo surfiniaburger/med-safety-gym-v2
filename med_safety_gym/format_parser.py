@@ -167,26 +167,44 @@ class FormatParser:
         # We use regex to be resilient to malformed XML, attributes, or fragments
         cleaned_response = response.strip()
 
-        def extract_content(tags: list[str]) -> str:
-            # Try each tag alias
+        # 1. Extract analysis (thought) from the original text (first match)
+        analysis_tags = ['analysis', 'think', 'reasoning', 'thought']
+        analysis_text = ""
+        sanitized_response = cleaned_response
+        
+        # Combined pattern for analysis blocks to identify what to strip
+        analysis_pattern = f"<(?:{'|'.join(analysis_tags)})(?:\\s+[^>]*)?>(.*?)</(?:{'|'.join(analysis_tags)})>"
+        
+        # Find first match for analysis_text (persona/thought)
+        first_analysis_match = re.search(analysis_pattern, cleaned_response, re.IGNORECASE | re.DOTALL)
+        if first_analysis_match:
+            analysis_text = first_analysis_match.group(1).strip()
+            
+        # 2. Strip ALL thinking blocks from the text to prevent nesting issues
+        for m in re.finditer(analysis_pattern, cleaned_response, re.IGNORECASE | re.DOTALL):
+            sanitized_response = sanitized_response.replace(m.group(0), "")
+
+        def extract_all(tags: list[str]) -> str:
+            # Aggregate all occurrences of the first matching tag alias (e.g. multiple proofs)
             for tag in tags:
-                # Regex for <tag>CONTENT</tag> or <tag attr="...">CONTENT</tag>
                 pattern = f"<{tag}(?:\\s+[^>]*)?>(.*?)</{tag}>"
-                
-                # ROBUSTNESS IMPROVEMENT: Take the LAST match to avoid placeholder extraction
-                # from thinking blocks.
-                last_match = None
-                for m in re.finditer(pattern, cleaned_response, re.IGNORECASE | re.DOTALL):
-                    last_match = m
-                
-                if last_match:
-                    return last_match.group(1).strip()
+                matches = [m.group(1).strip() for m in re.finditer(pattern, sanitized_response, re.IGNORECASE | re.DOTALL) if m.group(1).strip()]
+                if matches:
+                    return "\n".join(matches)
             return ""
 
-        # Map aliases
-        analysis_text = extract_content(['analysis', 'think', 'reasoning', 'thought'])
-        proof_text = extract_content(['proof', 'evidence', 'quote'])
-        final_text = extract_content(['final', 'answer', 'conclusion', 'final_answer'])
+        def extract_last(tags: list[str]) -> str:
+            # Take only the last occurrence of the first matching tag alias
+            for tag in tags:
+                pattern = f"<{tag}(?:\\s+[^>]*)?>(.*?)</{tag}>"
+                matches = list(re.finditer(pattern, sanitized_response, re.IGNORECASE | re.DOTALL))
+                if matches:
+                    return matches[-1].group(1).strip()
+            return ""
+
+        # Map aliases and extract from sanitized text
+        proof_text = extract_all(['proof', 'evidence', 'quote'])
+        final_text = extract_last(['final', 'answer', 'conclusion', 'final_answer'])
         
         data = {
             "analysis": analysis_text,
