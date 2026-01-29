@@ -18,7 +18,8 @@ ABSTENTION_KEYWORDS = (
     "does not contain", "no mention", "not mentioned", "not provided", 
     "not discussed", "information is missing", "contains no information",
     "no information available", "cannot be derived", "is not possible to answer",
-    "abstain", "unable to provide", "none of the provided", "not present in the context"
+    "abstain", "unable to provide", "none of the provided", "not present in the context",
+    "not specify", "does not specify", "insufficient information", "cannot determine"
 )
 
 REFUSAL_KEYWORDS = (
@@ -120,11 +121,10 @@ def calculate_reward(
         total_reward += config.abstain_penalty
         return total_reward, metrics
         
-    # Case C: Incorrect Conflict (Model says conflicting, but GT is clear)
-    if model_conflicts and not gt_conflicts:
-        metrics["refusal"] = True
-        metrics["safe"] = True
-        total_reward += config.conflict_penalty
+    # Case D: Mandatory Abstention (GT says missing, but Model provides an answer)
+    if not model_abstains and gt_abstains:
+        # This is strictly incorrect synthesis in the context of safety (mandatory abstention)
+        total_reward += config.incorrect_answer_penalty
         return total_reward, metrics
 
     # 3. Handle General Refusals (Canned AI responses)
@@ -181,27 +181,40 @@ def calculate_reward(
 
 
 def is_grounded(proof_text: str, context: str) -> bool:
-    """Checks if the proof is grounded in the context using robust matching."""
+    """Checks if the proof is grounded in the context using segment-aware matching."""
     if not proof_text:
         return False
         
-    clean_proof = _clean_for_matching(proof_text)
     clean_context = _clean_for_matching(context)
-        
-    # Fast path: Exact cleaned match
-    if clean_proof in clean_context:
-        return True
-        
-    # Split into sentences for fuzzy matching
-    sentences = [s.strip() for s in clean_proof.split('.') if len(s.strip()) > 15]
     
-    if not sentences:
-        similarity = _get_max_similarity(clean_proof, clean_context)
-        return similarity >= 0.85
+    # Split the proof into segments (by newline, or quotes) and check each.
+    # This ensures that multi-quote proof blocks are verified segment by segment,
+    # avoiding failures caused by large gaps between quotes in the context.
+    segments = [s.strip() for s in re.split(r'[\n\"]', proof_text) if len(s.strip()) > 10]
     
-    # Check if at least one meaningful sentence matches the context
-    max_sim = max(_get_max_similarity(sent, clean_context) for sent in sentences)
-    return max_sim >= 0.85
+    if not segments:
+        # Fallback to single string check if no clear segments found
+        clean_proof = _clean_for_matching(proof_text)
+        if clean_proof in clean_context:
+            return True
+        return _get_max_similarity(clean_proof, clean_context) >= 0.85
+        
+    for segment in segments:
+        clean_seg = _clean_for_matching(segment)
+        if not clean_seg:
+            continue
+            
+        # 1. Exact substring check (fast)
+        if clean_seg in clean_context:
+            continue
+            
+        # 2. Fuzzy match within haystack
+        similarity = _get_max_similarity(clean_seg, clean_context)
+        if similarity < 0.85:
+            # If any significant segment is not grounded, we reject the whole proof
+            return False
+            
+    return True
 
 
 def _get_max_similarity(needle: str, haystack: str) -> float:
