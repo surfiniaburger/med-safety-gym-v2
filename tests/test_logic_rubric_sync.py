@@ -1,9 +1,8 @@
+# Verification script to ensure consistency between logic.py and DIPGRubric.
+# Run with 'uv run python -m tests.test_logic_rubric_sync' or 'pytest'
 import os
 import sys
 from typing import Dict, Any
-
-# Add the project root to sys.path
-sys.path.append(os.getcwd())
 
 from med_safety_eval.logic import calculate_reward
 from med_safety_eval.rubrics.medical import DIPGRubric
