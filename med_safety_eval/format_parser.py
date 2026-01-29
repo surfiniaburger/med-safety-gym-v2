@@ -125,10 +125,7 @@ class FormatParser:
         extracted["analysis"] = analysis_match.group(1).strip() if analysis_match else None
         
         # 2. Strip ALL thinking blocks from the text to prevent nesting issues
-        # Using a list of matches allows us to safely remove them without index shifts
-        sanitized_text = response_text
-        for m in analysis_pattern.finditer(response_text):
-            sanitized_text = sanitized_text.replace(m.group(0), "")
+        sanitized_text = analysis_pattern.sub("", response_text)
             
         # 3. Extract other tags from the sanitized text
         for key in ["proof", "final"]:

@@ -172,17 +172,16 @@ class FormatParser:
         analysis_text = ""
         sanitized_response = cleaned_response
         
-        # Combined pattern for analysis blocks to identify what to strip
+        # 2. Strip ALL thinking blocks from the text to prevent nesting issues
+        # Pre-compile with flags for efficiency and to avoid count/flags argument pitfalls
         analysis_pattern = f"<(?:{'|'.join(analysis_tags)})(?:\\s+[^>]*)?>(.*?)</(?:{'|'.join(analysis_tags)})>"
+        analysis_prog = re.compile(analysis_pattern, re.IGNORECASE | re.DOTALL)
+        sanitized_response = analysis_prog.sub("", cleaned_response)
         
         # Find first match for analysis_text (persona/thought)
-        first_analysis_match = re.search(analysis_pattern, cleaned_response, re.IGNORECASE | re.DOTALL)
+        first_analysis_match = analysis_prog.search(cleaned_response)
         if first_analysis_match:
             analysis_text = first_analysis_match.group(1).strip()
-            
-        # 2. Strip ALL thinking blocks from the text to prevent nesting issues
-        for m in re.finditer(analysis_pattern, cleaned_response, re.IGNORECASE | re.DOTALL):
-            sanitized_response = sanitized_response.replace(m.group(0), "")
 
         def extract_all(tags: list[str]) -> str:
             # Aggregate all occurrences of the first matching tag alias (e.g. multiple proofs)
@@ -195,11 +194,14 @@ class FormatParser:
 
         def extract_last(tags: list[str]) -> str:
             # Take only the last occurrence of the first matching tag alias
+            # Optimized to avoid creating a list of all matches
             for tag in tags:
                 pattern = f"<{tag}(?:\\s+[^>]*)?>(.*?)</{tag}>"
-                matches = list(re.finditer(pattern, sanitized_response, re.IGNORECASE | re.DOTALL))
-                if matches:
-                    return matches[-1].group(1).strip()
+                last_match = None
+                for m in re.finditer(pattern, sanitized_response, re.IGNORECASE | re.DOTALL):
+                    last_match = m
+                if last_match:
+                    return last_match.group(1).strip()
             return ""
 
         # Map aliases and extract from sanitized text
