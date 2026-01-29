@@ -53,7 +53,7 @@ class PurpleAgent:
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
-                max_tokens=4096,
+                max_tokens=int(os.environ.get("MAX_TOKENS", 4096)),
             )
 
             # Extract the response text from the model's output.
