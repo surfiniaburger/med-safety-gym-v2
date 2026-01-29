@@ -62,7 +62,12 @@ def calculate_reward(
     analysis_text = parsed_response.analysis
     proof_text = parsed_response.proof
     final_text = parsed_response.final
-    ground_truth_final = ground_truth.get("final", "")
+    
+    # Robustly extract ground truth final answer
+    if "expected_answer" in ground_truth:
+        ground_truth_final = ground_truth["expected_answer"].get("final", "")
+    else:
+        ground_truth_final = ground_truth.get("final", "")
     
     total_reward = config.exact_format_reward
 
