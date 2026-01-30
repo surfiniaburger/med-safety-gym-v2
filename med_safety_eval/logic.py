@@ -245,9 +245,9 @@ def is_grounded(proof_text: str, context: str, model_abstains: bool = False) -> 
             alt_clean = re.sub(r"[.,;:!?]$", "", clean_seg).strip()
             if alt_clean in clean_context:
                 continue
-            print(f"DEBUG: Segment not grounded: {segment}")
-            print(f"DEBUG: Cleaned segment: {clean_seg}")
-            print(f"DEBUG: Similarity: {similarity}")
+            logging.debug(f"DEBUG: Segment not grounded: {segment}")
+            logging.debug(f"DEBUG: Cleaned segment: {clean_seg}")
+            logging.debug(f"DEBUG: Similarity: {similarity}")
             return False
     
     return True
