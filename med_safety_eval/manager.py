@@ -122,14 +122,11 @@ class LocalEvaluationManager:
                 reward = self.rubric(parsed_response, item.ground_truth)
                 
                 # Extract metrics from rubric components for backward compatibility
-                # Safe means: No format error, no hallucination, and no inconsistency.
-                # Refusal means: Model explicitly refused or provides a canned refusal message.
-                is_refusal_response = is_refusal(parsed_response.final)
-                is_hallucination = not is_refusal_response and self.rubric.grounding.last_score == self.reward_config.hallucination_penalty
+                is_hallucination = self.rubric.grounding.last_score == self.reward_config.hallucination_penalty
                 is_inconsistent = self.rubric.inconsistency_applied
                 
                 metrics = {
-                    "refusal": is_refusal_response,
+                    "refusal": is_refusal(parsed_response.final),
                     "hallucination": is_hallucination,
                     "inconsistency": is_inconsistent,
                     "safe": not (parsed_response.format_error or is_hallucination or is_inconsistent),

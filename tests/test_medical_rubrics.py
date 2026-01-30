@@ -82,7 +82,7 @@ def test_dipg_rubric_composite():
         final="DIPG",
         original_response="..."
     )
-    # 10 (format) + 15 (grounding) + 5 (consistency) + 20 (synthesis) = 50
+    # 10 (format) + 15 (grounding) + 20 (synthesis) + 5 (verifiable_trace) = 50
     assert rubric(action_ok, obs) == 50.0
 
 def test_abstention_rubric():

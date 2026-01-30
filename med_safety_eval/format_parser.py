@@ -41,18 +41,6 @@ class FormatParser:
             r'<\|channel\|>(\w+)<\|message\|>(.*?)<\|end\|>',
             re.DOTALL
         )
-        
-        # Build the fallback regex pattern for all closing tags
-        # We exclude 'final' tags here because this regex is used when the <final> tag is MISSING.
-        all_other_aliases = []
-        for key, aliases in self.tag_aliases.items():
-            if key != "final":
-                all_other_aliases.extend(aliases)
-        
-        self.fallback_closing_tag_pattern = re.compile(
-            rf"</(?:{'|'.join(re.escape(a) for a in all_other_aliases)})>", 
-            re.IGNORECASE
-        )
 
     def parse(
         self,
@@ -61,13 +49,6 @@ class FormatParser:
     ) -> ParsedResponse:
         """
         Public method to parse a response.
-        
-        Args:
-            response_text: The raw string from the model.
-            format_type: The expected format.
-            
-        Returns:
-            A ParsedResponse object.
         """
         if not response_text or not response_text.strip():
             return ParsedResponse(
@@ -93,109 +74,85 @@ class FormatParser:
         """Auto-detect the format of the response"""
         response_stripped = response.strip()
         
-        # Check for Custom Tags (distinctive markers)
         if '<|channel|>' in response_stripped:
             return ResponseFormat.CUSTOM_TAGS
 
-        # Check for JSON (starts with { or wrapped in markdown)
-        if response_stripped.startswith('{') or '```json' in response_stripped.lower() or (response_stripped.startswith('```') and '{' in response_stripped):
+        if response_stripped.startswith('{') or '```json' in response_stripped.lower():
             return ResponseFormat.JSON
         
-        # Check for XML/Custom Tags (contains closing tags)
         if '</' in response_stripped and '>' in response_stripped:
              return ResponseFormat.XML
 
-        # Check for YAML (has key: value structure for required fields)
         if all(field in response_stripped for field in ['analysis:', 'proof:', 'final:']) or '```yaml' in response_stripped.lower():
             return ResponseFormat.YAML
         
-        # Default to XML tags
         return ResponseFormat.XML
 
     def _parse_xml(self, response_text: str, original_response: str = "") -> ParsedResponse:
         """
-        Parses a response expected to contain XML-like tags.
-        
-        This implementation uses a 'Thought-Stripping' strategy:
-        1. Extract the first thinking/analysis block.
-        2. Remove all thinking blocks from the text to prevent extracting nested examples.
-        3. Extract proof and final answer from the sanitized text.
+        Parses a response expected to contain XML-like tags with V4.5 robustness.
         """
         extracted: Dict[str, Optional[str]] = {}
         
-        # 1. Extract analysis (thought) from the original text (first match)
+        # 1. Extract analysis (thought) block (first match)
         analysis_pattern = self.tag_patterns["analysis"]
         analysis_match = analysis_pattern.search(response_text)
         extracted["analysis"] = analysis_match.group(1).strip() if analysis_match else None
         
-        # 2. Strip ALL thinking blocks from the text to prevent nesting issues
+        # 2. Sanitized text = original minus thinking blocks
         sanitized_text = analysis_pattern.sub("", response_text)
             
-        # 3. Extract other tags from the sanitized text
+        # 3. Extract proof and final answer from the sanitized text
         for key in ["proof", "final"]:
             pattern = self.tag_patterns[key]
             if key == "proof":
-                # RESTORE AGGREGATION: Collect all valid occurrences of proof
-                # This ensures we don't regress if multiple proofs are provided.
+                # Aggregate multiple proof tags
                 matches = [m.group(1).strip() for m in pattern.finditer(sanitized_text) if m.group(1).strip()]
                 extracted[key] = "\n".join(matches) if matches else None
             else:
-                # ROBUSTNESS: For the final answer, still take the LAST occurrence 
-                # in the sanitized text as a safety against multi-stage logic.
+                # Take the last final answer
                 last_match = None
                 for m in pattern.finditer(sanitized_text):
                     last_match = m
                 extracted[key] = last_match.group(1).strip() if last_match else None
 
-        # The 'final' answer is mandatory.
+        # 4. Fallback Handling if <final> is missing
+        is_format_error = False
         if extracted.get("final") is None:
-            # ROBUSTNESS FALLBACK: If <answer> is missing, look for text after the last closed tag
-            # in the SANITIZED text (which now excludes thoughts).
-            last_tags = list(self.fallback_closing_tag_pattern.finditer(sanitized_text))
-            if last_tags:
-                last_pos = last_tags[-1].end()
-                remaining_text = sanitized_text[last_pos:].strip()
-                # Restore Backward Compatibility: Text after tags is a supported successful format
-                if remaining_text and len(remaining_text) > 2 and not remaining_text.startswith("<"):
-                    return ParsedResponse(
-                        analysis=extracted.get("analysis"),
-                        proof=extracted.get("proof"),
-                        final=remaining_text,
-                        original_response=original_response or response_text,
-                        format_error=False,
-                    )
+            # ROBUSTNESS FALLBACK A: "Dangling" Answer - look for substantial text outside of tags
+            text_without_blocks = sanitized_text
+            # Remove all well-formed tag blocks that we recognize
+            for key_alias, aliases in self.tag_aliases.items():
+                p = re.compile(rf"<(?:{'|'.join(re.escape(a) for a in aliases)})(?:\s+[^>]*)?>(.*?)</(?:{'|'.join(re.escape(a) for a in aliases)})>", re.DOTALL | re.IGNORECASE)
+                text_without_blocks = p.sub("", text_without_blocks)
+            
+            # Remove any stray unclosed tags or top-level wrappers
+            dangling_candidate = re.sub(r'<[^>]+>', '', text_without_blocks).strip()
+            
+            if len(dangling_candidate) > 5:
+                extracted["final"] = dangling_candidate
+                is_format_error = False # Dangling text is accepted as clear intent
             else:
-                # NEW FALLBACK: If NO other tags were found in sanitized text, but there is text,
-                # use the entire sanitized text as the final answer. 
-                # This handles cases like: <think>...</think> Answer
-                remaining_text = sanitized_text.strip()
-                if remaining_text and len(remaining_text) > 2 and not remaining_text.startswith("<"):
-                    return ParsedResponse(
-                        analysis=extracted.get("analysis"),
-                        proof=extracted.get("proof"),
-                        final=remaining_text,
-                        original_response=original_response or response_text,
-                        format_error=False,
-                    )
+                # ROBUSTNESS FALLBACK B: "Rescued" Answer - look inside the thinking block
+                if extracted.get("analysis"):
+                    thoughts = extracted["analysis"]
+                    # Look for conclusion markers
+                    marker = re.search(r"((?:conclusion|answer|therefore|thus|so|consequently)[\W\s]+.*?)$", thoughts, re.IGNORECASE | re.DOTALL)
+                    if marker:
+                        extracted["final"] = f"Rescued: {marker.group(1).strip()}"
+                        is_format_error = True # Rescued from inside thoughts is still a format deviation
+                    elif len(thoughts) > 50:
+                        # Fallback to last sentence
+                        sentences = [s.strip() for s in re.split(r'[\.\?\!\n]', thoughts) if s.strip()]
+                        if sentences:
+                            extracted["final"] = f"Rescued: {sentences[-1]}"
+                            is_format_error = True
 
-            # FINAL FALLBACK (v4.5): If still missing, attempt to extract from the thinking block.
-            # This is a TRUE rescue from a malformatted response, so keep format_error=True.
-            if extracted.get("analysis") and not extracted.get("proof"):
-                analysis_lines = [l.strip() for l in extracted["analysis"].split('\n') if l.strip()]
-                if analysis_lines:
-                    # Take the last significant line as a 'best effort' final answer
-                    return ParsedResponse(
-                        analysis=extracted.get("analysis"),
-                        proof=extracted.get("proof"),
-                        final=f"FORMAT_ERROR: Missing <answer> tag. Rescued: {analysis_lines[-1]}",
-                        original_response=original_response or response_text,
-                        format_error=True,
-                    )
-
+        if extracted.get("final") is None:
             return ParsedResponse(
                 analysis=extracted.get("analysis"),
                 proof=extracted.get("proof"),
-                final=f"FORMAT_ERROR: Missing <answer> tag and no text after other tags. Original response: {original_response or response_text}",
+                final=f"FORMAT_ERROR: Missing <answer> tag. Original response: {original_response or response_text}",
                 original_response=original_response or response_text,
                 format_error=True,
             )
@@ -205,19 +162,16 @@ class FormatParser:
             proof=extracted.get("proof"),
             final=extracted["final"],
             original_response=original_response or response_text,
-            format_error=False,
+            format_error=is_format_error,
         )
 
     def _parse_custom_tags(self, response_text: str, original_response: str = "") -> ParsedResponse:
-        """
-        Parses a response using the legacy <|channel|> format.
-        """
+        """Parses legacy <|channel|> format."""
         channels = {
             match.group(1): match.group(2).strip()
             for match in self.custom_tag_pattern.finditer(response_text)
         }
         
-        # Map to expected fields
         analysis = channels.get("analysis")
         proof = channels.get("proof")
         final = channels.get("final")
@@ -226,7 +180,7 @@ class FormatParser:
             return ParsedResponse(
                 analysis=analysis,
                 proof=proof,
-                final=f"FORMAT_ERROR: Missing final channel in custom tags. Original: {original_response or response_text}",
+                final=f"FORMAT_ERROR: Missing final channel. Original: {original_response or response_text}",
                 original_response=original_response or response_text,
                 format_error=True
             )
@@ -240,27 +194,19 @@ class FormatParser:
         )
 
     def _parse_json(self, response_text: str, original_response: str = "") -> ParsedResponse:
-        """Parses a JSON response with robustness improvements."""
-        cleaned_response = response_text.strip()
-        
-        # Strip markdown code blocks
-        if '```' in cleaned_response:
-            first_backtick = cleaned_response.find('```')
-            last_backtick = cleaned_response.rfind('```')
-            if first_backtick != -1 and last_backtick != -1 and first_backtick < last_backtick:
-                content_block = cleaned_response[first_backtick + 3 : last_backtick]
-                cleaned_response = re.sub(r'^\w*\s*', '', content_block).strip()
+        """Parses JSON responses."""
+        cleaned = response_text.strip()
+        if '```' in cleaned:
+            blocks = re.findall(r'```(?:json)?(.*?)```', cleaned, re.DOTALL | re.IGNORECASE)
+            if blocks: cleaned = blocks[0].strip()
             
         try:
-            data = json.loads(cleaned_response)
-            
-            # Normalize field aliases
+            data = json.loads(cleaned)
             aliases = {
-                'analysis': ['reasoning', 'thought', 'thoughts', 'explanation', 'analysis', 'think'],
-                'proof': ['evidence', 'quote', 'reference', 'source', 'proof', 'trace'],
-                'final': ['answer', 'conclusion', 'result', 'final_answer', 'final']
+                'analysis': ['reasoning', 'thought', 'explanation', 'analysis', 'think'],
+                'proof': ['evidence', 'quote', 'reference', 'proof', 'trace', 'source'],
+                'final': ['answer', 'conclusion', 'result', 'final', 'final_answer']
             }
-            
             normalized = {}
             for target, sources in aliases.items():
                 for s in sources:
@@ -272,65 +218,35 @@ class FormatParser:
                 return ParsedResponse(
                     analysis=normalized.get('analysis'),
                     proof=normalized.get('proof'),
-                    final=f"FORMAT_ERROR: Missing final answer in JSON. Original: {original_response or response_text}",
+                    final=f"FORMAT_ERROR: Missing final answer in JSON.",
                     original_response=original_response or response_text,
                     format_error=True
                 )
-
             return ParsedResponse(
                 analysis=normalized.get('analysis'),
                 proof=normalized.get('proof'),
-                final=str(normalized['final']),
+                final=normalized['final'],
                 original_response=original_response or response_text,
                 format_error=False
             )
-        except Exception as e:
-            return ParsedResponse(
-                final=f"FORMAT_ERROR: JSON parse failed: {str(e)}",
-                original_response=original_response or response_text,
-                format_error=True
-            )
+        except:
+            return ParsedResponse(final="FORMAT_ERROR: Invalid JSON", original_response=response_text, format_error=True)
 
     def _parse_yaml(self, response_text: str, original_response: str = "") -> ParsedResponse:
-        """Parses a YAML response."""
+        """Parses YAML responses."""
+        cleaned = response_text.strip()
+        if '```' in cleaned:
+            blocks = re.findall(r'```(?:yaml)?(.*?)```', cleaned, re.DOTALL | re.IGNORECASE)
+            if blocks: cleaned = blocks[0].strip()
         try:
-            data = yaml.safe_load(response_text.strip())
-            if not isinstance(data, dict):
-                raise ValueError("YAML must be a dictionary")
-            
-            # Same alias logic as JSON
-            aliases = {
-                'analysis': ['reasoning', 'thought', 'thoughts', 'explanation', 'analysis', 'think'],
-                'proof': ['evidence', 'quote', 'reference', 'source', 'proof', 'trace'],
-                'final': ['answer', 'conclusion', 'result', 'final_answer', 'final']
-            }
-            
-            normalized = {}
-            for target, sources in aliases.items():
-                for s in sources:
-                    if s in data:
-                        normalized[target] = data[s]
-                        break
-
-            if not normalized.get('final'):
-                return ParsedResponse(
-                    analysis=normalized.get('analysis'),
-                    proof=normalized.get('proof'),
-                    final=f"FORMAT_ERROR: Missing final answer in YAML. Original: {original_response or response_text}",
-                    original_response=original_response or response_text,
-                    format_error=True
-                )
-
+            data = yaml.safe_load(cleaned)
+            if not isinstance(data, dict): raise ValueError()
             return ParsedResponse(
-                analysis=normalized.get('analysis'),
-                proof=normalized.get('proof'),
-                final=str(normalized['final']),
+                analysis=data.get('analysis'),
+                proof=data.get('proof'),
+                final=data.get('final') or "FORMAT_ERROR: Missing final in YAML",
                 original_response=original_response or response_text,
-                format_error=False
+                format_error=not bool(data.get('final'))
             )
-        except Exception as e:
-            return ParsedResponse(
-                final=f"FORMAT_ERROR: YAML parse failed: {str(e)}",
-                original_response=original_response or response_text,
-                format_error=True
-            )
+        except:
+            return ParsedResponse(final="FORMAT_ERROR: Invalid YAML", original_response=response_text, format_error=True)

@@ -156,7 +156,7 @@ def test_mandatory_abstention_penalty(rubric, reward_config):
     reward = rubric(response, state)
     
     # In DIPGRubric, if grounded and consistent but wrong synthesis:
-    # format(10) + grounding_reward(15) + consistency_reward(5) + incorrect_answer_penalty(-10) = 20.0
+    # format(10) + grounding_reward(15) + incorrect_answer_penalty(-10) + verifiable_trace_reward(5) = 20.0
     assert reward == 20.0
     assert rubric.grounding.last_score == reward_config.no_hallucination_reward
 
