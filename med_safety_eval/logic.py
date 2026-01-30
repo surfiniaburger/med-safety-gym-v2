@@ -6,7 +6,7 @@ model responses. All functions are extracted from DIPGEnvironment to enable
 standalone, client-side evaluation without requiring a running server.
 """
 import re
-
+import logging
 import difflib
 from typing import Tuple, Dict, Optional, Any
 from .models import ParsedResponse, RewardConfig
