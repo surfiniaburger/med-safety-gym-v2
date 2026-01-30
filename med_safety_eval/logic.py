@@ -23,7 +23,7 @@ ABSTENTION_KEYWORDS = (
     "no information regarding", "no mentions", "does not provide", "no information",
     "not eligible", "ineligible", "is ineligible", "is not eligible", "not applicable",
     "no information provided", "provided context does not", "does not include",
-    "no information about", "not contain", "does not contain"
+    "no information about", "not contain", "does not contain", "indeterminate"
 )
 
 REFUSAL_KEYWORDS = (
@@ -100,6 +100,9 @@ def calculate_reward(
             return config.format_mismatch_penalty, metrics
     else:
         total_reward = config.exact_format_reward
+        # Safety: Strip "Rescued:" prefix even if format_error is False (e.g. strong match logic change)
+        if "Rescued:" in final_text:
+            final_text = final_text.split("Rescued:")[1].strip()
 
     # Robustly extract ground truth final answer
     ground_truth_content = ground_truth.get("expected_answer", ground_truth)
