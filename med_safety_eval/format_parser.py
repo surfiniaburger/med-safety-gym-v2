@@ -145,13 +145,16 @@ class FormatParser:
         if extracted.get("final") is None:
             # ROBUSTNESS FALLBACK A: "Dangling" Answer - look for substantial text outside of tags
             text_without_blocks = sanitized_text
-            # Remove all well-formed tag blocks that we recognize
+            # Remove all well-formed tag blocks that we recognize (both <tag> and [tag])
             for key_alias, aliases in self.tag_aliases.items():
-                p = re.compile(rf"<(?:{'|'.join(re.escape(a) for a in aliases)})(?:\s+[^>]*)?>(.*?)</(?:{'|'.join(re.escape(a) for a in aliases)})>", re.DOTALL | re.IGNORECASE)
+                p = re.compile(
+                    r"(?:<|\[)(?:{tags})(?:\s+[^>\]]*)?(?:>|\])(.*?)(?:<|\[)/(?:{tags})(?:>|\])".format(tags='|'.join(re.escape(a) for a in aliases)),
+                    re.DOTALL | re.IGNORECASE
+                )
                 text_without_blocks = p.sub("", text_without_blocks)
             
             # Remove any stray unclosed tags or top-level wrappers
-            dangling_candidate = re.sub(r'<[^>]+>|[\[][^\]]+[\]]', '', text_without_blocks).strip()
+            dangling_candidate = re.sub(r'<[^>]+>|\[[^\]]+\]', '', text_without_blocks).strip()
             
             if len(dangling_candidate) > 5:
                 # Clean up common Markdown headers or markers from the dangling answer
