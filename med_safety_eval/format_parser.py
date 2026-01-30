@@ -4,7 +4,7 @@ Format parser for handling various structured response formats from models.
 import re
 import json
 import yaml
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Tuple
 
 from .models import ParsedResponse, ResponseFormat
 
@@ -26,7 +26,7 @@ class FormatParser:
         
         # Shared template for XML-like tag extraction
         # V4.6: Support both <tag> and [tag].
-        self.tag_pattern_template = r"(?:<|\[)(?:{tags})(?:\s+[^>\]]*)?(?:>|\])(.*?)(?:<|\[)/(?:{tags})(?:>|\])"
+        self.tag_pattern_template = r"(?:<|\[)(?:{tags})(?:\s+[^\]>]*?)?(?:>|\])(.*?)(?:<|\[)/(?:{tags})(?:>|\])"
         
         # Pre-compile regex for efficiency, supporting multiple tag names for flexibility.
         self.tag_patterns = {
@@ -41,7 +41,7 @@ class FormatParser:
         # V4.6: Stop at the next tag or end of string
         all_aliases = [a for aliases in self.tag_aliases.values() for a in aliases]
         self.unclosed_analysis_pattern = re.compile(
-            r"(?:<|\[)(?:{tags})(?:\s+[^>\]]*)?(?:>|\])(.*?)(?=(?:<|\[)(?:{all_tags})|$)".format(
+            r"(?:<|\[)(?:{tags})(?:\s+[^\]>]*?)?(?:>|\])(.*?)(?=(?:<|\[)(?:{all_tags})|$)".format(
                 tags='|'.join(re.escape(a) for a in self.tag_aliases["analysis"]),
                 all_tags='|'.join(re.escape(a) for a in all_aliases)
             ),
@@ -49,10 +49,43 @@ class FormatParser:
         )
         
         # Regex pattern for custom tag format (backward compatibility)
+        # Regex pattern for custom tag format (backward compatibility)
         self.custom_tag_pattern = re.compile(
             r'<\|channel\|>(\w+)<\|message\|>(.*?)<\|end\|>',
             re.DOTALL
         )
+
+    def _rescue_answer(self, text: str) -> Tuple[Optional[str], bool]:
+        """
+        Attempts to rescue an answer from the text.
+        Returns (rescued_text, is_strong_match).
+        """
+        if not text:
+            return None, False
+
+        # 1. Strong Match: \boxed{...}
+        boxed_match = re.search(r'\\boxed\{(.*?)\}', text, re.DOTALL)
+        if boxed_match:
+            return boxed_match.group(1).strip(), True
+            
+        # 2. Strong Match: Markdown Header **Answer:** or similar
+        # Look for **Answer:** followed by text, until the next double newline or end of string
+        header_match = re.search(r'(?:\*\*|###)\s*(?:Final\s+)?Answer:?\s*(?:\*\*|:)?\s*(.*?)(?:\n\n|$)', text, re.IGNORECASE | re.DOTALL)
+        if header_match:
+            return header_match.group(1).strip(), True
+            
+        # 3. Weak Match: Keywords (Existing logic)
+        # Find the LAST occurrence of a keyword
+        marker = re.search(r".*(\b(?:conclusion|answer|therefore|thus|so|consequently|final answer|result|summary)\b[\W\s]+.*?)$", text, re.IGNORECASE | re.DOTALL)
+        if marker:
+            candidate = marker.group(1).strip()
+            # Cleanup: Stop at "Hmm", "Wait", "Let me", "I need to" if they appear at start of a new sentence
+            # This helps with the format_again.md case where the model continues thinking
+            cleanup_pattern = re.compile(r'(\n\s*(?:Hmm|Wait|Let me|I need to)\b.*)', re.IGNORECASE | re.DOTALL)
+            cleaned = cleanup_pattern.sub('', candidate)
+            return cleaned.strip(), False
+            
+        return None, False
 
     def parse(
         self,
@@ -148,7 +181,7 @@ class FormatParser:
             # Remove all well-formed tag blocks that we recognize (both <tag> and [tag])
             for key_alias, aliases in self.tag_aliases.items():
                 p = re.compile(
-                    r"(?:<|\[)(?:{tags})(?:\s+[^>\]]*)?(?:>|\])(.*?)(?:<|\[)/(?:{tags})(?:>|\])".format(tags='|'.join(re.escape(a) for a in aliases)),
+                    r"(?:<|\[)(?:{tags})(?:\s+[^\]>]*?)?(?:>|\])(.*?)(?:<|\[)/(?:{tags})(?:>|\])".format(tags='|'.join(re.escape(a) for a in aliases)),
                     re.DOTALL | re.IGNORECASE
                 )
                 text_without_blocks = p.sub("", text_without_blocks)
@@ -181,13 +214,14 @@ class FormatParser:
                 # ROBUSTNESS FALLBACK B: "Rescued" Answer - look inside the thinking block
                 if extracted.get("analysis"):
                     thoughts = extracted["analysis"]
-                    # Look for conclusion markers - find the LAST one for better accuracy
-                    # We use a greedy .* at the start to push the match to the end of the text
-                    # V4.6: Expanded markers
-                    marker = re.search(r".*(\b(?:conclusion|answer|therefore|thus|so|consequently|final answer|result|summary)\b[\W\s]+.*?)$", thoughts, re.IGNORECASE | re.DOTALL)
-                    if marker:
-                        extracted["final"] = f"Rescued: {marker.group(1).strip()}"
-                        is_format_error = True # Rescued from inside thoughts is still a format deviation
+                    rescued_text, is_strong = self._rescue_answer(thoughts)
+                    if rescued_text:
+                        if is_strong:
+                            extracted["final"] = rescued_text
+                            is_format_error = False # Strong match is accepted
+                        else:
+                            extracted["final"] = f"Rescued: {rescued_text}"
+                            is_format_error = True # Weak match still flagged
                     elif len(thoughts) > 50:
                         # Fallback to last sentence
                         sentences = [s.strip() for s in re.split(r'[\.\?\!\n]', thoughts) if s.strip()]

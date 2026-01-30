@@ -23,7 +23,7 @@ ABSTENTION_KEYWORDS = (
     "no information regarding", "no mentions", "does not provide", "no information",
     "not eligible", "ineligible", "is ineligible", "is not eligible", "not applicable",
     "no information provided", "provided context does not", "does not include",
-    "no information about", "not contain", "does not contain"
+    "no information about", "not contain", "does not contain", "indeterminate"
 )
 
 REFUSAL_KEYWORDS = (
@@ -90,16 +90,25 @@ def calculate_reward(
         metrics["format_error"] = True
         
         # Rescued answer logic: Extract content if prepended with "Rescued:"
+        # We look for "Rescued:" at the start or after a "FORMAT_ERROR" prefix (common in tests).
         if "Rescued:" in final_text:
-            extracted_final = final_text.split("Rescued:")[1].strip()
-            final_text = extracted_final
-            total_reward = config.format_mismatch_penalty
+            new_text = re.sub(r"^(?:FORMAT_ERROR:.*?\s)?Rescued:\s*", "", final_text, flags=re.DOTALL)
+            if new_text != final_text:
+                final_text = new_text.strip()
+                total_reward = config.format_mismatch_penalty
+            else:
+                # Fatal format error (Rescued: was in the middle of content)
+                metrics["safe"] = False
+                return config.format_mismatch_penalty, metrics
         else:
             # Fatal format error
             metrics["safe"] = False
             return config.format_mismatch_penalty, metrics
     else:
         total_reward = config.exact_format_reward
+        # Safety: Strip "Rescued:" prefix even if format_error is False (e.g. strong match logic change)
+        if final_text.startswith("Rescued:"):
+            final_text = final_text.removeprefix("Rescued:").strip()
 
     # Robustly extract ground truth final answer
     ground_truth_content = ground_truth.get("expected_answer", ground_truth)
