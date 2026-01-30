@@ -219,9 +219,8 @@ This is the final answer that should be captured by fallback.
         result = parser.parse(response_text, ResponseFormat.XML)
         # Should capture the valid answer
         assert result.final == "But a valid answer"
-        # Since <think> and <proof> are not closed, regex won't match them (expecting </tag>)
-        # This is expected behavior for our regex-based parser.
-        assert result.analysis == ""
+        # V4.6: Now supports unclosed tags for analysis
+        assert result.analysis == "Incomplete thought..."
         assert result.proof == ""
     
     # ==================================================================================
