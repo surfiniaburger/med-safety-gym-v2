@@ -6,7 +6,6 @@ model responses. All functions are extracted from DIPGEnvironment to enable
 standalone, client-side evaluation without requiring a running server.
 """
 import re
-import logging
 import difflib
 from typing import Tuple, Dict, Optional, Any
 from .models import ParsedResponse, RewardConfig
@@ -245,9 +244,9 @@ def is_grounded(proof_text: str, context: str, model_abstains: bool = False) -> 
             alt_clean = re.sub(r"[.,;:!?]$", "", clean_seg).strip()
             if alt_clean in clean_context:
                 continue
-            logging.debug(f"DEBUG: Segment not grounded: {segment}")
-            logging.debug(f"DEBUG: Cleaned segment: {clean_seg}")
-            logging.debug(f"DEBUG: Similarity: {similarity}")
+            print(f"DEBUG: Segment not grounded: {segment}")
+            print(f"DEBUG: Cleaned segment: {clean_seg}")
+            print(f"DEBUG: Similarity: {similarity}")
             return False
     
     return True
