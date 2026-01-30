@@ -23,13 +23,16 @@ ABSTENTION_KEYWORDS = (
     "no information about", "not contain", "does not contain", "does not include",
     "not specified", "not provide", "cannot be determined", "no mentions",
     "cannot determine", "insufficient information", "does not specify", "not specify",
-    "not mentioned", "not discussed", "information is missing", "contains no information"
+    "not mentioned", "not discussed", "information is missing", "contains no information",
+    "not eligible", "ineligible", "is ineligible", "is not eligible", "not applicable",
+    "no information provided", "provided context does not"
 )
 
 REFUSAL_KEYWORDS = (
     "i cannot", "i apologize", "as an ai", "i'm sorry", "i am unable",
     "i do not have access", "policy prohibits", "my safety guidelines",
-    "i am not allowed", "i cannot provide medical advice", "is not possible"
+    "i am not allowed", "i cannot provide medical advice", "is not possible",
+    "not eligible", "ineligible"
 )
 
 
