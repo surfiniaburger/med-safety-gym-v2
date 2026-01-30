@@ -25,7 +25,8 @@ class FormatParser:
         }
         
         # Shared template for XML-like tag extraction
-        self.tag_pattern_template = r"<(?:{tags})(?:\s+[^>]*)?>(.*?)</(?:{tags})>"
+        # V4.6: Support both <tag> and [tag].
+        self.tag_pattern_template = r"(?:<|\[)(?:{tags})(?:\s+[^>\]]*)?(?:>|\])(.*?)(?:<|\[)/(?:{tags})(?:>|\])"
         
         # Pre-compile regex for efficiency, supporting multiple tag names for flexibility.
         self.tag_patterns = {
@@ -35,6 +36,17 @@ class FormatParser:
             )
             for key, aliases in self.tag_aliases.items()
         }
+        
+        # Unclosed tag fallback for analysis
+        # V4.6: Stop at the next tag or end of string
+        all_aliases = [a for aliases in self.tag_aliases.values() for a in aliases]
+        self.unclosed_analysis_pattern = re.compile(
+            r"(?:<|\[)(?:{tags})(?:\s+[^>\]]*)?(?:>|\])(.*?)(?=(?:<|\[)(?:{all_tags})|$)".format(
+                tags='|'.join(re.escape(a) for a in self.tag_aliases["analysis"]),
+                all_tags='|'.join(re.escape(a) for a in all_aliases)
+            ),
+            re.DOTALL | re.IGNORECASE
+        )
         
         # Regex pattern for custom tag format (backward compatibility)
         self.custom_tag_pattern = re.compile(
@@ -80,7 +92,7 @@ class FormatParser:
         if response_stripped.startswith('{') or '```json' in response_stripped.lower():
             return ResponseFormat.JSON
         
-        if '</' in response_stripped and '>' in response_stripped:
+        if '<' in response_stripped and '>' in response_stripped:
              return ResponseFormat.XML
 
         if all(field in response_stripped for field in ['analysis:', 'proof:', 'final:']) or '```yaml' in response_stripped.lower():
@@ -97,10 +109,22 @@ class FormatParser:
         # 1. Extract analysis (thought) block (first match)
         analysis_pattern = self.tag_patterns["analysis"]
         analysis_match = analysis_pattern.search(response_text)
-        extracted["analysis"] = analysis_match.group(1).strip() if analysis_match else None
         
-        # 2. Sanitized text = original minus thinking blocks
-        sanitized_text = analysis_pattern.sub("", response_text)
+        if analysis_match:
+            extracted["analysis"] = analysis_match.group(1).strip()
+            # 2. Sanitized text = original minus thinking blocks
+            start, end = analysis_match.span()
+            sanitized_text = response_text[:start] + response_text[end:]
+        else:
+            # Try unclosed fallback for analysis
+            unclosed_match = self.unclosed_analysis_pattern.search(response_text)
+            if unclosed_match:
+                extracted["analysis"] = unclosed_match.group(1).strip()
+                start, end = unclosed_match.span()
+                sanitized_text = response_text[:start] + response_text[end:]
+            else:
+                extracted["analysis"] = None
+                sanitized_text = response_text
             
         # 3. Extract proof and final answer from the sanitized text
         for key in ["proof", "final"]:
@@ -127,10 +151,28 @@ class FormatParser:
                 text_without_blocks = p.sub("", text_without_blocks)
             
             # Remove any stray unclosed tags or top-level wrappers
-            dangling_candidate = re.sub(r'<[^>]+>', '', text_without_blocks).strip()
+            dangling_candidate = re.sub(r'<[^>]+>|[\[][^\]]+[\]]', '', text_without_blocks).strip()
             
             if len(dangling_candidate) > 5:
-                extracted["final"] = dangling_candidate
+                # Clean up common Markdown headers or markers from the dangling answer
+                cleaned_candidate = dangling_candidate
+                markers = [
+                    r"^(?:###?\s+)?(?:Final\s+)?Answer:?[\s\n]*",
+                    r"^(?:###?\s+)?Conclusion:?[\s\n]*",
+                    r"^(?:###?\s+)?Result:?[\s\n]*",
+                    r"^\*\*Answer:\*\*[\s\n]*",
+                    r"^Answer:?[\s\n]*"
+                ]
+                for m in markers:
+                    match = re.search(m, cleaned_candidate, flags=re.IGNORECASE)
+                    if match:
+                        # Only strip if there's substantial text after the marker
+                        potential_new = cleaned_candidate[match.end():].strip()
+                        if len(potential_new) > 3:
+                            cleaned_candidate = potential_new
+                            break
+                
+                extracted["final"] = cleaned_candidate
                 is_format_error = False # Dangling text is accepted as clear intent
             else:
                 # ROBUSTNESS FALLBACK B: "Rescued" Answer - look inside the thinking block
@@ -138,7 +180,8 @@ class FormatParser:
                     thoughts = extracted["analysis"]
                     # Look for conclusion markers - find the LAST one for better accuracy
                     # We use a greedy .* at the start to push the match to the end of the text
-                    marker = re.search(r".*(\b(?:conclusion|answer|therefore|thus|so|consequently)\b[\W\s]+.*?)$", thoughts, re.IGNORECASE | re.DOTALL)
+                    # V4.6: Expanded markers
+                    marker = re.search(r".*(\b(?:conclusion|answer|therefore|thus|so|consequently|final answer|result|summary)\b[\W\s]+.*?)$", thoughts, re.IGNORECASE | re.DOTALL)
                     if marker:
                         extracted["final"] = f"Rescued: {marker.group(1).strip()}"
                         is_format_error = True # Rescued from inside thoughts is still a format deviation
