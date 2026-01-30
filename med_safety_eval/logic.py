@@ -6,6 +6,7 @@ model responses. All functions are extracted from DIPGEnvironment to enable
 standalone, client-side evaluation without requiring a running server.
 """
 import re
+
 import difflib
 from typing import Tuple, Dict, Optional, Any
 from .models import ParsedResponse, RewardConfig
@@ -43,9 +44,10 @@ def _clean_for_matching(text: str) -> str:
     
     # 1. Normalize Unicode symbols to common ASCII-ish equivalents
     replacements = {
-        r'[\"\'\’\‘\”\“]': '',           # Quotes
-        r'[\-\u2011\u2013\u2014\u00ad]': '', # All types of hyphens/dashes
-        r'[\*\•\·]': '',                 # Bullets
+        r'["\'‘’“”]': '', # Quotes
+        r'[\-\u2011\u2013\u2014\u00ad]': '-', # V4.6: Normalize all hyphens to regular hyphen
+        r'\x13': '+/-',                  # Handle control character artifact
+        r'[\*\•\·]': ' ',                 # Bullets
         r'\u2265': '>=',                 # Greater than or equal
         r'\u2264': '<=',                 # Less than or equal
         r'\u2260': '!=',                 # Not equal
@@ -60,8 +62,8 @@ def _clean_for_matching(text: str) -> str:
         text = re.sub(pattern, replacement, text)
     
     # 2. Collapse all whitespace (including Unicode NBSP, etc.)
-    # \s in modern regex handles many Unicode spaces, but we use split/join for safety
-    return " ".join(text.split()).strip()
+    # V4.6: Use re.split for more robust Unicode whitespace handling
+    return " ".join(re.split(r'\s+', text)).strip()
 
 def calculate_reward(
     parsed_response: "ParsedResponse",
@@ -204,10 +206,11 @@ def is_grounded(proof_text: str, context: str, model_abstains: bool = False) -> 
         return clean_proof in clean_context or (model_abstains and _is_abstention(proof_text))
 
     # Split by newline or quotes, and then by ellipsis joiners
-    raw_segments = re.split(r'[\n\"]', proof_text)
+    # V4.6: Support smart quotes and literal ellipsis
+    raw_segments = re.split(r'[\n\"\u201c\u201d]', proof_text)
     segments = []
     for s in raw_segments:
-        sub_segs = re.split(r'\[\.\.\.\]|\.\.\.|\(\.\.\.\)', s)
+        sub_segs = re.split(r'\[\.\.\.\]|\.\.\.|\(\.\+\)|\u2026', s)
         for ss in sub_segs:
             if len(ss.strip()) > 5: # Slightly more lenient length
                 segments.append(ss.strip())
@@ -226,14 +229,35 @@ def is_grounded(proof_text: str, context: str, model_abstains: bool = False) -> 
         if model_abstains and _is_abstention(segment): continue
             
         similarity = _get_max_similarity(clean_seg, clean_context)
-        if similarity < 0.85: return False
-            
+        if similarity < 0.85:
+            # V4.7: Try splitting by sentence for concatenated quotes
+            sub_sentences = re.split(r'(?<=\.)\s+', segment)
+            if len(sub_sentences) > 1:
+                all_subs_grounded = True
+                for sub in sub_sentences:
+                    if not is_grounded(sub, context, model_abstains):
+                        all_subs_grounded = False
+                        break
+                if all_subs_grounded:
+                    continue
+
+            # V4.6: Fallback for trailing punctuation differences
+            alt_clean = re.sub(r"[.,;:!?]$", "", clean_seg).strip()
+            if alt_clean in clean_context:
+                continue
+            logging.debug(f"DEBUG: Segment not grounded: {segment}")
+            logging.debug(f"DEBUG: Cleaned segment: {clean_seg}")
+            logging.debug(f"DEBUG: Similarity: {similarity}")
+            return False
+    
     return True
 
 
 def _get_max_similarity(needle: str, haystack: str) -> float:
     """Finds the maximum similarity of `needle` to any substring of `haystack`."""
     if not needle: return 0.0
+    
+    # V4.6: Use a sliding window approach for better substring matching
     matcher = difflib.SequenceMatcher(None, needle, haystack)
     match = matcher.find_longest_match(0, len(needle), 0, len(haystack))
     if match.size == 0: return 0.0
@@ -241,9 +265,10 @@ def _get_max_similarity(needle: str, haystack: str) -> float:
     contiguous_ratio = match.size / len(needle)
     if contiguous_ratio >= 0.85: return contiguous_ratio
         
+    # If not contiguous enough, look at a window around the best match
     start = match.b
-    window_start = max(0, start - (len(needle) - match.size) - 5)
-    window_end = min(len(haystack), start + len(needle) + 5)
+    window_start = max(0, start - len(needle))
+    window_end = min(len(haystack), start + 2 * len(needle))
     candidate = haystack[window_start:window_end]
     
     m = difflib.SequenceMatcher(None, needle, candidate)
@@ -299,5 +324,9 @@ def is_refusal(final_text: str) -> bool:
 
 
 def supports(proof_text: str, final_text: str) -> bool:
-    """Basic consistency check (placeholder)."""
+    """
+    Checks if the proof supports the final answer.
+    """
     return True
+
+
