@@ -35,22 +35,23 @@ describe('Gauntlet Camera Controls', () => {
             vi.advanceTimersByTime(7000);
         });
 
-        expect(screen.getByLabelText(/Move Up/i)).toBeDefined();
-        expect(screen.getByLabelText(/Move Down/i)).toBeDefined();
-        expect(screen.getByLabelText(/Zoom In/i)).toBeDefined();
+        expect(screen.getByText(/Free Camera/i)).toBeDefined();
+        expect(screen.getByLabelText(/Neural Intensity/i)).toBeDefined();
+        expect(screen.getByLabelText(/Sim Speed/i)).toBeDefined();
     });
 
-    it('activates manual mode when a navigation button is clicked', () => {
+    it('activates manual mode when the Free Camera button is clicked', () => {
         render(<GauntletView {...defaultProps} />);
         
         act(() => {
             vi.advanceTimersByTime(7000);
         });
 
-        const upButton = screen.getByLabelText(/Move Up/i);
-        fireEvent.click(upButton);
+        const freeCamButton = screen.getByText(/Free Camera/i);
+        fireEvent.click(freeCamButton);
 
-        // Should show a "Reset Camera" button now
+        // Should show "Manual Mode" indicator and "Reset Camera" button
+        expect(screen.getByText(/Manual Mode/i)).toBeDefined();
         expect(screen.getByText(/Reset Camera/i)).toBeDefined();
     });
 });
