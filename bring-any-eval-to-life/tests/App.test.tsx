@@ -10,7 +10,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('../services/github');
 vi.mock('../services/gemini');
 vi.mock('../components/Gauntlet/GauntletView', () => ({
-    GauntletView: vi.fn(() => <div data-testid="gauntlet-view">Gauntlet View Mock</div>)
+    GauntletView: vi.fn(({ onIntervene }) => (
+        <div data-testid="gauntlet-view">
+            Gauntlet View Mock
+            <button onClick={() => onIntervene(0)}>Intervene</button>
+        </div>
+    ))
 }));
 
 const queryClient = new QueryClient({
@@ -62,16 +67,21 @@ describe('App Integration', () => {
         const card = screen.getByText(/test artifact/i).closest('div');
         if (card) fireEvent.click(card);
 
-        // 3. Verify Gemini bridge is called with the artifact content
+        // 3. Verify Gauntlet View is mounted but Gemini bridge is NOT called yet (On-Demand)
+        await waitFor(() => {
+            expect(screen.getByTestId('gauntlet-view')).toBeDefined();
+        });
+        expect(geminiService.bringToLife).not.toHaveBeenCalled();
+
+        // 4. Trigger an intervention
+        const interveneBtn = screen.getByText(/intervene/i);
+        fireEvent.click(interveneBtn);
+
+        // 5. Verify Gemini bridge is now called with the artifact content
         await waitFor(() => {
             expect(geminiService.bringToLife).toHaveBeenCalled();
             const callArgs = vi.mocked(geminiService.bringToLife).mock.calls[0];
             expect(callArgs[0]).toContain('"safety_score": 0.85');
-        });
-
-        // 4. Verify Gauntlet View is mounted
-        await waitFor(() => {
-            expect(screen.getByTestId('gauntlet-view')).toBeDefined();
         });
     });
 });

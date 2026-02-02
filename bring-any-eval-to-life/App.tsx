@@ -153,34 +153,37 @@ const AppContent: React.FC = () => {
     setActiveStepIndex(0);
     setSolvedNodes([]);
     setIsMissionComplete(false);
-
-    // Proactively generate the simulation but don't show it yet
-    setIsGenerating(true);
-    try {
-      const jsonStr = JSON.stringify(currentArtifact.content || {}, null, 2);
-      const html = await bringToLife(jsonStr, `Artifact: ${currentArtifact.name}`);
-
-      if (html) {
-        const newCreation: Creation = {
-          id: crypto.randomUUID(),
-          name: `Simulation: ${artifact.name.replace('.json', '')}`,
-          html: html,
-          timestamp: new Date(),
-        };
-        setActiveCreation(newCreation);
-        setHistory(prev => [newCreation, ...prev]);
-      }
-    } catch (error) {
-      console.error("Failed to generate simulation:", error);
-      showToast("Failed to generate clinical simulation. Please try again.", "error");
-    } finally {
-      setIsGenerating(false);
-    }
+    setActiveCreation(null); // Reset creation when selecting a new artifact
   };
 
-  const handleIntervention = (index: number) => {
+  const handleIntervention = async (index: number) => {
     setActiveStepIndex(index);
     setView('simulator');
+
+    // On-Demand Generation: Only generate if we don't have a simulation for this artifact yet
+    if (!activeCreation && activeArtifact) {
+      setIsGenerating(true);
+      try {
+        const jsonStr = JSON.stringify(activeArtifact.content || {}, null, 2);
+        const html = await bringToLife(jsonStr, `Artifact: ${activeArtifact.name}`);
+
+        if (html) {
+          const newCreation: Creation = {
+            id: crypto.randomUUID(),
+            name: `Simulation: ${activeArtifact.name.replace('.json', '')}`,
+            html: html,
+            timestamp: new Date(),
+          };
+          setActiveCreation(newCreation);
+          setHistory(prev => [newCreation, ...prev]);
+        }
+      } catch (error) {
+        console.error("Failed to generate simulation:", error);
+        showToast("Failed to generate clinical simulation. Please try again.", "error");
+      } finally {
+        setIsGenerating(false);
+      }
+    }
   };
 
   const handleSolveNode = () => {
