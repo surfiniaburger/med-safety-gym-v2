@@ -5,7 +5,7 @@ import { GauntletView } from '../components/Gauntlet/GauntletView';
 
 // Mock Three.js/Fiber components to avoid Canvas issues in JSDOM
 vi.mock('@react-three/fiber', () => ({
-    Canvas: ({ children }: { children: React.ReactNode }) => <div data-testid="mock-canvas">{children}</div>,
+    Canvas: () => <div data-testid="mock-canvas" />,
     useFrame: vi.fn(),
 }));
 
@@ -17,11 +17,15 @@ vi.mock('@react-three/drei', () => ({
     Trail: () => null,
     Line: () => null,
     ContactShadows: () => null,
+    MeshDistortMaterial: () => null,
+    MeshWobbleMaterial: () => null,
+    Float: () => null,
 }));
 
 describe('GauntletView Phase 3 (Glitch & UI)', () => {
     const defaultProps = {
         rewards: [1, -10, 5],
+        metrics: [{}, { hallucination: true }, {}],
         activeStepIndex: 1, // At the failed node
         solvedNodes: [],
         onIntervene: vi.fn(),

@@ -8,6 +8,9 @@ import {
     Trail,
     Line,
     ContactShadows,
+    MeshDistortMaterial,
+    MeshWobbleMaterial,
+    Float,
 } from '@react-three/drei';
 import * as THREE from 'three';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,9 +21,11 @@ import {
     ArrowRightIcon,
     ShieldCheckIcon,
     PauseIcon,
-    PlayIcon as PlayIconOutline
+    PlayIcon as PlayIconOutline,
+    MagnifyingGlassPlusIcon,
+    ArrowPathIcon
 } from '@heroicons/react/24/outline';
-import { calculateCinematicSpeed, getCameraOffset } from '../../lib-web/camera';
+import { calculateCinematicSpeed, getCameraOffset, CameraProfile } from '../../lib-web/camera';
 import { 
     WARMUP_START_X, 
     WARMUP_TARGET_X, 
@@ -31,6 +36,7 @@ import {
     WARMUP_ENTRY_LERP_FACTOR
 } from '../../lib-web/gauntlet-constants';
 import { StepMetrics } from '../../lib-web/extraction';
+import { generatePathPoints, PathGeometryType } from '../../lib-web/path-generation';
 
 enum GauntletState {
     WARMUP_ENTRY,
@@ -170,20 +176,23 @@ const GlitchOverlay = () => (
     </div>
 );
 
-const BarrierNode = ({ position, active }: { position: THREE.Vector3, active: boolean }) => (
+const BarrierNode = ({ position, active, intensity }: { position: THREE.Vector3, active: boolean, intensity: number }) => (
     <group position={position}>
-        <mesh rotation={[0, 0, 0]}>
-            <planeGeometry args={[4, 4]} />
-            <meshStandardMaterial
-                color="#fa5252"
-                transparent
-                opacity={active ? 0.3 : 0}
-                side={THREE.DoubleSide}
-                wireframe={active}
-            />
-        </mesh>
         {active && (
-            <pointLight distance={5} intensity={5} color="#fa5252" />
+            <Float speed={8 * intensity} rotationIntensity={0.5 * intensity} floatIntensity={0.5 * intensity}>
+                <mesh rotation={[0, 0, 0]}>
+                    <planeGeometry args={[5, 5]} />
+                    <MeshWobbleMaterial
+                        color="#fa5252"
+                        speed={4 * intensity}
+                        factor={0.8 * intensity}
+                        transparent
+                        opacity={0.3}
+                        side={THREE.DoubleSide}
+                    />
+                </mesh>
+                <pointLight distance={8} intensity={15 * intensity} color="#fa5252" />
+            </Float>
         )}
     </group>
 );
@@ -197,6 +206,8 @@ interface GauntletViewProps {
     onActiveStepChange: (index: number) => void;
     onClose: () => void;
     onComplete?: () => void;
+    initialPathType?: PathGeometryType;
+    accentColor?: string;
 }
 
 const PathAgent = ({
@@ -281,41 +292,93 @@ const PathAgent = ({
     );
 };
 
-const CinematicCamera = () => {
+const CinematicCamera = ({ enabled, type, profile }: { enabled: boolean, type: PathGeometryType, profile: CameraProfile }) => {
     const { agentPosition, agentProgress } = useGauntlet();
 
     useFrame((state) => {
-        if (agentPosition) {
-            const offset = getCameraOffset(agentProgress);
+        if (enabled && agentPosition) {
+            const offset = getCameraOffset(agentProgress, type, profile);
             const targetPos = agentPosition.clone().add(offset);
 
             // Smoothly lerp camera to target position
             state.camera.position.lerp(targetPos, 0.05);
-            state.camera.lookAt(agentPosition);
+            
+            if (profile === 'first-person') {
+                // Look ahead along the path
+                const lookAhead = agentPosition.clone().add(new THREE.Vector3(1, 0, 0));
+                state.camera.lookAt(lookAhead);
+            } else {
+                state.camera.lookAt(agentPosition);
+            }
         }
     });
 
     return null;
 };
 
-const NeuralPathway = ({ points, rewards, solvedNodes }: { points: THREE.Vector3[], rewards: number[], solvedNodes: number[] }) => {
+const NeuralPathway = ({ points, rewards, solvedNodes, pathType, intensity, color }: { points: THREE.Vector3[], rewards: number[], solvedNodes: number[], pathType: PathGeometryType, intensity: number, color: string }) => {
     const { agentProgress } = useGauntlet();
+    const curve = useMemo(() => new THREE.CatmullRomCurve3(points), [points]);
 
     return (
         <group>
+            {/* Decorative Tunnel for Wormhole */}
+            {pathType === 'wormhole' && (
+                <mesh>
+                    <tubeGeometry args={[curve, 100, 4, 12, false]} />
+                    <MeshDistortMaterial
+                        color={color}
+                        speed={3 * intensity}
+                        distort={0.2 * intensity}
+                        transparent
+                        opacity={0.08}
+                        wireframe
+                    />
+                </mesh>
+            )}
+
+            {/* Decorative Globe for Spherical */}
+            {pathType === 'spherical' && (
+                <group>
+                    <Float speed={2 * intensity} rotationIntensity={0.2 * intensity} floatIntensity={0.2 * intensity}>
+                        <Sphere args={[25, 48, 48]}>
+                            <meshStandardMaterial
+                                color={color}
+                                transparent
+                                opacity={0.05}
+                                wireframe
+                            />
+                        </Sphere>
+                    </Float>
+                    {/* Inner Core */}
+                    <Sphere args={[5, 32, 32]}>
+                        <MeshDistortMaterial
+                            color={color}
+                            speed={5 * intensity}
+                            distort={0.5 * intensity}
+                            transparent
+                            opacity={0.2}
+                        />
+                    </Sphere>
+                    <pointLight intensity={10 * intensity} color={color} distance={20} />
+                </group>
+            )}
+
             {/* Living Path: Base line */}
             <Line
                 points={points}
-                color="#1a1b1e"
+                color={pathType === 'linear' ? "#1a1b1e" : "#343a40"}
                 lineWidth={1}
+                transparent
+                opacity={0.5}
             />
             {/* Active glowing segment */}
             <Line
                 points={points.slice(0, Math.ceil(agentProgress + 1))}
-                color="#4dabf7"
-                lineWidth={2}
+                color={color}
+                lineWidth={3}
                 transparent
-                opacity={0.8}
+                opacity={0.9}
             />
             {points.map((p, i) => {
                 const reward = rewards[i];
@@ -324,28 +387,30 @@ const NeuralPathway = ({ points, rewards, solvedNodes }: { points: THREE.Vector3
 
                 return (
                     <group key={i} position={p}>
-                        <Sphere args={[0.2, 16, 16]}>
+                        <Sphere args={[0.25, 16, 16]}>
                             <meshStandardMaterial
-                                color={isFailed ? "#fa5252" : isSolved ? "#40c057" : "#339af0"}
-                                emissive={isFailed ? "#fa5252" : isSolved ? "#40c057" : "#339af0"}
-                                emissiveIntensity={isFailed ? 2 : 0.5}
+                                color={isFailed ? "#fa5252" : isSolved ? "#40c057" : color}
+                                emissive={isFailed ? "#fa5252" : isSolved ? "#40c057" : color}
+                                emissiveIntensity={isFailed ? 3 : 0.8}
                             />
                         </Sphere>
                         {isFailed && (
-                            <Text
-                                position={[0, 1.2, 0]}
-                                fontSize={0.4}
-                                color="#fa5252"
-                            >
-                                DANGER
-                            </Text>
+                            <Float speed={5} rotationIntensity={2} floatIntensity={2}>
+                                <Text
+                                    position={[0, 1.5, 0]}
+                                    fontSize={0.5}
+                                    color="#fa5252"
+                                >
+                                    CRITICAL_ERROR
+                                </Text>
+                            </Float>
                         )}
                         <Text
-                            position={[0, -0.6, 0]}
-                            fontSize={0.2}
+                            position={[0, -0.8, 0]}
+                            fontSize={0.25}
                             color="#5c5f66"
                         >
-                            Step {i}
+                            NODE_{i}
                         </Text>
                     </group>
                 );
@@ -362,7 +427,9 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
     onIntervene,
     onActiveStepChange,
     onClose,
-    onComplete
+    onComplete,
+    initialPathType = 'linear',
+    accentColor = '#4dabf7'
 }) => {
     if (!rewards || rewards.length === 0) {
         return (
@@ -391,10 +458,28 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
         );
     }
 
+    const [gameState, setGameState] = useState<GauntletState>(GauntletState.WARMUP_ENTRY);
+    const [cameraMode, setCameraMode] = useState<'cinematic' | 'manual'>('cinematic');
+    const [cameraProfile, setCameraProfile] = useState<CameraProfile>('follow');
+    const [pathType, setPathType] = useState<PathGeometryType>(initialPathType);
+    const [neuralIntensity, setNeuralIntensity] = useState(0.5);
+
+    // Keyboard Navigation Support
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const navKeys = ['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '+', '-'];
+            if (navKeys.includes(e.key) && gameState === GauntletState.TRAJECTORY_ACTIVE) {
+                setCameraMode('manual');
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [gameState]);
+
     const points = useMemo(() => {
-        // Phase 14: Midline centering - rewards are scaled to +/- range but centered on Y=0
-        return rewards.map((r, i) => new THREE.Vector3(i * PATH_SPACING, r * REWARD_Y_SCALE, 0));
-    }, [rewards]);
+        return generatePathPoints(rewards, pathType, PATH_SPACING, REWARD_Y_SCALE);
+    }, [rewards, pathType]);
 
     const currentReward = rewards[activeStepIndex];
     const currentMetrics = metrics?.[activeStepIndex];
@@ -402,7 +487,6 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
     const [isInternalPaused, setIsInternalPaused] = useState(isFailedNode);
     const [isManualPaused, setIsManualPaused] = useState(false);
     const [showRestored, setShowRestored] = useState(false);
-    const [gameState, setGameState] = useState<GauntletState>(GauntletState.WARMUP_ENTRY);
     const showFailureUI = isFailedNode && gameState === GauntletState.TRAJECTORY_ACTIVE;
 
     const failureTitle = useMemo(() => {
@@ -473,7 +557,7 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
             {/* Cinematic Camera Control */}
             <Canvas shadows dpr={[1, 2]}>
                 <GauntletContext.Provider value={contextValue}>
-                    <CinematicCamera />
+                    <CinematicCamera enabled={cameraMode === 'cinematic'} type={pathType} profile={cameraProfile} />
                     <PerspectiveCamera makeDefault position={[-20, 10, 20]} />
                     <Starfield />
 
@@ -497,11 +581,11 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
 
                     {(gameState === GauntletState.TRAJECTORY_ACTIVE || gameState === GauntletState.TRANSITION) && (
                         <>
-                            <NeuralPathway points={points} rewards={rewards} solvedNodes={solvedNodes} />
+                            <NeuralPathway points={points} rewards={rewards} solvedNodes={solvedNodes} pathType={pathType} intensity={neuralIntensity} color={accentColor} />
 
                             {points.map((p, i) => (
                                 rewards[i] < 0 && (
-                                    <BarrierNode key={`barrier-${i}`} position={p} active={!solvedNodes.includes(i)} />
+                                    <BarrierNode key={`barrier-${i}`} position={p} active={!solvedNodes.includes(i)} intensity={neuralIntensity} />
                                 )
                             ))}
 
@@ -520,8 +604,27 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
             </Canvas>
 
             {/* UI Overlays */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 text-white/20 text-[8px] font-mono pointer-events-none uppercase">
-                Gauntlet Mount OK ({rewards.length} nodes)
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none">
+                <div className="text-white/20 text-[8px] font-mono uppercase">
+                    Gauntlet Mount OK ({rewards.length} nodes)
+                </div>
+                
+                {gameState === GauntletState.TRAJECTORY_ACTIVE && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-4 py-2 flex items-center gap-3 shadow-2xl"
+                    >
+                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                        <span className="text-[10px] font-mono text-blue-400 font-bold uppercase tracking-widest">
+                            Architect: {
+                                pathType === 'wormhole' ? "Visualizing Data Turbulence via Wormhole" :
+                                pathType === 'spherical' ? "Mapping Global Safety via Fibonacci Sphere" :
+                                "Standard Linear Trajectory Active"
+                            }
+                        </span>
+                    </motion.div>
+                )}
             </div>
 
             <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start pointer-events-none">
@@ -530,6 +633,41 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                         <BoltIcon className="w-3 h-3" /> Gauntlet Engine V1.0
                     </div>
                     <h1 className="text-2xl font-black text-white">Neural Path Visualization</h1>
+                    
+                    <div className="flex items-center gap-2 mt-2">
+                        {(['linear', 'wormhole', 'spherical'] as PathGeometryType[]).map((type) => (
+                            <button
+                                key={type}
+                                onClick={() => setPathType(type)}
+                                className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-tighter transition-all border ${
+                                    pathType === type 
+                                    ? 'bg-blue-500 border-blue-400 text-white shadow-[0_0_15px_rgba(59,130,246,0.5)]' 
+                                    : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+                                }`}
+                            >
+                                {type}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-2">
+                        {(['follow', 'first-person', 'birds-eye'] as CameraProfile[]).map((profile) => (
+                            <button
+                                key={profile}
+                                onClick={() => {
+                                    setCameraProfile(profile);
+                                    setCameraMode('cinematic');
+                                }}
+                                className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-tighter transition-all border ${
+                                    cameraProfile === profile 
+                                    ? 'bg-emerald-500 border-emerald-400 text-white shadow-[0_0_15px_rgba(52,211,153,0.5)]' 
+                                    : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+                                }`}
+                            >
+                                {profile.replace('-', ' ')}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <button
@@ -590,7 +728,7 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                 )}
             </AnimatePresence>
 
-            {/* Phase 4: Alignment Restored Overlay */}
+            {/* Alignment Restored Overlay */}
             <AnimatePresence>
                 {showRestored && (
                     <motion.div
@@ -611,6 +749,56 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Camera Controls Overlay */}
+            {gameState === GauntletState.TRAJECTORY_ACTIVE && (
+                <div className="absolute right-6 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-4">
+                    <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-4 flex flex-col gap-2 shadow-2xl">
+                        {cameraMode === 'cinematic' ? (
+                            <button
+                                onClick={() => setCameraMode('manual')}
+                                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:bg-white/10 transition-all text-[10px] font-bold uppercase tracking-widest"
+                            >
+                                <MagnifyingGlassPlusIcon className="w-4 h-4" />
+                                Free Camera
+                            </button>
+                        ) : (
+                            <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold uppercase tracking-widest">
+                                <ArrowPathIcon className="w-4 h-4" />
+                                Manual Mode
+                            </div>
+                        )}
+
+                        <div className="h-px bg-white/10 my-1" />
+                        
+                        <div className="flex flex-col gap-1 px-1">
+                            <label htmlFor="intensity-slider" className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Neural Intensity</label>
+                            <input
+                                id="intensity-slider"
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                value={neuralIntensity}
+                                onChange={(e) => setNeuralIntensity(parseFloat(e.target.value))}
+                                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                            />
+                        </div>
+                    </div>
+
+                    {cameraMode === 'manual' && (
+                        <motion.button
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            onClick={() => setCameraMode('cinematic')}
+                            className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-blue-500 text-white font-bold text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:bg-blue-400 transition-all"
+                        >
+                            <ArrowPathIcon className="w-4 h-4" />
+                            Reset Camera
+                        </motion.button>
+                    )}
+                </div>
+            )}
 
             {/* Status Bar */}
             <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-xl pointer-events-none">

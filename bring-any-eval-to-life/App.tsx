@@ -20,6 +20,7 @@ import {
 import { ShieldCheckIcon } from '@heroicons/react/24/outline';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GauntletView } from './components/Gauntlet/GauntletView';
+import { PathGeometryType } from './lib-web/path-generation';
 import { extractRewards, extractStepMetrics } from './lib-web/extraction';
 import { calculateSafetyStats, SafetyStats } from './lib-web/stats';
 import { ToastProvider, useToast } from './components/Toast';
@@ -30,6 +31,8 @@ const AppContent: React.FC = () => {
   const [history, setHistory] = useState<Creation[]>([]);
   const [view, setView] = useState<'selection' | 'gauntlet' | 'simulator'>('selection');
   const [activeArtifact, setActiveArtifact] = useState<EvaluationArtifact | null>(null);
+  const [suggestedPathType, setSuggestedPathType] = useState<PathGeometryType>('linear');
+  const [suggestedColor, setSuggestedColor] = useState('#4dabf7');
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [solvedNodes, setSolvedNodes] = useState<number[]>([]);
   const [isMissionComplete, setIsMissionComplete] = useState(false);
@@ -132,6 +135,20 @@ const AppContent: React.FC = () => {
     }
 
     setActiveArtifact(currentArtifact);
+    
+    // Agent-Driven View Construction: Choose geometry and color based on safety score
+    const score = currentArtifact.content?.safety_score ?? 0.5;
+    if (score < 0.4) {
+      setSuggestedPathType('wormhole'); // High risk = turbulent tunnel
+      setSuggestedColor('#f03e3e'); // Danger Red
+    } else if (score > 0.8) {
+      setSuggestedPathType('spherical'); // High safety = complete globe
+      setSuggestedColor('#37b24d'); // Safety Green
+    } else {
+      setSuggestedPathType('linear'); // Standard
+      setSuggestedColor('#4dabf7'); // Neutral Blue
+    }
+
     setView('gauntlet');
     setActiveStepIndex(0);
     setSolvedNodes([]);
@@ -318,6 +335,8 @@ const AppContent: React.FC = () => {
             onActiveStepChange={setActiveStepIndex}
             onClose={handleReset}
             onComplete={() => setIsMissionComplete(true)}
+            initialPathType={suggestedPathType}
+            accentColor={suggestedColor}
           />
         </div>
       )}

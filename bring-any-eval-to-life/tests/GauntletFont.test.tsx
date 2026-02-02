@@ -23,6 +23,9 @@ vi.mock('@react-three/drei', () => ({
     Trail: () => null,
     Line: () => null,
     ContactShadows: () => null,
+    MeshDistortMaterial: () => null,
+    MeshWobbleMaterial: () => null,
+    Float: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 describe('GauntletView Font Safety', () => {

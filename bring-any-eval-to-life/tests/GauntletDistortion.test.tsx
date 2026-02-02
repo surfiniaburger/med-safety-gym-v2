@@ -3,7 +3,7 @@ import { render, screen, act } from '@testing-library/react';
 import React from 'react';
 import { GauntletView } from '../components/Gauntlet/GauntletView';
 
-// Mock Three.js/Fiber components to avoid Canvas issues in JSDOM
+// Mock Three.js/Fiber components
 vi.mock('@react-three/fiber', () => ({
     Canvas: () => <div data-testid="mock-canvas" />,
     useFrame: vi.fn(),
@@ -22,10 +22,9 @@ vi.mock('@react-three/drei', () => ({
     Float: () => null,
 }));
 
-describe('GauntletView Delay Logic', () => {
+describe('Gauntlet Distortion Controls', () => {
     const defaultProps = {
-        rewards: [-50, 20, 30], // First node is a failure
-        metrics: [{ hallucination: true }, {}, {}],
+        rewards: [10, 20, 30],
         activeStepIndex: 0,
         solvedNodes: [],
         onIntervene: vi.fn(),
@@ -41,21 +40,14 @@ describe('GauntletView Delay Logic', () => {
         vi.useRealTimers();
     });
 
-    it('does NOT display the "Hallucination Detected" modal immediately during warmup', () => {
+    it('renders the neural intensity slider after warmup', () => {
         render(<GauntletView {...defaultProps} />);
         
-        // Initially, it should be in WARMUP_ENTRY state
-        expect(screen.queryByText(/Hallucination Detected/i)).toBeNull();
-    });
-
-    it('displays the "Hallucination Detected" modal after the warmup animation completes', () => {
-        render(<GauntletView {...defaultProps} />);
-        
-        // Advance timers to 6.5 seconds (TRAJECTORY_ACTIVE)
+        // Advance past warmup
         act(() => {
-            vi.advanceTimersByTime(6500);
+            vi.advanceTimersByTime(7000);
         });
 
-        expect(screen.getByText(/Hallucination Detected/i)).toBeDefined();
+        expect(screen.getByLabelText(/Neural Intensity/i)).toBeDefined();
     });
 });

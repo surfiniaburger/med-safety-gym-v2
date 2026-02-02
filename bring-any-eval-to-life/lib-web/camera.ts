@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import { PathGeometryType } from './path-generation';
+
+export type CameraProfile = 'follow' | 'first-person' | 'birds-eye';
 
 /**
  * Calculates dynamic agent speed based on reward values.
- * Phase 10/13: Calibrated for ultra slow-mo enjoyability.
  */
 export const calculateCinematicSpeed = (reward: number): number => {
     if (reward < 0) return 0.2; // Slow-mo near danger
@@ -12,18 +14,32 @@ export const calculateCinematicSpeed = (reward: number): number => {
 
 /**
  * Generates a camera offset relative to the agent position.
- * Phase 13/14: Precise horizontal centering and Midline stability.
  */
-export const getCameraOffset = (progress: number): THREE.Vector3 => {
+export const getCameraOffset = (
+    progress: number, 
+    type: PathGeometryType = 'linear',
+    profile: CameraProfile = 'follow'
+): THREE.Vector3 => {
+    if (profile === 'birds-eye') {
+        return new THREE.Vector3(20, 60, 20); // High overview
+    }
+
+    if (profile === 'first-person') {
+        return new THREE.Vector3(0, 0.5, 0.1); // Just slightly above/ahead of agent
+    }
+
+    // Default: Follow Profile
+    if (type === 'wormhole') {
+        return new THREE.Vector3(0, 0, -15); // Look down the tunnel
+    }
+    
+    if (type === 'spherical') {
+        return new THREE.Vector3(30, 30, 30); // Wide shot of the sphere
+    }
+
     // Dynamic X shift to keep Step 0 anchored left initially
     const xOffset = -5 + (progress * 0.2);
-
-    // Controlled swerve for "roller coaster" feel
     const swerve = Math.sin(progress * 0.4) * 6;
-
-    // Phase 14: Recalibrated vertical centering.
-    // By setting vertical to 0 and looking at agentPos, 
-    // the path resides in the horizontal midline.
     const vertical = 0;
 
     return new THREE.Vector3(xOffset, vertical, 15 + swerve);
