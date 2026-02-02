@@ -3,23 +3,23 @@ import { calculateCinematicSpeed, getCameraOffset } from '../lib-web/camera';
 
 describe('Cinematic Logic (Phase 6)', () => {
     describe('calculateCinematicSpeed', () => {
-        it('returns slow-mo speed (0.2x) when reward is negative', () => {
-            expect(calculateCinematicSpeed(-10)).toBe(0.2);
+        it('returns slow-mo speed (0.1x) when reward is negative', () => {
+            expect(calculateCinematicSpeed(-10)).toBe(0.1);
         });
 
-        it('returns turbo speed (1.0x) capped for stability when reward is high', () => {
-            expect(calculateCinematicSpeed(50)).toBe(1.0);
+        it('returns turbo speed (0.8x) capped for stability when reward is high', () => {
+            expect(calculateCinematicSpeed(50)).toBe(0.8);
         });
 
-        it('returns ultra slow-mo speed (0.15x) for standard positive rewards so user can enjoy field', () => {
-            expect(calculateCinematicSpeed(10)).toBe(0.15);
+        it('returns standard speed (0.3x) for standard positive rewards', () => {
+            expect(calculateCinematicSpeed(10)).toBe(0.3);
         });
     });
 
     describe('getCameraOffset', () => {
-        it('returns a centered Y offset (0) for midline framing', () => {
+        it('returns a vertical offset (2) for better framing', () => {
             const offset = getCameraOffset(5);
-            expect(offset.y).toBe(0);
+            expect(offset.y).toBe(2);
         });
     });
 });

@@ -8,31 +8,40 @@
 ### File Structure
 ```
 /
-├── App.tsx                 # Main Flow (Upload -> Loading -> Preview)
+├── App.tsx                 # Main Flow (Selection -> Gauntlet -> Simulator)
 ├── index.css               # Styling (Dot Grid, Glassmorphism)
 ├── components/
 │   ├── Hero.tsx            # Landing Page UI
-│   ├── InputArea.tsx       # Drag & Drop / File Input
-│   ├── LivePreview.tsx     # Sandboxed Iframe Renderer
+│   ├── ResultSelector.tsx  # Grid of Evaluation Artifacts
+│   ├── Gauntlet/           # 3D Neural Pathway Visualization
+│   ├── LivePreview.tsx     # Sandboxed Iframe Renderer (Simulator)
 │   └── CreationHistory.tsx # Sidebar of past generations
 └── services/
-    └── gemini.ts           # The Core AI Factory
+    ├── gemini.ts           # The Core AI Factory
+    └── github.ts           # Artifact Fetching Service
 ```
 
 ### Core Components
 
 #### 1. Gemini Service (`services/gemini.ts`)
 The intelligence core.
--   **Input**: Takes a text prompt + optional Base64 Image.
--   **System Instruction**: The "Magic Sauce". It explicitly instructs the model:
-    -   *Gamify Mundane Objects*: "If you see a desk, make a cleanup game." "If you see a clock, make a time tool."
-    -   *No External Assets*: "Do NOT use `<img>` tags. Draw everything with CSS shapes, SVGs, or Emojis."
-    -   *Single File Output*: "Return raw HTML that runs standalone."
--   **Model**: `gemini-1.5-pro` (preview) is used for its superior reasoning and coding capabilities.
+-   **Input**: Takes a JSON artifact or text prompt.
+-   **On-Demand Generation**: Simulations are generated only when an intervention is triggered, optimizing performance and API usage.
+-   **System Instruction**: Instructs the model to build high-stakes clinical training scenarios based on safety evaluation data.
 
-#### 2. LivePreview.tsx
--   **Sandboxing**: Displays the generated code inside an `<iframe>`. This isolates the AI's CSS/JS from the main application, preventing style conflicts or security issues.
--   **State Injection**: Capable of injecting the original image data into the generated app if needed (e.g., for valid image processing apps).
+#### 2. Gauntlet View (`components/Gauntlet/`)
+A high-fidelity 3D visualization of the model's neural trajectory.
+-   **Dynamic Geometries**: Automatically selects between `Linear`, `Wormhole` (turbulent), and `Spherical` (global) paths based on safety scores.
+-   **Cinematic Camera**: Features multiple profiles (`Follow`, `First-Person`, `Birds-Eye`) with path-aware orientation.
+-   **Interactive Controls**: Users can adjust "Neural Intensity" and "Simulation Speed" in real-time.
+
+#### 3. LivePreview.tsx (The Simulator)
+-   **Sandboxing**: Displays the generated code inside an `<iframe>`.
+-   **Intervention Flow**: Triggered when the Gauntlet agent encounters a "Safety Violation" node, allowing for manual override and training.
+
+#### 4. Result Selector (`components/ResultSelector.tsx`)
+-   **Bento Grid**: A modern, responsive grid that displays evaluation artifacts with safety scores and status indicators.
+-   **Proactive Fetching**: Fetches artifact metadata from GitHub to populate the selection engine.
 
 #### 3. Styling (`index.css`)
 -   **Premium Aesthetic**: Implements a "Dark Mode" aesthetic with:

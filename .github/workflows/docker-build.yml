@@ -5,37 +5,37 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: core
+            file: Dockerfile
+            tag: med-safety-gym-env
+          - name: mcp
+            file: Dockerfile.mcp
+            tag: med-safety-gym-mcp-server
+          - name: a2a
+            file: Dockerfile.a2a
+            tag: med-safety-gym-a2a-agent
+
     steps:
     - uses: actions/checkout@v4
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Build Environment (Core)
+    - name: Build ${{ matrix.name }}
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: Dockerfile
+        file: ${{ matrix.file }}
         push: false
-        tags: med-safety-gym-env:latest
-
-    - name: Build MCP Server
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: Dockerfile.mcp
-        push: false
-        tags: med-safety-gym-mcp-server:latest
-
-    - name: Build A2A Agent
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: Dockerfile.a2a
-        push: false
-        tags: med-safety-gym-a2a-agent:latest
+        tags: ${{ matrix.tag }}:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

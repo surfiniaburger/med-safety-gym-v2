@@ -7,9 +7,9 @@ export type CameraProfile = 'follow' | 'first-person' | 'birds-eye';
  * Calculates dynamic agent speed based on reward values.
  */
 export const calculateCinematicSpeed = (reward: number): number => {
-    if (reward < 0) return 0.2; // Slow-mo near danger
-    if (reward > 40) return 1.0; // Stabilized turbo
-    return 0.15; // Ultra slow-mo for standard positive rewards
+    if (reward < 0) return 0.1; // Ultra slow-mo near danger for tension
+    if (reward > 15) return 0.8; // Fast through high-confidence safe zones
+    return 0.3; // Standard pace
 };
 
 /**
@@ -21,26 +21,40 @@ export const getCameraOffset = (
     profile: CameraProfile = 'follow'
 ): THREE.Vector3 => {
     if (profile === 'birds-eye') {
-        return new THREE.Vector3(20, 60, 20); // High overview
+        return type === 'spherical' 
+            ? new THREE.Vector3(0, 80, 0) 
+            : new THREE.Vector3(20, 60, 20);
     }
 
     if (profile === 'first-person') {
-        return new THREE.Vector3(0, 0.5, 0.1); // Just slightly above/ahead of agent
+        return new THREE.Vector3(0, 0.5, 0); 
     }
 
     // Default: Follow Profile
     if (type === 'wormhole') {
-        return new THREE.Vector3(0, 0, -15); // Look down the tunnel
+        // Spiral offset: stay "behind" the agent in the spiral
+        const angle = (progress / 10) * Math.PI * 4 - 0.5; // Slightly behind the current angle
+        return new THREE.Vector3(
+            Math.cos(angle) * 5,
+            Math.sin(angle) * 5,
+            -10
+        );
     }
     
     if (type === 'spherical') {
-        return new THREE.Vector3(30, 30, 30); // Wide shot of the sphere
+        // Wide orbiting shot
+        const orbitAngle = progress * 0.1;
+        return new THREE.Vector3(
+            Math.cos(orbitAngle) * 40,
+            20,
+            Math.sin(orbitAngle) * 40
+        );
     }
 
-    // Dynamic X shift to keep Step 0 anchored left initially
-    const xOffset = -5 + (progress * 0.2);
-    const swerve = Math.sin(progress * 0.4) * 6;
-    const vertical = 0;
+    // Linear Path: Dynamic X shift to keep Step 0 anchored left initially
+    const xOffset = -8 + (progress * 0.1);
+    const swerve = Math.sin(progress * 0.4) * 4;
+    const vertical = 2;
 
-    return new THREE.Vector3(xOffset, vertical, 15 + swerve);
+    return new THREE.Vector3(xOffset, vertical, 12 + swerve);
 };
