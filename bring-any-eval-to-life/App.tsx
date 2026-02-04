@@ -21,8 +21,9 @@ import { ShieldCheckIcon } from '@heroicons/react/24/outline';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GauntletView } from './components/Gauntlet/GauntletView';
 import { PathGeometryType } from './lib-web/path-generation';
-import { extractRewards, extractStepMetrics } from './lib-web/extraction';
+import { extractRewards, extractStepMetrics, extractSnapshots } from './lib-web/extraction';
 import { calculateSafetyStats, SafetyStats } from './lib-web/stats';
+import { useGauntletStream } from './lib-web/useGauntletStream';
 import { ToastProvider, useToast } from './components/Toast';
 
 const AppContent: React.FC = () => {
@@ -39,6 +40,8 @@ const AppContent: React.FC = () => {
   const importInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
 
+  // Real-time Observability Stream
+  const { streamData } = useGauntletStream(activeArtifact?.id || null);
 
   // Fetch evaluation artifacts
   const { data: artifacts = [], isLoading: isLoadingArtifacts } = useQuery({
@@ -332,6 +335,7 @@ const AppContent: React.FC = () => {
           <GauntletView
             rewards={extractRewards(activeArtifact.content)}
             metrics={extractStepMetrics(activeArtifact.content)}
+            snapshots={streamData.snapshots.length > 0 ? streamData.snapshots : extractSnapshots(activeArtifact.content)}
             activeStepIndex={activeStepIndex}
             solvedNodes={solvedNodes}
             onIntervene={handleIntervention}

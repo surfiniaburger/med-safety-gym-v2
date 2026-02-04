@@ -47,3 +47,20 @@ export const extractStepMetrics = (content: any): StepMetrics[] => {
 
     return [];
 };
+
+export const extractSnapshots = (content: any): any[] => {
+    if (!content) return [];
+
+    // Strategy 1: Direct snapshots array (from export_gauntlet.py)
+    if (Array.isArray(content.snapshots)) {
+        return content.snapshots;
+    }
+
+    // Strategy 2: Embedded in detailed results (from LocalEvaluationManager)
+    const detailed = content.results?.[0]?.results?.[0]?.detailed_results || content.results?.[0]?.detailed_results;
+    if (Array.isArray(detailed)) {
+        return detailed.map((r: any) => r.snapshot || { scores: {} });
+    }
+
+    return [];
+};

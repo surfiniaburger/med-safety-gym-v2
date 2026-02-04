@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { GauntletView } from '../components/Gauntlet/GauntletView';
 
@@ -42,11 +42,15 @@ describe('Gauntlet Distortion Controls', () => {
 
     it('renders the neural intensity slider after warmup', () => {
         render(<GauntletView {...defaultProps} />);
-        
+
         // Advance past warmup
         act(() => {
             vi.advanceTimersByTime(7000);
         });
+
+        // Open controls dropdown
+        const controlsButton = screen.getByText(/Controls/i);
+        fireEvent.click(controlsButton);
 
         expect(screen.getByLabelText(/Neural Intensity/i)).toBeDefined();
     });

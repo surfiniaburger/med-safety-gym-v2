@@ -23,14 +23,16 @@ import {
     PauseIcon,
     PlayIcon as PlayIconOutline,
     MagnifyingGlassPlusIcon,
-    ArrowPathIcon
+    ArrowPathIcon,
+    AdjustmentsHorizontalIcon,
+    ChevronDownIcon
 } from '@heroicons/react/24/outline';
 import { calculateCinematicSpeed, getCameraOffset, CameraProfile } from '../../lib-web/camera';
-import { 
-    WARMUP_START_X, 
-    WARMUP_TARGET_X, 
-    WARMUP_PURPLE_RADIUS, 
-    WARMUP_GREEN_RADIUS, 
+import {
+    WARMUP_START_X,
+    WARMUP_TARGET_X,
+    WARMUP_PURPLE_RADIUS,
+    WARMUP_GREEN_RADIUS,
     WARMUP_GREEN_ORBIT_RADIUS,
     WARMUP_GREEN_ORBIT_SPEED,
     WARMUP_ENTRY_LERP_FACTOR
@@ -71,7 +73,7 @@ const Starfield = () => {
         const cols = new Float32Array(starCount * 3);
         const szs = new Float32Array(starCount);
         const range = 400;
-        
+
         const colorOptions = [
             new THREE.Color("#ffffff"),
             new THREE.Color("#4dabf7"), // Blue
@@ -121,12 +123,12 @@ const Starfield = () => {
                     itemSize={3}
                 />
             </bufferGeometry>
-            <pointsMaterial 
-                size={0.15} 
-                vertexColors 
-                transparent 
-                opacity={0.6} 
-                sizeAttenuation 
+            <pointsMaterial
+                size={0.15}
+                vertexColors
+                transparent
+                opacity={0.6}
+                sizeAttenuation
                 blending={THREE.AdditiveBlending}
             />
         </points>
@@ -263,6 +265,7 @@ interface GauntletViewProps {
     onComplete?: () => void;
     initialPathType?: PathGeometryType;
     accentColor?: string;
+    snapshots?: any[]; // Added for Neural Diagnostics
 }
 
 interface PathAgentProps {
@@ -368,7 +371,7 @@ const CinematicCamera = ({ enabled, type, profile, points }: CinematicCameraProp
 
             // Smoothly lerp camera to target position
             state.camera.position.lerp(targetPos, 0.05);
-            
+
             if (profile === 'first-person') {
                 // Look ahead along the path
                 const nextIndex = Math.min(Math.floor(agentProgress) + 1, points.length - 1);
@@ -390,9 +393,10 @@ interface NeuralPathwayProps {
     pathType: PathGeometryType;
     intensity: number;
     color: string;
+    activeStepIndex: number;
 }
 
-const NeuralPathway = ({ points, rewards, solvedNodes, pathType, intensity, color }: NeuralPathwayProps) => {
+const NeuralPathway = ({ points, rewards, solvedNodes, pathType, intensity, color, activeStepIndex }: NeuralPathwayProps) => {
     const { agentProgress } = useGauntlet();
     const curve = useMemo(() => new THREE.CatmullRomCurve3(points), [points]);
 
@@ -460,6 +464,8 @@ const NeuralPathway = ({ points, rewards, solvedNodes, pathType, intensity, colo
                 const reward = rewards[i];
                 const isSolved = solvedNodes.includes(i);
                 const isFailed = reward < 0 && !isSolved;
+                const isActive = i === activeStepIndex;
+                const shouldShowLabel = isActive || i % 5 === 0 || isFailed;
 
                 return (
                     <group key={i} position={p}>
@@ -481,17 +487,67 @@ const NeuralPathway = ({ points, rewards, solvedNodes, pathType, intensity, colo
                                 </Text>
                             </Float>
                         )}
-                        <Text
-                            position={[0, -0.8, 0]}
-                            fontSize={0.25}
-                            color="#5c5f66"
-                        >
-                            NODE_{i}
-                        </Text>
+                        {shouldShowLabel && (
+                            <Text
+                                position={[0, -0.8, 0]}
+                                fontSize={isActive ? 0.3 : 0.2}
+                                color={isActive ? "#ffffff" : "#5c5f66"}
+                            >
+                                NODE_{i}
+                            </Text>
+                        )}
                     </group>
                 );
             })}
         </group>
+    );
+};
+
+const NeuralDiagnostics = ({ snapshot, isOpen, onClose }: { snapshot: any, isOpen: boolean, onClose: () => void }) => {
+    if (!isOpen || !snapshot) return null;
+
+    return (
+        <div className="absolute right-0 top-20 bottom-24 md:bottom-20 w-[85%] md:w-80 bg-black/80 backdrop-blur-xl border-l border-white/10 p-4 md:p-6 overflow-y-auto z-40 rounded-l-3xl shadow-2xl">
+            <div className="flex items-center justify-between mb-4 md:mb-6">
+                <div className="flex items-center gap-2">
+                    <MagnifyingGlassPlusIcon className="w-4 h-4 md:w-5 md:h-5 text-blue-400" />
+                    <h3 className="text-sm md:text-lg font-bold text-white uppercase tracking-widest">Neural Diagnostics</h3>
+                </div>
+                <button
+                    onClick={onClose}
+                    data-testid="close-diagnostics-btn"
+                    className="p-1 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-white transition-colors"
+                >
+                    <XMarkIcon className="w-5 h-5" />
+                </button>
+            </div>
+
+            <div className="flex flex-col gap-1">
+                {Object.entries(snapshot.scores || {}).map(([key, value]) => {
+                    const val = Number(value);
+                    const isNegative = val < 0;
+                    return (
+                        <div key={key} className="group flex justify-between items-center p-2 md:p-3 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/5">
+                            <div className="flex flex-col">
+                                <span className="text-zinc-400 font-mono text-[8px] md:text-[10px] uppercase tracking-wider group-hover:text-white transition-colors">{key.replace('.', ' > ')}</span>
+                            </div>
+                            <span className={`font-mono text-[10px] md:text-xs font-bold px-1.5 md:px-2 py-0.5 md:py-1 rounded-md ${isNegative
+                                ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                                : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                }`}>
+                                {val.toFixed(1)}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t border-white/10">
+                <div className="text-[8px] md:text-[10px] text-zinc-600 font-mono uppercase text-center">
+                    Snapshot Timestamp: {new Date((snapshot.timestamp || 0) * 1000).toLocaleTimeString()}
+                </div>
+            </div>
+        </div>
     );
 };
 
@@ -505,8 +561,10 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
     onClose,
     onComplete,
     initialPathType = 'linear',
-    accentColor = '#4dabf7'
+    accentColor = '#4dabf7',
+    snapshots
 }) => {
+
     if (!rewards || rewards.length === 0) {
         return (
             <div className="w-full h-full bg-[#050505] flex flex-col items-center justify-center p-6 text-center">
@@ -540,6 +598,8 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
     const [pathType, setPathType] = useState<PathGeometryType>(initialPathType);
     const [neuralIntensity, setNeuralIntensity] = useState(0.5);
     const [simSpeed, setSimSpeed] = useState(1.0);
+    const [showSettings, setShowSettings] = useState(false);
+    const [showDiagnostics, setShowDiagnostics] = useState(false);
 
     // Keyboard Navigation Support
     useEffect(() => {
@@ -631,6 +691,13 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
 
     return (
         <div className="w-full h-full relative font-sans select-none overflow-hidden">
+            {/* Neural Diagnostics Panel */}
+            <NeuralDiagnostics
+                snapshot={snapshots?.[activeStepIndex]}
+                isOpen={showDiagnostics && (gameState === GauntletState.TRAJECTORY_ACTIVE || gameState === GauntletState.TRANSITION)}
+                onClose={() => setShowDiagnostics(false)}
+            />
+
             {/* Cinematic Camera Control */}
             <Canvas shadows dpr={[1, 2]}>
                 <GauntletContext.Provider value={contextValue}>
@@ -658,7 +725,15 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
 
                     {(gameState === GauntletState.TRAJECTORY_ACTIVE || gameState === GauntletState.TRANSITION) && (
                         <>
-                            <NeuralPathway points={points} rewards={rewards} solvedNodes={solvedNodes} pathType={pathType} intensity={neuralIntensity} color={accentColor} />
+                            <NeuralPathway
+                                points={points}
+                                rewards={rewards}
+                                solvedNodes={solvedNodes}
+                                pathType={pathType}
+                                intensity={neuralIntensity}
+                                color={accentColor}
+                                activeStepIndex={activeStepIndex}
+                            />
 
                             {points.map((p, i) => (
                                 rewards[i] < 0 && (
@@ -686,9 +761,9 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                 <div className="text-white/20 text-[8px] font-mono uppercase">
                     Gauntlet Mount OK ({rewards.length} nodes)
                 </div>
-                
+
                 {gameState === GauntletState.TRAJECTORY_ACTIVE && (
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         className="bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-4 py-2 flex items-center gap-3 shadow-2xl"
@@ -697,63 +772,155 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                         <span className="text-[10px] font-mono text-blue-400 font-bold uppercase tracking-widest">
                             Architect: {
                                 pathType === 'wormhole' ? "Visualizing Data Turbulence via Wormhole" :
-                                pathType === 'spherical' ? "Mapping Global Safety via Fibonacci Sphere" :
-                                "Standard Linear Trajectory Active"
+                                    pathType === 'spherical' ? "Mapping Global Safety via Fibonacci Sphere" :
+                                        "Standard Linear Trajectory Active"
                             }
                         </span>
                     </motion.div>
                 )}
             </div>
 
-            <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start pointer-events-none">
+            <div className="absolute top-0 left-0 w-full p-4 md:p-6 flex justify-between items-start pointer-events-none z-50">
                 <div className="flex flex-col gap-1 pointer-events-auto">
-                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold uppercase tracking-widest">
+                    <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[8px] md:text-[10px] font-bold uppercase tracking-widest w-fit">
                         <BoltIcon className="w-3 h-3" /> Gauntlet Engine V1.0
                     </div>
-                    <h1 className="text-2xl font-black text-white">Neural Path Visualization</h1>
-                    
-                    <div className="flex items-center gap-2 mt-2">
-                        {(['linear', 'wormhole', 'spherical'] as PathGeometryType[]).map((type) => (
-                            <button
-                                key={type}
-                                onClick={() => setPathType(type)}
-                                className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-tighter transition-all border ${
-                                    pathType === type 
-                                    ? 'bg-blue-500 border-blue-400 text-white shadow-[0_0_15px_rgba(59,130,246,0.5)]' 
-                                    : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
-                                }`}
-                            >
-                                {type}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="flex items-center gap-2 mt-2">
-                        {(['follow', 'first-person', 'birds-eye'] as CameraProfile[]).map((profile) => (
-                            <button
-                                key={profile}
-                                onClick={() => {
-                                    setCameraProfile(profile);
-                                    setCameraMode('cinematic');
-                                }}
-                                className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-tighter transition-all border ${
-                                    cameraProfile === profile 
-                                    ? 'bg-emerald-500 border-emerald-400 text-white shadow-[0_0_15px_rgba(52,211,153,0.5)]' 
-                                    : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
-                                }`}
-                            >
-                                {profile.replace('-', ' ')}
-                            </button>
-                        ))}
-                    </div>
+                    <h1 className="text-lg md:text-2xl font-black text-white">Neural Path</h1>
                 </div>
 
-                <button
-                    onClick={onClose}
-                    className="p-2 rounded-full bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all pointer-events-auto"
-                >
-                    <XMarkIcon className="w-6 h-6" />
-                </button>
+                <div className="flex items-center gap-2 pointer-events-auto">
+                    {/* Settings Dropdown */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowSettings(!showSettings)}
+                            className={`p-2 rounded-xl border transition-all flex items-center gap-2 ${showSettings
+                                ? 'bg-blue-500 border-blue-400 text-white'
+                                : 'bg-white/5 border-white/10 text-white/40 hover:text-white hover:bg-white/10'
+                                }`}
+                        >
+                            <AdjustmentsHorizontalIcon className="w-5 h-5 md:w-6 md:h-6" />
+                            <span className="hidden md:block text-[10px] font-bold uppercase tracking-widest">Controls</span>
+                        </button>
+
+                        <AnimatePresence>
+                            {showSettings && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    className="absolute right-0 mt-2 w-64 md:w-72 bg-zinc-900/90 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-2xl flex flex-col gap-4"
+                                >
+                                    {/* Path Type */}
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Trajectory Type</label>
+                                        <div className="grid grid-cols-3 gap-1">
+                                            {(['linear', 'wormhole', 'spherical'] as PathGeometryType[]).map((type) => (
+                                                <button
+                                                    key={type}
+                                                    onClick={() => setPathType(type)}
+                                                    className={`px-2 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-tighter transition-all border ${pathType === type
+                                                        ? 'bg-blue-500 border-blue-400 text-white'
+                                                        : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+                                                        }`}
+                                                >
+                                                    {type}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Camera Profile */}
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Camera View</label>
+                                        <div className="grid grid-cols-3 gap-1">
+                                            {(['follow', 'first-person', 'birds-eye'] as CameraProfile[]).map((profile) => (
+                                                <button
+                                                    key={profile}
+                                                    onClick={() => {
+                                                        setCameraProfile(profile);
+                                                        setCameraMode('cinematic');
+                                                    }}
+                                                    className={`px-2 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-tighter transition-all border ${cameraProfile === profile
+                                                        ? 'bg-emerald-500 border-emerald-400 text-white'
+                                                        : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+                                                        }`}
+                                                >
+                                                    {profile.replace('-', ' ')}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="h-px bg-white/10" />
+
+                                    {/* Sliders */}
+                                    <div className="flex flex-col gap-3">
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between items-center">
+                                                <label htmlFor="neural-intensity-slider" className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Neural Intensity</label>
+                                                <span className="text-[8px] font-mono text-blue-400 font-bold">{(neuralIntensity * 100).toFixed(0)}%</span>
+                                            </div>
+                                            <input
+                                                id="neural-intensity-slider"
+                                                type="range" min="0" max="1" step="0.01"
+                                                value={neuralIntensity}
+                                                onChange={(e) => setNeuralIntensity(parseFloat(e.target.value))}
+                                                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                            />
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between items-center">
+                                                <label htmlFor="sim-speed-slider" className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Sim Speed</label>
+                                                <span className="text-[8px] font-mono text-blue-400 font-bold">{simSpeed.toFixed(1)}x</span>
+                                            </div>
+                                            <input
+                                                id="sim-speed-slider"
+                                                type="range" min="0.1" max="3.0" step="0.1"
+                                                value={simSpeed}
+                                                onChange={(e) => setSimSpeed(parseFloat(e.target.value))}
+                                                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="h-px bg-white/10" />
+
+                                    {/* Diagnostics Toggle */}
+                                    <button
+                                        onClick={() => setShowDiagnostics(!showDiagnostics)}
+                                        className={`flex items-center justify-center gap-2 px-4 py-2 rounded-xl border transition-all text-[10px] font-bold uppercase tracking-widest ${showDiagnostics
+                                            ? 'bg-blue-500 border-blue-400 text-white'
+                                            : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
+                                            }`}
+                                    >
+                                        <MagnifyingGlassPlusIcon className="w-4 h-4" />
+                                        {showDiagnostics ? 'Hide Diagnostics' : 'Show Diagnostics'}
+                                    </button>
+
+                                    {/* Camera Mode Toggle */}
+                                    <button
+                                        onClick={() => setCameraMode(cameraMode === 'cinematic' ? 'manual' : 'cinematic')}
+                                        className={`flex items-center justify-center gap-2 px-4 py-2 rounded-xl border transition-all text-[10px] font-bold uppercase tracking-widest ${cameraMode === 'manual'
+                                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-500'
+                                            : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
+                                            }`}
+                                    >
+                                        {cameraMode === 'manual' ? <ArrowPathIcon className="w-4 h-4" /> : <MagnifyingGlassPlusIcon className="w-4 h-4" />}
+                                        {cameraMode === 'manual' ? 'Manual Mode' : 'Free Camera'}
+                                    </button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+
+                    <button
+                        onClick={onClose}
+                        className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all"
+                    >
+                        <XMarkIcon className="w-5 h-5 md:w-6 md:h-6" />
+                    </button>
+                </div>
             </div>
 
             {/* Glitch Overlay */}
@@ -828,115 +995,50 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                 )}
             </AnimatePresence>
 
-            {/* Camera Controls Overlay */}
-            {gameState === GauntletState.TRAJECTORY_ACTIVE && (
-                <div className="absolute right-6 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-4">
-                    <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-4 flex flex-col gap-2 shadow-2xl">
-                        {cameraMode === 'cinematic' ? (
-                            <button
-                                onClick={() => setCameraMode('manual')}
-                                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:bg-white/10 transition-all text-[10px] font-bold uppercase tracking-widest"
-                            >
-                                <MagnifyingGlassPlusIcon className="w-4 h-4" />
-                                Free Camera
-                            </button>
-                        ) : (
-                            <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold uppercase tracking-widest">
-                                <ArrowPathIcon className="w-4 h-4" />
-                                Manual Mode
-                            </div>
-                        )}
-
-                        <div className="h-px bg-white/10 my-1" />
-                        
-                        <div className="flex flex-col gap-1 px-1">
-                            <label htmlFor="intensity-slider" className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Neural Intensity</label>
-                            <input
-                                id="intensity-slider"
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.01"
-                                value={neuralIntensity}
-                                onChange={(e) => setNeuralIntensity(parseFloat(e.target.value))}
-                                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                            />
-                        </div>
-
-                        <div className="flex flex-col gap-1 px-1 mt-1">
-                            <div className="flex justify-between items-center">
-                                <label htmlFor="speed-slider" className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Sim Speed</label>
-                                <span className="text-[8px] font-mono text-blue-400 font-bold">{simSpeed.toFixed(1)}x</span>
-                            </div>
-                            <input
-                                id="speed-slider"
-                                type="range"
-                                min="0.1"
-                                max="3.0"
-                                step="0.1"
-                                value={simSpeed}
-                                onChange={(e) => setSimSpeed(parseFloat(e.target.value))}
-                                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                            />
-                        </div>
-                    </div>
-
-                    {cameraMode === 'manual' && (
-                        <motion.button
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            onClick={() => setCameraMode('cinematic')}
-                            className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-blue-500 text-white font-bold text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:bg-blue-400 transition-all"
-                        >
-                            <ArrowPathIcon className="w-4 h-4" />
-                            Reset Camera
-                        </motion.button>
-                    )}
-                </div>
-            )}
-
             {/* Status Bar */}
-            <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-xl pointer-events-none">
-                <div className="bg-black/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 flex items-center justify-between pointer-events-auto">
-                    <div className="flex items-center gap-4">
+            <div className="absolute bottom-6 md:bottom-12 left-1/2 -translate-x-1/2 w-full max-w-md md:max-w-xl px-4 pointer-events-none">
+                <div className="bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl p-3 md:p-4 flex items-center justify-between pointer-events-auto shadow-2xl">
+                    <div className="flex items-center gap-3 md:gap-4">
                         <div className="flex flex-col">
-                            <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest leading-none mb-1">Position</span>
-                            <span className="text-white font-mono text-xl">STEP {activeStepIndex}</span>
+                            <span className="hidden sm:block text-[8px] md:text-[10px] text-zinc-500 uppercase font-bold tracking-widest leading-none mb-1">Position</span>
+                            <span className="text-white font-mono text-sm md:text-xl">STEP {activeStepIndex}</span>
                         </div>
-                        <div className="h-8 w-px bg-white/10" />
+                        <div className="h-6 md:h-8 w-px bg-white/10" />
                         <div className="flex flex-col">
-                            <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest leading-none mb-1">Status</span>
-                            <span className={`text-sm font-bold flex items-center gap-1.5 ${isInternalPaused ? 'text-rose-500' : 'text-sky-400'}`}>
-                                <div className={`w-2 h-2 rounded-full ${isInternalPaused ? 'bg-rose-500 animate-pulse' : 'bg-sky-400 animate-ping'}`} />
-                                {isInternalPaused ? 'INTERVENTION REQ' : 'ACTIVE SIM'}
+                            <span className="hidden sm:block text-[8px] md:text-[10px] text-zinc-500 uppercase font-bold tracking-widest leading-none mb-1">Status</span>
+                            <span className={`text-[10px] md:text-sm font-bold flex items-center gap-1.5 ${isInternalPaused ? 'text-rose-500' : 'text-sky-400'}`}>
+                                <div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${isInternalPaused ? 'bg-rose-500 animate-pulse' : 'bg-sky-400 animate-ping'}`} />
+                                <span className="hidden xs:inline">{isInternalPaused ? 'INTERVENTION' : 'ACTIVE'}</span>
                             </span>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 md:gap-3">
                         <button
                             onClick={() => setIsManualPaused(!isManualPaused)}
-                            className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white transition-all pointer-events-auto"
-                            title={isManualPaused ? "Resume Simulation" : "Pause Simulation"}
+                            className="p-1.5 md:p-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white transition-all"
+                            title="Pause Simulation"
                         >
-                            {isManualPaused ? <PlayIconOutline className="w-5 h-5" /> : <PauseIcon className="w-5 h-5" />}
+                            {isManualPaused ? <PlayIconOutline className="w-4 h-4 md:w-5 md:h-5" /> : <PauseIcon className="w-4 h-4 md:w-5 md:h-5" />}
                         </button>
 
                         {rewards[activeStepIndex] >= 0 && (
                             <button
                                 onClick={() => onIntervene(activeStepIndex)}
-                                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-all pointer-events-auto"
+                                className="flex items-center gap-1.5 px-2 md:px-4 py-1.5 md:py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[8px] md:text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-all"
                             >
-                                <ShieldCheckIcon className="w-3.5 h-3.5" /> Sanity Test
+                                <ShieldCheckIcon className="w-3 md:w-3.5 h-3 md:h-3.5" />
+                                <span className="hidden sm:inline">Sanity Test</span>
                             </button>
                         )}
-                        <div className="flex items-center gap-2 overflow-x-auto max-w-[150px] scrollbar-hide">
+
+                        <div className="flex items-center gap-1 md:gap-2 overflow-x-auto max-w-[80px] md:max-w-[150px] scrollbar-hide">
                             {rewards.map((_, i) => (
                                 <div
                                     key={i}
-                                    className={`h-1 flex-shrink-0 rounded-full transition-all duration-300 ${i === activeStepIndex ? 'w-8 bg-white' :
-                                        solvedNodes.includes(i) ? 'w-2 bg-emerald-500' :
-                                            rewards[i] < 0 ? 'w-2 bg-rose-500' : 'w-2 bg-white/10'
+                                    className={`h-1 flex-shrink-0 rounded-full transition-all duration-300 ${i === activeStepIndex ? 'w-4 md:w-8 bg-white' :
+                                        solvedNodes.includes(i) ? 'w-1 md:w-2 bg-emerald-500' :
+                                            rewards[i] < 0 ? 'w-1 md:w-2 bg-rose-500' : 'w-1 md:w-2 bg-white/10'
                                         }`}
                                 />
                             ))}

@@ -1,5 +1,12 @@
-from typing import Dict, List, Any, Callable, Optional, Iterator, Tuple
+from typing import Dict, List, Any, Callable, Optional, Union, Iterable, Iterator, Tuple, TypeVar
+import inspect
+import asyncio
+import logging
+
+T = TypeVar("T", bound="Rubric")
+
 import abc
+import re
 
 class Rubric(abc.ABC):
     """
@@ -7,82 +14,99 @@ class Rubric(abc.ABC):
     Inspired by torch.nn.Module for composability and observability.
     """
     def __init__(self):
-        self._children: Dict[str, 'Rubric'] = {}
         self._forward_hooks: List[Callable] = []
+        self._forward_pre_hooks: List[Callable] = []
+        self._children: Dict[str, 'Rubric'] = {}
+        self._name: Optional[str] = None
         self.last_score: float = 0.0
 
     def __setattr__(self, name: str, value: Any):
-        if isinstance(value, Rubric):
+        if isinstance(value, Rubric) and name != "_children":
             self._children[name] = value
         super().__setattr__(name, value)
 
-    @abc.abstractmethod
-    def forward(self, action: Any, observation: Any) -> float:
+    def register_forward_hook(self, hook: Callable) -> None:
         """
-        Compute reward. Environment authors should implement this.
-        
-        Args:
-            action: The action taken by the agent.
-            observation: The observation resulting from the action.
-            
-        Returns:
-            A float representing the reward/score.
+        Registers a forward hook on the rubric.
+        Signature: hook(rubric, action, observation, result) -> None
         """
-        pass
+        self._forward_hooks.append(hook)
+
+    def register_forward_pre_hook(self, hook: Callable) -> None:
+        """
+        Registers a forward pre-hook on the rubric.
+        Signature: hook(rubric, action, observation) -> None
+        """
+        self._forward_pre_hooks.append(hook)
 
     def __call__(self, action: Any, observation: Any) -> float:
-        """
-        Execute the rubric and all registered hooks.
-        """
+        """Execute the rubric and all registered hooks."""
+        # Run pre-hooks
+        for hook in self._forward_pre_hooks:
+            hook(self, action, observation)
+
         score = self.forward(action, observation)
         self.last_score = score
-        
-        # Post-hooks for observability
+
+        # Run post-hooks
         for hook in self._forward_hooks:
             hook(self, action, observation, score)
-            
         return score
+
+    @abc.abstractmethod
+    def forward(self, action: Any, observation: Any) -> float:
+        """Compute reward. Environment authors should implement this."""
+        pass
+
+    def get_rubric(self, path: str) -> 'Rubric':
+        """
+        Retrieves a nested rubric by its dot-separated path.
+        Example: rubric.get_rubric("grounding.fuzzy_match")
+        """
+        if not path:
+            return self
+        
+        parts = path.split(".", 1)
+        head = parts[0]
+        tail = parts[1] if len(parts) > 1 else None
+
+        if head in self._children:
+            child = self._children[head]
+        else:
+            # Fallback for attributes not in _children but are Rubrics
+            child = getattr(self, head, None)
+            if not isinstance(child, Rubric):
+                raise KeyError(f"Rubric path '{head}' not found in {self.__class__.__name__}")
+
+        if tail:
+            return child.get_rubric(tail)
+        return child
 
     def children(self) -> Iterator['Rubric']:
         """Returns an iterator over immediate child rubrics."""
-        for child in self._children.values():
-            yield child
+        yield from self._children.values()
 
     def named_children(self) -> Iterator[Tuple[str, 'Rubric']]:
-        """Returns an iterator over immediate child rubrics, yielding both the name and the rubric."""
-        for name, child in self._children.items():
-            yield name, child
+        """Returns an iterator over immediate child rubrics, yielding both name and rubric."""
+        yield from self._children.items()
 
     def named_rubrics(self, prefix: str = "") -> Iterator[Tuple[str, 'Rubric']]:
-        """
-        Returns an iterator over all rubrics in the hierarchy, yielding both the name and the rubric.
-        """
+        """Returns an iterator over all rubrics in the hierarchy."""
         yield prefix, self
         for name, child in self._children.items():
             child_prefix = f"{prefix}.{name}" if prefix else name
             yield from child.named_rubrics(child_prefix)
 
-    def register_forward_hook(self, hook: Callable):
-        """
-        Registers a forward hook on the rubric.
-        The hook will be called every time after forward() has computed a result.
-        
-        Signature: hook(rubric, action, observation, result) -> None
-        """
-        self._forward_hooks.append(hook)
-
     def state_dict(self) -> Dict[str, Any]:
         """Returns a dictionary containing the state of the rubric and its children."""
-        state = {}
-        for name, child in self._children.items():
-            state[name] = child.state_dict()
-        return state
+        return {name: child.state_dict() for name, child in self._children.items()}
 
-    def load_state_dict(self, state_dict: Dict[str, Any]):
-        """Loads the state of the rubric and its children from a dictionary."""
-        for name, child in self._children.items():
-            if name in state_dict:
-                child.load_state_dict(state_dict[name])
+    def capture_snapshot(self) -> Dict[str, Any]:
+        """
+        Captures the current scores of all rubrics in the hierarchy.
+        Returns a dictionary mapping dot-separated paths to scores.
+        """
+        return {path or "root": getattr(rubric, "last_score", None) for path, rubric in self.named_rubrics()}
 
 class Sequential(Rubric):
     """
@@ -137,10 +161,7 @@ class WeightedSum(Rubric):
         return total
 
 class RubricList(Rubric):
-    """
-    A container for a list of rubrics. 
-    Does not define aggregation - use within a parent rubric.
-    """
+    """A container for a list of rubrics."""
     def __init__(self, rubrics: List[Rubric]):
         super().__init__()
         for i, r in enumerate(rubrics):
@@ -150,9 +171,7 @@ class RubricList(Rubric):
         raise NotImplementedError("RubricList does not implement forward. Use it as a container.")
 
 class RubricDict(Rubric):
-    """
-    A container for a dictionary of rubrics.
-    """
+    """A container for a dictionary of rubrics."""
     def __init__(self, rubrics: Dict[str, Rubric]):
         super().__init__()
         for name, r in rubrics.items():
@@ -160,3 +179,45 @@ class RubricDict(Rubric):
 
     def forward(self, action: Any, observation: Any) -> float:
         raise NotImplementedError("RubricDict does not implement forward. Use it as a container.")
+
+class LLMJudge(Rubric):
+    """
+    A rubric that uses an LLM to evaluate the action.
+    """
+    def __init__(
+        self,
+        prompt_template: str,
+        inference_fn: Callable[[str], str],
+        score_parser: Optional[Callable[[str], float]] = None
+    ):
+        super().__init__()
+        self.prompt_template = prompt_template
+        self.inference_fn = inference_fn
+        self.score_parser = score_parser or self._default_score_parser
+
+    def forward(self, action: Any, observation: Any) -> float:
+        action_str = getattr(action, 'content', str(action))
+        
+        if hasattr(observation, 'context'):
+             obs_context = observation.context
+             obs_question = getattr(observation, 'question', "")
+             obs_str = f"Context: {obs_context}\nQuestion: {obs_question}"
+        else:
+             obs_str = str(observation)
+
+        prompt = self.prompt_template.format(action=action_str, observation=obs_str)
+        response = self.inference_fn(prompt)
+        return self.score_parser(response)
+
+    def _default_score_parser(self, response: str) -> float:
+        match = re.search(r"Score:\s*(1\.0*|0?\.\d+|1|0)", response, re.IGNORECASE)
+        if match:
+            try:
+                return float(match.group(1))
+            except ValueError:
+                pass
+        
+        if "PASS" in response: return 1.0
+        if "FAIL" in response: return 0.0
+        return 0.0
+
