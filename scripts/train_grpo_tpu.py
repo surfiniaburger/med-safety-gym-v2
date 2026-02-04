@@ -195,8 +195,7 @@ class DIPGRaxReward:
             
             self.parser = FormatParser()
             
-            # Observability: Track component scores
-            # Observability: Track component scores
+            # Observability: Track component scores (Legacy Logging)
             self.component_scores = {}
             
             def create_log_hook(name):
@@ -207,6 +206,17 @@ class DIPGRaxReward:
             for name, r in self.rubric.named_rubrics():
                 if name: # Only log named children
                     r.register_forward_hook(create_log_hook(name))
+
+            # Observability: Data Agent Layer (Database Recording)
+            session_id = f"grpo_run_{int(time.time())}"
+            logger.info(f"🎥 Data Agent Recording Session: {session_id}")
+            
+            try:
+                self.sink = SQLAlchemySink(session_id=session_id)
+                self.observer = RubricObserver(self.rubric, [self.sink])
+                logger.info("✓ Data Agent Observer Attached (SQLAlchemySink)")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to attach Data Agent Observer: {e}")
 
             self.__name__ = "dipg_reward" 
             logger.info("✓ Reward Function Initialized (Rubric Mode)")

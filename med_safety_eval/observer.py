@@ -1,0 +1,114 @@
+from typing import Dict, List, Any, Optional, Protocol, runtime_checkable
+import json
+import time
+from med_safety_eval.rubric import Rubric
+from med_safety_eval.schemas import NeuralSnapshot
+
+
+@runtime_checkable
+class DataSink(Protocol):
+    """Interface for where observability data is sent."""
+    def emit(self, snapshot: NeuralSnapshot) -> None:
+        ...
+
+class ConsoleSink:
+    """Simple sink that prints to console."""
+    def emit(self, snapshot: NeuralSnapshot) -> None:
+        print(f"[RubricObserver] {snapshot.model_dump_json(indent=2)}")
+
+class WandBSink:
+    """Sink that logs to Weights & Biases."""
+    def __init__(self, project: str = "med-safety-gym", config: Optional[Dict] = None):
+        try:
+            import wandb
+            self.wandb = wandb
+            if not self.wandb.run:
+                self.wandb.init(project=project, config=config)
+        except ImportError:
+            print("Warning: wandb not installed. WandBSink will be a no-op.")
+            self.wandb = None
+
+    def emit(self, snapshot: NeuralSnapshot) -> None:
+        if self.wandb and self.wandb.run:
+            # Flatten scores for WandB: "scores.grounding" -> "rubric/grounding"
+            log_data = {f"rubric/{k}": v for k, v in snapshot.scores.items()}
+            # WandB handles step automatically if we log strictly sequentially, 
+            # or we can pass step explicitly
+            self.wandb.log(log_data, step=snapshot.step)
+
+class DatabaseSink:
+    """Sink that writes to a PostgreSQL database (Stub)."""
+    def __init__(self, connection_string: str):
+        self.connection_string = connection_string
+        # TODO: Initialize SQLAlchemy engine
+
+    def emit(self, snapshot: NeuralSnapshot) -> None:
+        # TODO: Write to DB
+        pass
+
+class WebsocketSink:
+    """Sink that sends snapshots to a Gauntlet UI via a broadcast server."""
+    def __init__(self, session_id: str, base_url: str = "http://localhost:8000"):
+        self.session_id = session_id
+        self.url = f"{base_url}/gauntlet/stream/{session_id}"
+
+    def emit(self, snapshot: NeuralSnapshot) -> None:
+        try:
+            import requests
+            # We use a simple POST to the broadcast endpoint
+            # model_dump(mode='json') ensures serialization of inner types
+            requests.post(self.url, json=snapshot.model_dump(mode='json'), timeout=1.0)
+        except Exception as e:
+            # Sinks should be non-blocking and fail-silent in training
+            pass
+
+
+class RubricObserver:
+    """
+    Observes a Rubric hierarchy and aggregates scores into snapshots.
+    """
+    def __init__(self, root_rubric: Rubric, sinks: List[DataSink], session_id: str = "default_session"):
+        self.root_rubric = root_rubric
+        self.sinks = sinks
+        self.session_id = session_id
+        self._step_count = 0
+        self._setup_hooks()
+
+    def _setup_hooks(self):
+        """Attaches post-forward hooks to all rubrics in the hierarchy."""
+        for path, rubric in self.root_rubric.named_rubrics():
+            # We use a closure to capture the path
+            def hook_factory(p):
+                def hook(r, action, observation, score):
+                    self._on_score(p, action, observation, score)
+                return hook
+            
+            rubric.register_forward_hook(hook_factory(path))
+
+    def _on_score(self, path: str, action: Any, observation: Any, score: float):
+        """Called whenever a rubric in the hierarchy produces a score."""
+        # In a real implementation, we might want to buffer these 
+        # or only emit when the root rubric finishes.
+        # For now, we'll emit a snapshot if it's the root rubric.
+        if path == "":
+            self._step_count += 1
+            snapshot = self.capture_snapshot(action, observation)
+            for sink in self.sinks:
+                sink.emit(snapshot)
+
+    def capture_snapshot(self, action: Any = None, observation: Any = None) -> NeuralSnapshot:
+        """Traverses the rubric tree and captures all current scores."""
+        scores = {}
+        for path, rubric in self.root_rubric.named_rubrics():
+            # We assume last_score is set by the rubric logic or hook
+            scores[path or "root"] = getattr(rubric, "last_score", 0.0)
+            
+        return NeuralSnapshot(
+            session_id=self.session_id,
+            step=self._step_count,
+            scores=scores,
+            metadata={
+                "action": str(action) if action is not None else "",
+                "observation": str(observation) if observation is not None else ""
+            }
+        )

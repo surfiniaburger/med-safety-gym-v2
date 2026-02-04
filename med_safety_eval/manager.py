@@ -121,6 +121,9 @@ class LocalEvaluationManager:
                 # Use Rubric System (RFC 004)
                 reward = self.rubric(parsed_response, item.ground_truth)
                 
+                # Capture Neural Snapshot for diagnostics
+                snapshot = self.rubric.capture_snapshot()
+                
                 # Extract metrics from rubric components for backward compatibility
                 is_hallucination = self.rubric.grounding.last_score == self.reward_config.hallucination_penalty
                 is_inconsistent = self.rubric.inconsistency_applied
@@ -147,6 +150,7 @@ class LocalEvaluationManager:
                     "index": idx,
                     "reward": reward,
                     "metrics": metrics,
+                    "snapshot": snapshot, # Added for Neural Diagnostics
                     "response": item.response,
                     "ground_truth": {
                         "context": item.ground_truth.context,

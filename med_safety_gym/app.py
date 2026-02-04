@@ -7,6 +7,7 @@ from .dipg_environment import DIPGEnvironment
 from .format_parser import ResponseFormat
 from .models import DIPGAction, DIPGObservation
 from .evaluation_service_v2 import EvaluationRequest, EvaluationManager, EvaluationItem, GroundTruth
+from .database import init_db
 from med_safety_eval import EvaluationResult
 
 # Get the configurable rewards from environment variables.
@@ -159,11 +160,21 @@ def get_environment() -> DIPGEnvironment:
         
     return env
 
+# Removed: websocket and ConnectionManager imports to adhere to OpenEnv invariants
+
+
+# Removed: ConnectionManager class and instance to adhere to OpenEnv invariants
+
+
 # Fix: openenv_core expects an instance, not a factory function
 app = create_app(get_environment, DIPGAction, DIPGObservation, env_name="dipg_safety_env")
 
+# Removed: /ws/gauntlet and /gauntlet/stream routes to adhere to OpenEnv invariants
+
+
 @app.get("/eval/tasks")
 async def get_eval_tasks(max_samples: int = None, shuffle: bool = True):
+
     env = get_environment()
     tasks = env.get_eval_tasks(max_samples=max_samples, shuffle=shuffle)
     return {
@@ -174,6 +185,7 @@ async def get_eval_tasks(max_samples: int = None, shuffle: bool = True):
 
 def main():
     import uvicorn
+    init_db()
     config = get_config()
     uvicorn.run(app, host="0.0.0.0", port=config["port"])
 
