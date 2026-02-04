@@ -7,8 +7,8 @@ export interface StreamSnapshot {
 }
 
 export const useGauntletStream = (sessionId: string | null) => {
-    const [streamData, setStreamData] = useState<{ rewards: number[], metrics: any[], snapshots: StreamSnapshot[] }>({ 
-        rewards: [], 
+    const [streamData, setStreamData] = useState<{ rewards: number[], metrics: any[], snapshots: StreamSnapshot[] }>({
+        rewards: [],
         metrics: [],
         snapshots: []
     });
@@ -21,7 +21,8 @@ export const useGauntletStream = (sessionId: string | null) => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host; // e.g. localhost:3000 or localhost:8000
         // If running on port 3000 (Vite), we might need to proxy or point to 8000
-        const wsUrl = `${protocol}//${host.replace('3000', '8000')}/ws/gauntlet/${sessionId}`;
+        const wsHost = import.meta.env.VITE_WS_HOST || host.replace('3000', '8000');
+        const wsUrl = `${protocol}//${wsHost}/ws/gauntlet/${sessionId}`;
 
         const ws = new WebSocket(wsUrl);
 
@@ -33,11 +34,11 @@ export const useGauntletStream = (sessionId: string | null) => {
         ws.onmessage = (event) => {
             try {
                 const data: StreamSnapshot = JSON.parse(event.data);
-                
+
                 // Map snapshot to Gauntlet format
                 // Assuming 'root' score is the total reward
                 const reward = data.scores?.root || 0;
-                
+
                 // Map specific failures based on scores
                 // These thresholds should match the server config
                 const metric = {

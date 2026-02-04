@@ -101,12 +101,34 @@ class Rubric(abc.ABC):
         """Returns a dictionary containing the state of the rubric and its children."""
         return {name: child.state_dict() for name, child in self._children.items()}
 
-    def capture_snapshot(self) -> Dict[str, Any]:
+    def capture_scores(self) -> Dict[str, Any]:
         """
         Captures the current scores of all rubrics in the hierarchy.
         Returns a dictionary mapping dot-separated paths to scores.
         """
-        return {path or "root": getattr(rubric, "last_score", None) for path, rubric in self.named_rubrics()}
+        return {path or "root": getattr(rubric, "last_score", 0.0) for path, rubric in self.named_rubrics()}
+
+    def capture_snapshot(self, action: Any = None, observation: Any = None) -> "NeuralSnapshot":
+        """
+        Captures a NeuralSnapshot of the current state.
+        Default implementation using capture_scores().
+        """
+        # Avoid circular import
+        from med_safety_eval.schemas import NeuralSnapshot
+        
+        scores = self.capture_scores()
+        # Ensure strict floats
+        safe_scores = {k: float(v) if v is not None else 0.0 for k, v in scores.items()}
+        
+        return NeuralSnapshot(
+            session_id="local_eval",
+            step=0,
+            scores=safe_scores,
+            metadata={
+                "action": str(action) if action is not None else "",
+                "observation": str(observation) if observation is not None else ""
+            }
+        )
 
 class Sequential(Rubric):
     """

@@ -1,4 +1,5 @@
 import React, { useRef, useMemo, useState, useEffect } from 'react';
+import { StreamSnapshot } from '../../lib-web/useGauntletStream';
 import { Canvas, useFrame } from '@react-three/fiber';
 import {
     OrbitControls,
@@ -265,7 +266,7 @@ interface GauntletViewProps {
     onComplete?: () => void;
     initialPathType?: PathGeometryType;
     accentColor?: string;
-    snapshots?: any[]; // Added for Neural Diagnostics
+    snapshots?: StreamSnapshot[]; // Added for Neural Diagnostics
 }
 
 interface PathAgentProps {

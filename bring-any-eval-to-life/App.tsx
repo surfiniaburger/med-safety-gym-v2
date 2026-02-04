@@ -138,7 +138,7 @@ const AppContent: React.FC = () => {
     }
 
     setActiveArtifact(currentArtifact);
-    
+
     // Agent-Driven View Construction: Choose geometry and color based on safety score
     const score = currentArtifact.content?.safety_score ?? 0.5;
     if (score < 0.4) {
@@ -333,8 +333,8 @@ const AppContent: React.FC = () => {
       {view === 'gauntlet' && activeArtifact && (
         <div className="fixed inset-0 z-40 bg-black">
           <GauntletView
-            rewards={extractRewards(activeArtifact.content)}
-            metrics={extractStepMetrics(activeArtifact.content)}
+            rewards={streamData.rewards.length > 0 ? streamData.rewards : extractRewards(activeArtifact.content)}
+            metrics={streamData.metrics.length > 0 ? streamData.metrics : extractStepMetrics(activeArtifact.content)}
             snapshots={streamData.snapshots.length > 0 ? streamData.snapshots : extractSnapshots(activeArtifact.content)}
             activeStepIndex={activeStepIndex}
             solvedNodes={solvedNodes}
