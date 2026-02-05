@@ -134,6 +134,9 @@ class DIPGRubric(Rubric):
     """
     def __init__(self, config: Any):
         super().__init__()
+        if config is None:
+            from med_safety_eval.models import RewardConfig
+            config = RewardConfig()
         self.config = config
         
         # 1. Format

@@ -51,6 +51,9 @@ class DatabaseSink:
         self.engine = None
         self.snapshots_table = None
         
+        try:
+            from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, JSON
+            
             if not self.connection_string:
                 logger.info("DATABASE_URL not found. DatabaseSink will be a no-op.")
                 return
