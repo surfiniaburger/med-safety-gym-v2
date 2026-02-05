@@ -22,5 +22,5 @@ RUN uv sync --frozen
 # Expose the Cloud Run default port
 EXPOSE 8080
 
-# Run the hub using uv run
-CMD ["uv", "run", "uvicorn", "med_safety_eval.observability_hub:app", "--host", "0.0.0.0", "--port", "8080"]
+# Run the hub using uv run (with shell form for PORT expansion)
+CMD uv run uvicorn med_safety_eval.observability_hub:app --host 0.0.0.0 --port ${PORT:-8080}
