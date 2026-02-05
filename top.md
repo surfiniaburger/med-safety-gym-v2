@@ -598,8 +598,9 @@ sinks = [
 ]
 
 # Create evaluator with sinks attached
+# It automatically uses the remote hub and database from Kaggle Secrets
 evaluator = LocalEvaluationManager(
-    rubric=DIPGRubric(),
+    reward_config=RewardConfig(),
     sinks=sinks,
     session_id="tpu_live_eval_001"
 )
