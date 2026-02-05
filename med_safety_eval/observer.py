@@ -51,10 +51,11 @@ class DatabaseSink:
         self.engine = None
         self.snapshots_table = None
         
-        try:
-            from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, JSON
-            
-            self.engine = create_engine(connection_string)
+            if not self.connection_string:
+                logger.info("DATABASE_URL not found. DatabaseSink will be a no-op.")
+                return
+
+            self.engine = create_engine(self.connection_string)
             metadata = MetaData()
             
             # Define schema
