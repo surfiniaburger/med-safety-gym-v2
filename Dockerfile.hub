@@ -15,8 +15,7 @@ COPY med_safety_eval/ ./med_safety_eval/
 COPY pyproject.toml .
 
 # Install dependencies
-RUN pip install --no-cache-dir . && \
-    pip install --no-cache-dir pydantic-settings uvicorn fastapi sqlalchemy requests
+RUN pip install --no-cache-dir .
 
 # Expose the Cloud Run default port
 EXPOSE 8080
