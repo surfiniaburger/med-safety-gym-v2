@@ -10,9 +10,8 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy core evaluation library and hub
-COPY med_safety_eval/ ./med_safety_eval/
-COPY pyproject.toml .
+# Copy project files
+COPY . .
 
 # Install dependencies
 RUN pip install --no-cache-dir .
