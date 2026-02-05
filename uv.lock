@@ -2944,7 +2944,7 @@ wheels = [
 
 [[package]]
 name = "openenv-dipg-safety"
-version = "0.1.28"
+version = "0.1.29"
 source = { editable = "." }
 dependencies = [
     { name = "datasets" },
