@@ -11,6 +11,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .observer import DataSink
 
 from .models import (
     EvaluationItem,
@@ -67,16 +71,29 @@ class LocalEvaluationManager:
         ```
     """
     
-    def __init__(self, reward_config: RewardConfig):
+    def __init__(self, reward_config: RewardConfig, sinks: Optional[List['DataSink']] = None, session_id: Optional[str] = None):
         """
         Initialize the local evaluation manager.
         
         Args:
             reward_config: Configuration for reward and penalty values
+            sinks: Optional list of DataSinks for observability streaming
+            session_id: Optional session ID for streaming
         """
         self.reward_config = reward_config
         self.parser = FormatParser()
         self.rubric = DIPGRubric(reward_config)
+        self.sinks = sinks or []
+        
+        # Initialize Observer if sinks are provided
+        if self.sinks:
+            from .observer import RubricObserver
+            # Keep reference to avoid GC
+            self._observer = RubricObserver(
+                root_rubric=self.rubric, 
+                sinks=self.sinks, 
+                session_id=session_id or "local_eval"
+            )
         
     def evaluate_batch(
         self,

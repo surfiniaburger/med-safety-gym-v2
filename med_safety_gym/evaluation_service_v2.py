@@ -88,7 +88,7 @@ class EvaluationManager:
     ensuring consistency between server-side and client-side evaluation.
     """
     
-    def __init__(self, environment: DIPGEnvironment):
+    def __init__(self, environment: DIPGEnvironment, sinks: Optional[List[Any]] = None):
         """
         Initialize the evaluation manager.
         
@@ -112,7 +112,11 @@ class EvaluationManager:
         )
         
         # Create local evaluator
-        self.local_evaluator = LocalEvaluationManager(self.reward_config)
+        self.local_evaluator = LocalEvaluationManager(
+            reward_config=self.reward_config,
+            sinks=sinks,
+            session_id="eval_service_v2" # Default session ID
+        )
     
     def evaluate_batch(
         self,

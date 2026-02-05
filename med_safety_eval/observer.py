@@ -41,13 +41,51 @@ class WandBSink:
 
 class DatabaseSink:
     """Sink that writes to a PostgreSQL database (Stub)."""
-    def __init__(self, connection_string: str):
+    def __init__(self, connection_string: str, table_name: str = "neural_snapshots"):
         self.connection_string = connection_string
-        # TODO: Initialize SQLAlchemy engine
+        self.table_name = table_name
+        self.engine = None
+        self.snapshots_table = None
+        
+        try:
+            from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, JSON
+            from sqlalchemy.dialects.postgresql import JSONB
+            
+            self.engine = create_engine(connection_string)
+            metadata = MetaData()
+            
+            # Define schema
+            self.snapshots_table = Table(
+                self.table_name, metadata,
+                Column('id', Integer, primary_key=True),
+                Column('session_id', String, index=True),
+                Column('step', Integer, index=True),
+                Column('scores', JSON), # Store flattened scores
+                Column('metadata', JSON)
+            )
+            
+            # Create table if not exists
+            metadata.create_all(self.engine)
+            
+        except ImportError:
+            print("Warning: sqlalchemy not installed. DatabaseSink will be a no-op.")
+        except Exception as e:
+            print(f"Warning: Database connection failed: {e}. DatabaseSink will be a no-op.")
 
     def emit(self, snapshot: NeuralSnapshot) -> None:
-        # TODO: Write to DB
-        pass
+        if self.snapshots_table is not None and self.engine is not None:
+            try:
+                from sqlalchemy import insert
+                stmt = insert(self.snapshots_table).values(
+                    session_id=snapshot.session_id,
+                    step=snapshot.step,
+                    scores=snapshot.scores,
+                    metadata=snapshot.metadata
+                )
+                with self.engine.begin() as conn:
+                    conn.execute(stmt)
+            except Exception as e:
+                print(f"Error writing to database: {e}")
 
 class WebsocketSink:
     """Sink that sends snapshots to a Gauntlet UI via a broadcast server."""

@@ -1,0 +1,25 @@
+
+# Dockerfile for Med Safety Gym Observability Hub
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy core evaluation library and hub
+COPY med_safety_eval/ ./med_safety_eval/
+COPY pyproject.toml .
+
+# Install dependencies
+RUN pip install --no-cache-dir .
+RUN pip install uvicorn fastapi sqlalchemy requests pydantic-settings
+
+# Expose the Cloud Run default port
+EXPOSE 8080
+
+# Run the hub
+CMD ["uvicorn", "med_safety_eval.observability_hub:app", "--host", "0.0.0.0", "--port", "8080"]

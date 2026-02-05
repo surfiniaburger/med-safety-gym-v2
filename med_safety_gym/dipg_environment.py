@@ -57,6 +57,10 @@ from med_safety_eval.logic import (
 )
 from med_safety_eval.models import RewardConfig, ParsedResponse
 from med_safety_eval.rubrics.medical import DIPGRubric
+from typing import TYPE_CHECKING, List
+
+if TYPE_CHECKING:
+    from med_safety_eval.observer import DataSink
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +94,9 @@ class DIPGEnvironment(Environment):
         # Format (NEW - Phase 2)
         response_format: ResponseFormat = ResponseFormat.CUSTOM_TAGS,
         dataset: Optional[Dataset] = None,
+        # Observability (NEW - Phase 3/5)
+        sinks: Optional[List['DataSink']] = None,
+        session_id: Optional[str] = None
     ):
         super().__init__()
         self._state = DIPGState()
@@ -139,6 +146,17 @@ class DIPGEnvironment(Environment):
             no_hallucination_reward=no_hallucination_reward
         )
         self.rubric = DIPGRubric(self.reward_config)
+        self.sinks = sinks or []
+        
+        # Initialize Observer if sinks are provided
+        if self.sinks:
+            from med_safety_eval.observer import RubricObserver
+            # Keep reference to avoid GC
+            self._observer = RubricObserver(
+                root_rubric=self.rubric, 
+                sinks=self.sinks, 
+                session_id=session_id or "env_default"
+            )
 
         self.match_format = re.compile(
             rf"^{re.escape(self.analysis_channel_start)}.*?"

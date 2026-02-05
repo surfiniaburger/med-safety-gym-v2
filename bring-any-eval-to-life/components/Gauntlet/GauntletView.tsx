@@ -217,13 +217,17 @@ const GlitchOverlay = () => (
     </div>
 );
 
+
+type FailureType = 'hallucination' | 'format' | 'refusal' | 'generic';
+
 interface BarrierNodeProps {
     position: THREE.Vector3;
     active: boolean;
     intensity: number;
+    type: FailureType;
 }
 
-const BarrierNode = ({ position, active, intensity }: BarrierNodeProps) => {
+const BarrierNode = ({ position, active, intensity, type }: BarrierNodeProps) => {
     const lightRef = useRef<THREE.PointLight>(null);
 
     useFrame((state) => {
@@ -233,14 +237,47 @@ const BarrierNode = ({ position, active, intensity }: BarrierNodeProps) => {
         }
     });
 
+    const color = type === 'hallucination' ? "#fa5252" // Red
+        : type === 'format' ? "#fab005" // Yellow/Orange
+            : type === 'refusal' ? "#868e96" // Grey
+                : "#fa5252"; // Default Red
+
+    if (!active) return null;
+
     return (
         <group position={position}>
-            {active && (
-                <Float speed={8 * intensity} rotationIntensity={0.5 * intensity} floatIntensity={0.5 * intensity}>
+            <Float speed={8 * intensity} rotationIntensity={0.5 * intensity} floatIntensity={0.5 * intensity}>
+                {type === 'refusal' ? (
+                    // Refusal: Solid Block / Wall
+                    <mesh rotation={[0, 0, 0]}>
+                        <boxGeometry args={[4, 4, 1]} />
+                        <meshStandardMaterial
+                            color={color}
+                            metalness={0.8}
+                            roughness={0.2}
+                            transparent
+                            opacity={0.8}
+                        />
+                    </mesh>
+                ) : type === 'format' ? (
+                    // Format Error: Glitchy Wireframe Icosahedron
+                    <mesh rotation={[0, 0, 0]}>
+                        <icosahedronGeometry args={[2.5, 0]} />
+                        <MeshDistortMaterial
+                            color={color}
+                            speed={10 * intensity}
+                            distort={1.0 * intensity}
+                            wireframe
+                            transparent
+                            opacity={0.6}
+                        />
+                    </mesh>
+                ) : (
+                    // Hallucination / Generic: Wobbly Plane
                     <mesh rotation={[0, 0, 0]}>
                         <planeGeometry args={[5, 5]} />
                         <MeshWobbleMaterial
-                            color="#fa5252"
+                            color={color}
                             speed={4 * intensity}
                             factor={0.8 * intensity}
                             transparent
@@ -248,9 +285,9 @@ const BarrierNode = ({ position, active, intensity }: BarrierNodeProps) => {
                             side={THREE.DoubleSide}
                         />
                     </mesh>
-                    <pointLight ref={lightRef} distance={8} intensity={15 * intensity} color="#fa5252" />
-                </Float>
-            )}
+                )}
+                <pointLight ref={lightRef} distance={8} intensity={15 * intensity} color={color} />
+            </Float>
         </group>
     );
 };
@@ -736,11 +773,23 @@ export const GauntletView: React.FC<GauntletViewProps> = ({
                                 activeStepIndex={activeStepIndex}
                             />
 
-                            {points.map((p, i) => (
-                                rewards[i] < 0 && (
-                                    <BarrierNode key={`barrier-${i}`} position={p} active={!solvedNodes.includes(i)} intensity={neuralIntensity} />
-                                )
-                            ))}
+                            {points.map((p, i) => {
+                                const metric = metrics?.[i];
+                                let failureType: FailureType = 'generic';
+                                if (metric?.hallucination) failureType = 'hallucination';
+                                else if (metric?.format_error) failureType = 'format';
+                                else if (metric?.refusal) failureType = 'refusal';
+
+                                return rewards[i] < 0 && (
+                                    <BarrierNode
+                                        key={`barrier-${i}`}
+                                        position={p}
+                                        active={!solvedNodes.includes(i)}
+                                        intensity={neuralIntensity}
+                                        type={failureType}
+                                    />
+                                );
+                            })}
 
                             <PathAgent
                                 points={points}

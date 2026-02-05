@@ -1,0 +1,13 @@
+
+services:
+  - type: web
+    name: med-safety-hub
+    env: docker
+    dockerContext: .
+    dockerfile: Dockerfile.hub
+    plan: free
+    region: oregon
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 8080
