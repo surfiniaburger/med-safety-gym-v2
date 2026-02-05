@@ -15,7 +15,7 @@ def export_results(connection_string: str, output_path: str, session_id: Optiona
     """
     engine = create_engine(connection_string)
     
-    query = "SELECT * FROM neural_snapshots"
+    query = "SELECT step, session_id, scores, metadata FROM neural_snapshots"
     params = {}
     if session_id:
         query += " WHERE session_id = :session_id"

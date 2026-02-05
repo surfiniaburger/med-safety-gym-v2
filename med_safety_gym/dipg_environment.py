@@ -57,6 +57,7 @@ from med_safety_eval.logic import (
 )
 from med_safety_eval.models import RewardConfig, ParsedResponse
 from med_safety_eval.rubrics.medical import DIPGRubric
+from med_safety_eval.utils.helpers import setup_rubric_observer
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
@@ -148,15 +149,12 @@ class DIPGEnvironment(Environment):
         self.rubric = DIPGRubric(self.reward_config)
         self.sinks = sinks or []
         
-        # Initialize Observer if sinks are provided
-        if self.sinks:
-            from med_safety_eval.observer import RubricObserver
-            # Keep reference to avoid GC
-            self._observer = RubricObserver(
-                root_rubric=self.rubric, 
-                sinks=self.sinks, 
-                session_id=session_id or "env_default"
-            )
+        # Initialize Observer using shared helper
+        self._observer = setup_rubric_observer(
+            self.rubric, 
+            self.sinks, 
+            session_id or "env_default"
+        )
 
         self.match_format = re.compile(
             rf"^{re.escape(self.analysis_channel_start)}.*?"

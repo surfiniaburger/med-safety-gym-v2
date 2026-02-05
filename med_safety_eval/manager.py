@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import logging
+from .utils.helpers import setup_rubric_observer
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -85,15 +86,12 @@ class LocalEvaluationManager:
         self.rubric = DIPGRubric(reward_config)
         self.sinks = sinks or []
         
-        # Initialize Observer if sinks are provided
-        if self.sinks:
-            from .observer import RubricObserver
-            # Keep reference to avoid GC
-            self._observer = RubricObserver(
-                root_rubric=self.rubric, 
-                sinks=self.sinks, 
-                session_id=session_id or "local_eval"
-            )
+        # Initialize Observer using shared helper
+        self._observer = setup_rubric_observer(
+            self.rubric, 
+            self.sinks, 
+            session_id
+        )
         
     def evaluate_batch(
         self,
@@ -167,7 +165,7 @@ class LocalEvaluationManager:
                     "index": idx,
                     "reward": reward,
                     "metrics": metrics,
-                    "snapshot": snapshot, # Added for Neural Diagnostics
+                    "snapshot": snapshot.model_dump(), # Added for Neural Diagnostics
                     "response": item.response,
                     "ground_truth": {
                         "context": item.ground_truth.context,

@@ -33,9 +33,9 @@ def test_rubric_observer_captures_hierarchy():
     
     # Check scores
     # Sequential names children as step_0, step_1
-    assert snapshot["scores"]["root"] == 0.5 # Sequential returns last score
-    assert snapshot["scores"]["step_0"] == 1.0
-    assert snapshot["scores"]["step_1"] == 0.5
+    assert snapshot.scores["root"] == 0.5 # Sequential returns last score
+    assert snapshot.scores["step_0"] == 1.0
+    assert snapshot.scores["step_1"] == 0.5
 
 def test_observer_multiple_emits():
     """Verify observer emits on every root execution."""

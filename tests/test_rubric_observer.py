@@ -31,9 +31,9 @@ def test_observer_snapshot_structure():
     assert len(sink.snapshots) == 1
     snapshot = sink.snapshots[0]
     
-    assert "timestamp" in snapshot
-    assert "scores" in snapshot
-    scores = snapshot["scores"]
+    assert snapshot.timestamp is not None
+    assert snapshot.scores is not None
+    scores = snapshot.scores
     
     # Check keys exist (root and children)
     assert "root" in scores

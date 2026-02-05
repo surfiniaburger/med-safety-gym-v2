@@ -237,10 +237,13 @@ const BarrierNode = ({ position, active, intensity, type }: BarrierNodeProps) =>
         }
     });
 
-    const color = type === 'hallucination' ? "#fa5252" // Red
-        : type === 'format' ? "#fab005" // Yellow/Orange
-            : type === 'refusal' ? "#868e96" // Grey
-                : "#fa5252"; // Default Red
+    const colorMap: Record<FailureType, string> = {
+        hallucination: "#fa5252", // Red
+        format: "#fab005",      // Yellow/Orange
+        refusal: "#868e96",      // Grey
+        generic: "#fa5252",      // Default Red
+    };
+    const color = colorMap[type] || colorMap.generic;
 
     if (!active) return null;
 

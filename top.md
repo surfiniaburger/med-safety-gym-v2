@@ -102,9 +102,9 @@ TENSORBOARD_DIR = "/kaggle/working/outputs_sft_full/tensorboard"
 
 # --- CRITICAL: WIPE OLD DATA ---
 # This fixes the "ValueError: user-provided restore item and on-disk value mismatch"
-if os.path.exists("/kaggle/working/outputs_sft_lora"):
+if os.path.exists("/kaggle/working/outputs_sft_full"):
     print("🧹 Wiping previous checkpoint directory to avoid structure mismatch...")
-    shutil.rmtree("/kaggle/working/outputs_sft_lora")
+    shutil.rmtree("/kaggle/working/outputs_sft_full")
 
 SAVE_INTERVAL_STEPS = 100
 EVAL_INTERVAL_STEPS = 50
@@ -326,7 +326,7 @@ def tokenize_and_mask(ex, tokenizer, max_length):
 
     input_tokens = np.array(input_tokens, dtype=np.int32)
     
-    # CRITICAL TRICK: 
+    # WARNING: HIGH-RISK HIJACKING TRICK
     # Tunix 'TrainingInput' checks strictly for 'input_tokens' and 'input_mask'.
     # It drops 'decoder_loss_weights'.
     # So we hijack 'input_mask' to carry our loss weights!

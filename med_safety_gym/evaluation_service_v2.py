@@ -5,9 +5,12 @@ This version delegates evaluation logic to the standalone med_safety_eval packag
 enabling consistent evaluation across server-side and client-side use cases.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from pydantic import BaseModel, Field
 import logging
+
+if TYPE_CHECKING:
+    from med_safety_eval.observer import DataSink
 
 # Import from standalone evaluation library
 from med_safety_eval import (
@@ -88,7 +91,7 @@ class EvaluationManager:
     ensuring consistency between server-side and client-side evaluation.
     """
     
-    def __init__(self, environment: DIPGEnvironment, sinks: Optional[List[Any]] = None):
+    def __init__(self, environment: DIPGEnvironment, sinks: Optional[List['DataSink']] = None):
         """
         Initialize the evaluation manager.
         

@@ -1,10 +1,13 @@
 from typing import Dict, List, Any, Optional, Protocol, runtime_checkable
 import json
 import time
-from med_safety_eval.rubric import Rubric
-from med_safety_eval.schemas import NeuralSnapshot
 import threading
 import requests
+from .rubric import Rubric
+from .schemas import NeuralSnapshot
+from .utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 
@@ -28,7 +31,7 @@ class WandBSink:
             if not self.wandb.run:
                 self.wandb.init(project=project, config=config)
         except ImportError:
-            print("Warning: wandb not installed. WandBSink will be a no-op.")
+            logger.warning("wandb not installed. WandBSink will be a no-op.")
             self.wandb = None
 
     def emit(self, snapshot: NeuralSnapshot) -> None:
@@ -49,7 +52,6 @@ class DatabaseSink:
         
         try:
             from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, JSON
-            from sqlalchemy.dialects.postgresql import JSONB
             
             self.engine = create_engine(connection_string)
             metadata = MetaData()
@@ -68,9 +70,9 @@ class DatabaseSink:
             metadata.create_all(self.engine)
             
         except ImportError:
-            print("Warning: sqlalchemy not installed. DatabaseSink will be a no-op.")
+            logger.warning("sqlalchemy not installed. DatabaseSink will be a no-op.")
         except Exception as e:
-            print(f"Warning: Database connection failed: {e}. DatabaseSink will be a no-op.")
+            logger.warning(f"Database connection failed: {e}. DatabaseSink will be a no-op.")
 
     def emit(self, snapshot: NeuralSnapshot) -> None:
         if self.snapshots_table is not None and self.engine is not None:
@@ -85,7 +87,7 @@ class DatabaseSink:
                 with self.engine.begin() as conn:
                     conn.execute(stmt)
             except Exception as e:
-                print(f"Error writing to database: {e}")
+                logger.error(f"Error writing to database: {e}")
 
 class WebsocketSink:
     """Sink that sends snapshots to a Gauntlet UI via a broadcast server."""

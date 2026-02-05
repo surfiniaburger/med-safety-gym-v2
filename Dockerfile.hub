@@ -16,7 +16,6 @@ COPY pyproject.toml .
 
 # Install dependencies
 RUN pip install --no-cache-dir .
-RUN pip install uvicorn fastapi sqlalchemy requests pydantic-settings
 
 # Expose the Cloud Run default port
 EXPOSE 8080

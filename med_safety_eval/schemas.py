@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Dict, Any, List, Optional, Union
+from datetime import datetime
 import html
 
 class RubricScore(BaseModel):
@@ -42,6 +43,7 @@ class NeuralSnapshot(BaseModel):
     session_id: str
     step: int
     scores: Dict[str, float] # Flattened map of rubric path -> score
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
     model_config = ConfigDict(strict=True)
