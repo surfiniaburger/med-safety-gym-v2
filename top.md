@@ -12,10 +12,18 @@
 
 import wandb
 from kaggle_secrets import UserSecretsClient
+import os
 
 # 1. Fetch the WandB API key from Kaggle Secrets
 user_secrets = UserSecretsClient()
 wandb_key = user_secrets.get_secret("wandb_api_key")
+
+# Fetch secrets from Kaggle (ensure you have added these in Add-ons -> Secrets)
+os.environ["DATABASE_URL"] = user_secrets.get_secret("DATABASE_URL")
+os.environ["GAUNTLET_HUB_URL"] = user_secrets.get_secret("GAUNTLET_HUB_URL") or "https://med-safety-hub.onrender.com"
+
+# Verify environment
+print(f"Observability Hub: {os.environ['GAUNTLET_HUB_URL']}")
 
 # 2. Login to WandB
 wandb.login(key=wandb_key)
@@ -559,8 +567,8 @@ print(f"\nGenerated Output:\n{out.text[0]}")
 
 from tqdm.auto import tqdm
 from med_safety_gym.dipg_environment import DIPGEnvironment
-from med_safety_gym.evaluation_service_v2 import EvaluationManager, EvaluationItem, GroundTruth
-from med_safety_eval.observer import WebsocketSink
+from med_safety_gym.evaluation_service_v2 import LocalEvaluationManager, EvaluationItem, GroundTruth, DIPGRubric
+from med_safety_eval.observer import WebsocketSink, DatabaseSink
 
 # Initialize environment locally (no server needed)
 # We define it here to ensure it's available in the same cell as the evaluation function
@@ -580,12 +588,21 @@ env = DIPGEnvironment(
     channel_end="<|end|>"
 )
 
-# Initialize Sink for Real-time Streaming
-# Connects to the remote Render Hub (https://med-safety-hub.onrender.com)
-sink = WebsocketSink(session_id="tpu_live_eval_001")
+# Initialize Sinks
+# WebsocketSink connects to Gauntlet UI (Render Hub)
+# DatabaseSink persists results to Supabase
+# Both now source URLs from environment variables automatically
+sinks = [
+    WebsocketSink(session_id="tpu_live_eval_001"),
+    DatabaseSink(table_name="neural_snapshots")
+]
 
-# Create evaluator with sink attached
-eval_manager = EvaluationManager(env, sinks=[sink])
+# Create evaluator with sinks attached
+evaluator = LocalEvaluationManager(
+    rubric=DIPGRubric(),
+    sinks=sinks,
+    session_id="tpu_live_eval_001"
+)
 
 NUM_SAMPLES = 10 
 

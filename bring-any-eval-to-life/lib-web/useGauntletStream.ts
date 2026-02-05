@@ -23,7 +23,8 @@ export const useGauntletStream = (sessionId: string | null) => {
         const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
 
         // Remote Render Hub is our standard broadcast relay
-        const RENDER_HUB = "med-safety-hub.onrender.com";
+        // Source from env or default to the production instance
+        const RENDER_HUB = import.meta.env.VITE_RENDER_HUB || "med-safety-hub.onrender.com";
 
         const wsHost = import.meta.env.VITE_WS_HOST || (isLocal ? host.replace('3000', '8000') : RENDER_HUB);
         const wsUrl = `${protocol}//${wsHost}/ws/gauntlet/${sessionId}`;

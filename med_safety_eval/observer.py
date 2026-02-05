@@ -44,8 +44,9 @@ class WandBSink:
 
 class DatabaseSink:
     """Sink that writes to a PostgreSQL database (Stub)."""
-    def __init__(self, connection_string: str, table_name: str = "neural_snapshots"):
-        self.connection_string = connection_string
+    def __init__(self, connection_string: Optional[str] = None, table_name: str = "neural_snapshots"):
+        import os
+        self.connection_string = connection_string or os.getenv("DATABASE_URL")
         self.table_name = table_name
         self.engine = None
         self.snapshots_table = None
@@ -91,20 +92,34 @@ class DatabaseSink:
 
 class WebsocketSink:
     """Sink that sends snapshots to a Gauntlet UI via a broadcast server."""
-    def __init__(self, session_id: str, base_url: str = "https://med-safety-hub.onrender.com"):
+    def __init__(self, session_id: str, base_url: Optional[str] = None):
+        import os
         self.session_id = session_id
-        self.url = f"{base_url}/gauntlet/stream/{session_id}"
+        # Source from env, then fall back to Render Hub, then localhost
+        self.base_url = base_url or os.getenv("GAUNTLET_HUB_URL", "https://med-safety-hub.onrender.com")
+        self.url = f"{self.base_url}/gauntlet/stream/{session_id}"
 
     def emit(self, snapshot: NeuralSnapshot) -> None:
 
         def _post_in_thread():
-            try:
-                # We use a simple POST to the broadcast endpoint
-                # model_dump(mode='json') ensures serialization of inner types
-                requests.post(self.url, json=snapshot.model_dump(mode='json'), timeout=1.0)
-            except Exception as e:
-                # Sinks should be non-blocking and fail-silent in training
-                pass
+            import time
+            max_retries = 3
+            backoff = 1.0 # Initial backoff for Render cold start
+            
+            for attempt in range(max_retries):
+                try:
+                    # We use a simple POST to the broadcast endpoint
+                    response = requests.post(self.url, json=snapshot.model_dump(mode='json'), timeout=2.0)
+                    if response.status_code == 200:
+                        return
+                    # If not 200, maybe it's still waking up (e.g. 503/502/504)
+                    logger.debug(f"WebsocketSink attempt {attempt+1} failed with status {response.status_code}")
+                except Exception as e:
+                    logger.debug(f"WebsocketSink attempt {attempt+1} error: {e}")
+                
+                # Exponential backoff
+                time.sleep(backoff)
+                backoff *= 2
         
         # Run the blocking request in a separate thread to avoid blocking the event loop.
         thread = threading.Thread(target=_post_in_thread, daemon=True)
