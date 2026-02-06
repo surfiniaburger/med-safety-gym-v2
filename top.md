@@ -7,15 +7,23 @@
 !pip install uv 
 
 %%capture
-!uv pip install --system "openenv-dipg-safety>=0.1.41"
+!uv pip install --system "openenv-dipg-safety>=0.1.43"
 
 import wandb
 from kaggle_secrets import UserSecretsClient
 import os
+import urllib.parse
 
 # 1. Fetch the WandB API key from Kaggle Secrets
 user_secrets = UserSecretsClient()
 wandb_key = user_secrets.get_secret("wandb_api_key")
+
+# 2. Database Setup (Optional)
+# If using Supabase, ensure your password is URL-encoded if it contains @, :, or /
+# Example: 
+# raw_url = user_secrets.get_secret("DATABASE_URL")
+# os.environ["DATABASE_URL"] = raw_url
+os.environ["DATABASE_URL"] = user_secrets.get_secret("DATABASE_URL")
 
 # Fetch secrets from Kaggle (ensure you have added these in Add-ons -> Secrets)
 os.environ["DATABASE_URL"] = user_secrets.get_secret("DATABASE_URL")

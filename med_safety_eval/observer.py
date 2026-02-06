@@ -51,12 +51,23 @@ class DatabaseSink:
         self.engine = None
         self.snapshots_table = None
         
+        # SQLAlchemy 1.4+ requires postgresql:// instead of postgres://
+        if self.connection_string and self.connection_string.startswith("postgres://"):
+            self.connection_string = self.connection_string.replace("postgres://", "postgresql://", 1)
+            logger.info("Normalized connection string to use 'postgresql://' protocol.")
+
         try:
             from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, JSON
+            from urllib.parse import urlparse
             
             if not self.connection_string:
                 logger.info("DATABASE_URL not found. DatabaseSink will be a no-op.")
                 return
+
+            # Sanitize URL for logging (hide password)
+            parsed = urlparse(self.connection_string)
+            sanitized_url = f"{parsed.scheme}://{parsed.username}:***@{parsed.hostname}:{parsed.port}{parsed.path}"
+            logger.info(f"Attempting to connect to database: {sanitized_url}")
 
             self.engine = create_engine(self.connection_string)
             metadata = MetaData()
@@ -73,11 +84,19 @@ class DatabaseSink:
             
             # Create table if not exists
             metadata.create_all(self.engine)
+            logger.info("Database connection established and schema verified.")
             
         except ImportError:
-            logger.warning("sqlalchemy not installed. DatabaseSink will be a no-op.")
+            logger.info("sqlalchemy not installed. DatabaseSink will be a no-op.")
         except Exception as e:
-            logger.warning(f"Database connection failed: {e}. DatabaseSink will be a no-op.")
+            error_msg = str(e)
+            hint = ""
+            if "could not translate host name" in error_msg and "@" in error_msg:
+                hint = "\nHINT: Your password may contain special characters (like '@' or ':'). " \
+                       "Please ensure your DATABASE_URL is properly URL-encoded. " \
+                       "You can use 'urllib.parse.quote_plus' for the password part."
+            
+            logger.warning(f"Database connection failed: {error_msg}{hint}. DatabaseSink will be a no-op.")
 
     def emit(self, snapshot: NeuralSnapshot) -> None:
         if self.snapshots_table is not None and self.engine is not None:
