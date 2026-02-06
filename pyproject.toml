@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openenv-dipg-safety"
-version = "0.1.38"
+version = "0.1.40"
 description = "DIPG Safety Environment for OpenEnv"
 authors = [
     { name = "surfiniaburger" },
