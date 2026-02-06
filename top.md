@@ -7,12 +7,21 @@
 !pip install uv 
 
 %%capture
-!uv pip install --system "openenv-dipg-safety>=0.1.54"
+# If running on Kaggle/Remote: Install from the latest development branch
+# If running locally: ensure the repo root is in your path or run 'pip install -e .'
+!uv pip install --system "openenv-dipg-safety @ git+https://github.com/surfiniaburger/med-safety-gym.git@feat/security-observability-core"
 
 import wandb
 from kaggle_secrets import UserSecretsClient
 import os
+import sys
 import urllib.parse
+
+# Local Development Fallback: If not installed as a package, add current directory to path
+if not os.path.exists("/kaggle/working") and os.path.exists("med_safety_gym"):
+    if os.getcwd() not in sys.path:
+        sys.path.append(os.getcwd())
+    print(f"✓ Local development mode: added {os.getcwd()} to sys.path")
 
 # 1. Fetch the WandB API key from Kaggle Secrets
 user_secrets = UserSecretsClient()
