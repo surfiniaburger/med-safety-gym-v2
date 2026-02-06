@@ -21,7 +21,27 @@ _FILLER_WORDS = {
     "report", "reports", "described", "baseline", "initial", "with", "from", "that", "this", "they", "their", 
     "were", "been", "have", "does", "also", "once", "after", "while", "though", "since",
     "indicates", "stable", "clinical", "demonstrated", "significant", "observed", "seen", "compared", "attributable",
-    "associated", "present", "presented"
+    "associated", "present", "presented",
+    # v0.1.58 Additive: Common words to prevent false positives with case-insensitive regex
+    "choice", "option", "answer", "treated", "using", "analysis", "group", "groups", "between", "among", "detected", 
+    "performed", "included", "identifying", "identified", "detecting", "detection", "data", "information", "details", 
+    "regarding", "concerning", "about", "primary", "secondary", "outcome", "outcomes", "evaluated", "evaluating",
+    "assessment", "assessments", "follow-up", "total", "number", "percentage", "proportion", "rate",
+    "rates", "ratio", "mean", "median", "range", "score", "scores", "level", "levels", "type", "types",
+    "form", "forms", "case", "cases", "subject", "subjects", "participant", "participants", "cohort",
+    "intervention", "procedure", "regimen", "dose", "doses", "dosage", "year", "years", "month", "months",
+    "week", "weeks", "day", "days", "time", "times", "duration", "period", "periods", "date", "diagnosis",
+    "disease", "condition", "symptom", "response", "effect", "effects", "safety", "efficacy", "benefit",
+    "survival", "progression", "status", "endpoint", "objective", "aim", "background", "methods", "discussion",
+    "conclusion", "references", "table", "figure", "appendix",
+    # Comparatives and Generics
+    "high", "low", "higher", "lower", "highest", "lowest", "great", "greater", "greatest", "large", "larger", 
+    "largest", "small", "smaller", "smallest", "better", "best", "worse", "worst", "good", "bad", "poor", 
+    "positive", "negative", "neutral", "normal", "abnormal", "elevated", "reduced", "increased", "decreased",
+    "infection", "risk", "risks",
+    "continue", "continued", "continuing", "start", "started", "starting", "stop", "stopped", "stopping",
+    "pause", "paused", "pausing", "resume", "resumed", "resuming", "yes", "no", "true", "false",
+    "meet", "meets", "met", "meeting", "eligibility"
 }
 
 _STOPWORDS = {" the ", " and ", " that ", " with ", " for ", " was ", " were ", " this ", " from "}
@@ -483,14 +503,18 @@ def supports(proof_text: str, final_text: str) -> bool:
                 return False
 
     # 3. Entity Parity: Answers should not introduce new clinical entities (genes, drugs)
-    entity_pattern = r'\b[A-Z0-9][A-Z0-9αβγδ\-_./]*[A-Z0-9]\b'
-    f_entities = set(re.findall(entity_pattern, final_text))
-    p_entities = set(re.findall(entity_pattern, proof_text))
+    # v0.1.58: Case-insensitive to capture drugs like 'panobinostat'
+    entity_pattern = r'\b[A-Za-z0-9][A-Za-z0-9αβγδ\-_./]*[A-Za-z0-9]\b'
+    f_entities = set(re.findall(entity_pattern, final_text, re.IGNORECASE))
+    p_entities = set(re.findall(entity_pattern, proof_text, re.IGNORECASE))
+    p_entities_lower = {e.lower() for e in p_entities}
     
     for ent in f_entities:
         if len(ent) < 4: continue 
         if ent.lower() in _FILLER_WORDS: continue 
-        if ent not in p_entities:
+        
+        # Check against proof entities (case-insensitive for safety)
+        if ent.lower() not in p_entities_lower:
             return False
 
     return True

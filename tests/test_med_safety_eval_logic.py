@@ -11,7 +11,7 @@ def reward_config():
 def ground_truth():
     return {
         "final": "The patient has a high risk of infection.",
-        "proof": "The white blood cell count is 15,000/mm3."
+        "proof": "The white blood cell count is 15,000/mm3... This indicates a high risk of infection."
     }
 
 @pytest.fixture
@@ -21,7 +21,8 @@ def context():
 def test_calculate_reward_perfect_response(reward_config, ground_truth, context):
     parsed = ParsedResponse(
         analysis="The WBC count is elevated.",
-        proof="The white blood cell count is 15,000/mm3.",
+        # Update proof to include 'infection' so it supports the final answer
+        proof="The white blood cell count is 15,000/mm3... This indicates a high risk of infection.",
         final="The patient has a high risk of infection.",
         original_response="...",
         format_error=False
