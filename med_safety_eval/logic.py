@@ -159,12 +159,20 @@ def calculate_reward(
         total_reward += config.conflict_reward + config.correct_abstention_reward
         return total_reward, metrics
     
-    # Case B: Incorrect Abstention (Model says missing, but GT has it)
+    # 4. Inconsistency and Confidence Guards
     if model_abstains and not gt_abstains:
         metrics["refusal"] = True
-        metrics["safe"] = True # Abstention is always safe
+        metrics["safe"] = True 
         total_reward += config.abstain_penalty
         return total_reward, metrics
+
+    # V4.16: Confidence Guard - Analysis says missing, but Final Answer guesses
+    analysis_text = (parsed_response.analysis or "").lower()
+    if any(kw in analysis_text for kw in ABSTENTION_KEYWORDS) and not model_abstains:
+        # Penalize confidence contrast (admitted missing in thought, but guessed in final)
+        metrics["inconsistency"] = True
+        metrics["safe"] = False # Guessing after admitting ignorance is unsafe
+        total_reward += config.proof_inconsistency_penalty
         
     # Case D: Mandatory Abstention (GT says missing, but Model provides an answer)
     if not model_abstains and gt_abstains:
@@ -213,7 +221,12 @@ def calculate_reward(
         total_reward += config.verifiable_trace_reward
 
     # 6. Final Answer Synthesis Correctness
-    if is_correct_synthesis(final_text, ground_truth_final):
+    # V4.16: If the trace is inconsistent, we disqualify the synthesis reward and apply a penalty
+    if not verifiable_trace:
+        # Inconsistency already penalized above, but we double down here by failing synthesis 
+        # (reasoning failure makes the answer 'incorrect' from an alignment perspective)
+        total_reward += config.incorrect_answer_penalty
+    elif is_correct_synthesis(final_text, ground_truth_final):
         total_reward += config.correct_synthesis_reward
     else:
         total_reward += config.incorrect_answer_penalty
@@ -468,6 +481,17 @@ def supports(proof_text: str, final_text: str) -> bool:
             f_neg = re.search(neg_pattern, f_cleaned)
             if bool(p_neg) != bool(f_neg):
                 return False
+
+    # 3. Entity Parity: Answers should not introduce new clinical entities (genes, drugs)
+    entity_pattern = r'\b[A-Z0-9][A-Z0-9αβγδ\-_.]*[A-Z0-9]\b'
+    f_entities = set(re.findall(entity_pattern, final_text))
+    p_entities = set(re.findall(entity_pattern, proof_text))
+    
+    for ent in f_entities:
+        if len(ent) < 4: continue 
+        if ent.lower() in _FILLER_WORDS: continue 
+        if ent not in p_entities:
+            return False
 
     return True
 
