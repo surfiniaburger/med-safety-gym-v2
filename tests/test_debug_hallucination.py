@@ -22,7 +22,7 @@ def test_reproduce_hallucination_issue():
     proof_text = (
         "Eligibility criteria included: (1) confirmed H3 K27M mutation, (2) progression after standard radiation  at least one line of systemic therapy, (3) no prior exposure to EZH2 inhibitors, and (4) adequate organ function. The investigators noted that patients who had progressed on ONC201-based regimens were considered eligible for compassionate use of tazemetostat.\n"
         "Molecular profiling demonstrated an H3 K27M mutation (histone H3.3) and a concurrent ACVR1 G328V activating mutation.\n"
-        "The patient was enrolled in a Phase II clinical trial [...] standard focal radiation therapy (54 Gy delivered in 30 fractions over 6 weeks) followed by oral ONC201 625 mg once weekly and panobinostat 20 mg orally three times weekly\n"
+        "The patient was enrolled in a Phase II clinical trial ... standard focal radiation therapy (54 Gy delivered in 30 fractions over 6 weeks) followed by oral ONC201 625 mg once weekly and panobinostat 20 mg orally three times weekly\n"
         "After 5 months of therapy, the patient exhibited clinical and radiographic progression, with new areas of contrast enhancement and increased tumor size (+15 %)."
     )
 

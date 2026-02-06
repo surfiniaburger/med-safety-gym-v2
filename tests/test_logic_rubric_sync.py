@@ -68,16 +68,16 @@ def test_sync():
     # Test Case: Special Characters (Non-breaking hyphens \u2011)
     action_char = ParsedResponse(
         analysis="...",
-        proof=" ACVR1-mutant DIPG models", # regular hyphen
+        proof="activity of panobinostat in ACVR1-mutant DIPG models", # regular hyphen
         final="Choice is panobinostat",
         original_response="...",
         format_error=False
     )
     # Context has non-breaking hyphen \u2011
     observation_char = GroundTruth(
-        context="... pre\u2011clinical activity in ACVR1\u2011mutant DIPG models.",
+        context="... pre\u2011clinical activity of panobinostat in ACVR1\u2011mutant DIPG models.",
         question="What is the next step?",
-        expected_answer={"final": "panobinostat", "proof": "ACVR1-mutant DIPG"}
+        expected_answer={"final": "panobinostat", "proof": "activity of panobinostat in ACVR1-mutant DIPG"}
     )
     
     reward_logic_char, _ = calculate_reward(action_char, observation_char.context, observation_char.model_dump(), config)
