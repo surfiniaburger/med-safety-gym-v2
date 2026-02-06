@@ -237,26 +237,46 @@ def is_grounded(proof_text: str, context: str, model_abstains: bool = False) -> 
         if model_abstains and _is_abstention(segment): continue
             
         similarity = _get_max_similarity(clean_seg, clean_context)
-        if similarity < 0.85:
-            # V4.7: Try splitting by sentence for concatenated quotes
-            sub_sentences = re.split(r'(?<=\.)\s+', segment)
-            if len(sub_sentences) > 1:
-                all_subs_grounded = True
-                for sub in sub_sentences:
-                    if not is_grounded(sub, context, model_abstains):
-                        all_subs_grounded = False
+        if similarity >= 0.85:
+            continue
+
+        # V4.7 Additive: Keyword Coverage Fallback
+        # If fuzzy similarity is moderate (>0.5), check if all "key" entities are present.
+        if similarity >= 0.5:
+            # Extract numbers and potential proper nouns/medical terms (Capitalized or alphanumeric with digits)
+            # We use the original segment for case-sensitivity check if needed, 
+            # but usually medical terms are specific enough.
+            entities = re.findall(r'\b\d+(?:\.\d+)?\b|\b[A-Z][a-z0-9]*[A-Z][a-z0-9]*\b|\b[A-Z0-9]{3,}\b', segment)
+            if entities:
+                all_entities_present = True
+                for ent in entities:
+                    clean_ent = _clean_for_matching(ent)
+                    if clean_ent not in clean_context:
+                        all_entities_present = False
                         break
-                if all_subs_grounded:
+                if all_entities_present:
                     continue
 
-            # V4.6: Fallback for trailing punctuation differences
-            alt_clean = re.sub(r"[.,;:!?]$", "", clean_seg).strip()
-            if alt_clean in clean_context:
+        # V4.7 Additive: Try splitting by sentence for concatenated quotes
+        sub_sentences = re.split(r'(?<=\.)\s+', segment)
+        if len(sub_sentences) > 1:
+            all_subs_grounded = True
+            for sub in sub_sentences:
+                if not is_grounded(sub, context, model_abstains):
+                    all_subs_grounded = False
+                    break
+            if all_subs_grounded:
                 continue
-            print(f"DEBUG: Segment not grounded: {segment}")
-            print(f"DEBUG: Cleaned segment: {clean_seg}")
-            print(f"DEBUG: Similarity: {similarity}")
-            return False
+
+        # V4.6: Fallback for trailing punctuation differences
+        alt_clean = re.sub(r"[.,;:!?]$", "", clean_seg).strip()
+        if alt_clean in clean_context:
+            continue
+            
+        print(f"DEBUG: Segment not grounded: {segment}")
+        print(f"DEBUG: Cleaned segment: {clean_seg}")
+        print(f"DEBUG: Similarity: {similarity}")
+        return False
     
     return True
 

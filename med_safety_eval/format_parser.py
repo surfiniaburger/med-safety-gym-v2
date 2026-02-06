@@ -37,16 +37,19 @@ class FormatParser:
             for key, aliases in self.tag_aliases.items()
         }
         
-        # Unclosed tag fallback for analysis
-        # V4.6: Stop at the next tag or end of string
+        # Unclosed tag fallbacks (Additive V4.7)
+        # Support both <tag> and [tag] stop at the next tag or end of string.
         all_aliases = [a for aliases in self.tag_aliases.values() for a in aliases]
-        self.unclosed_analysis_pattern = re.compile(
-            r"(?:<|\[)(?:{tags})(?:\s+[^\]>]*?)?(?:>|\])(.*?)(?=(?:<|\[)(?:{all_tags})|$)".format(
-                tags='|'.join(re.escape(a) for a in self.tag_aliases["analysis"]),
-                all_tags='|'.join(re.escape(a) for a in all_aliases)
-            ),
-            re.DOTALL | re.IGNORECASE
-        )
+        self.unclosed_patterns = {
+            key: re.compile(
+                r"(?:<|\[)(?:{tags})(?:\s+[^\]>]*?)?(?:>|\])(.*?)(?=(?:<|\[)(?:{all_tags})|$)".format(
+                    tags='|'.join(re.escape(a) for a in aliases),
+                    all_tags='|'.join(re.escape(a) for a in all_aliases)
+                ),
+                re.DOTALL | re.IGNORECASE
+            )
+            for key, aliases in self.tag_aliases.items()
+        }
         
         # Regex pattern for custom tag format (backward compatibility)
         # Regex pattern for custom tag format (backward compatibility)
@@ -143,35 +146,52 @@ class FormatParser:
         analysis_pattern = self.tag_patterns["analysis"]
         analysis_match = analysis_pattern.search(response_text)
         
-        if analysis_match:
-            extracted["analysis"] = analysis_match.group(1).strip()
-            # 2. Sanitized text = original minus thinking blocks
-            start, end = analysis_match.span()
-            sanitized_text = response_text[:start] + response_text[end:]
-        else:
-            # Try unclosed fallback for analysis
-            unclosed_match = self.unclosed_analysis_pattern.search(response_text)
+        extracted["analysis"] = analysis_match.group(1).strip() if analysis_match else None
+        if not analysis_match:
+            # Additive fallback for unclosed analysis
+            unclosed_match = self.unclosed_patterns["analysis"].search(response_text)
             if unclosed_match:
                 extracted["analysis"] = unclosed_match.group(1).strip()
-                start, end = unclosed_match.span()
-                sanitized_text = response_text[:start] + response_text[end:]
-            else:
-                extracted["analysis"] = None
-                sanitized_text = response_text
+                
+        # 2. Sanitized text = original minus recognized thought blocks
+        if analysis_match:
+            start, end = analysis_match.span()
+            sanitized_text = response_text[:start] + response_text[end:]
+        elif extracted.get("analysis"):
+            # Sanitize using the unclosed pattern for subsequent extraction
+            sanitized_text = self.unclosed_patterns["analysis"].sub("", response_text)
+        else:
+            sanitized_text = response_text
             
         # 3. Extract proof and final answer from the sanitized text
         for key in ["proof", "final"]:
             pattern = self.tag_patterns[key]
             if key == "proof":
-                # Aggregate multiple proof tags
+                # Aggregate multiple closed proof tags
                 matches = [m.group(1).strip() for m in pattern.finditer(sanitized_text) if m.group(1).strip()]
+                
+                # Additive: if no closed proof tags, try unclosed fallback (typically for truncated responses)
+                if not matches:
+                    unclosed_m = self.unclosed_patterns["proof"].search(sanitized_text)
+                    if unclosed_m:
+                        matches = [unclosed_m.group(1).strip()]
+                
                 extracted[key] = "\n".join(matches) if matches else None
             else:
-                # Take the last final answer
+                # Take the last closed final answer
                 last_match = None
                 for m in pattern.finditer(sanitized_text):
                     last_match = m
-                extracted[key] = last_match.group(1).strip() if last_match else None
+                
+                if last_match:
+                    extracted[key] = last_match.group(1).strip()
+                else:
+                    # Additive: fallback to unclosed final tag
+                    unclosed_m = self.unclosed_patterns["final"].search(sanitized_text)
+                    if unclosed_m:
+                        extracted[key] = unclosed_m.group(1).strip()
+                    else:
+                        extracted[key] = None
 
         # 4. Fallback Handling if <final> is missing
         is_format_error = False
