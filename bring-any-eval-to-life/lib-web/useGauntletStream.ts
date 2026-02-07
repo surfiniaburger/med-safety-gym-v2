@@ -5,6 +5,14 @@ export interface StreamSnapshot {
     timestamp: number;
     scores: Record<string, number>;
     step_index?: number;
+    is_paused?: boolean;
+    challenge?: {
+        type: string;
+        question: string;
+        options: string[];
+        expected_answer: string;
+        metadata?: Record<string, any>;
+    };
 }
 
 export const useGauntletStream = (sessionId: string | null) => {
@@ -14,6 +22,7 @@ export const useGauntletStream = (sessionId: string | null) => {
         snapshots: []
     });
     const [isConnected, setIsConnected] = useState(false);
+    const [isPaused, setIsPaused] = useState(false);
 
     useEffect(() => {
         if (!sessionId) return;
@@ -59,6 +68,10 @@ export const useGauntletStream = (sessionId: string | null) => {
                     metrics: [...prev.metrics, metric],
                     snapshots: [...prev.snapshots, data]
                 }));
+
+                if (data.is_paused !== undefined) {
+                    setIsPaused(data.is_paused);
+                }
             } catch (e) {
                 console.error("Error parsing stream data", e);
             }
@@ -69,5 +82,5 @@ export const useGauntletStream = (sessionId: string | null) => {
         return () => ws.close();
     }, [sessionId]);
 
-    return { streamData, isConnected };
+    return { streamData, isConnected, isPaused };
 };

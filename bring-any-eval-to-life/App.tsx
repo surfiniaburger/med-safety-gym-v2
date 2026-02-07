@@ -25,6 +25,7 @@ import { extractRewards, extractStepMetrics, extractSnapshots } from './lib-web/
 import { calculateSafetyStats, SafetyStats } from './lib-web/stats';
 import { useGauntletStream } from './lib-web/useGauntletStream';
 import { ToastProvider, useToast } from './components/Toast';
+import { EvolutionPortal } from './components/EvolutionPortal';
 
 const AppContent: React.FC = () => {
   const [activeCreation, setActiveCreation] = useState<Creation | null>(null);
@@ -37,11 +38,12 @@ const AppContent: React.FC = () => {
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [solvedNodes, setSolvedNodes] = useState<number[]>([]);
   const [isMissionComplete, setIsMissionComplete] = useState(false);
+  const [evolutionTaskId, setEvolutionTaskId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
 
   // Real-time Observability Stream
-  const { streamData } = useGauntletStream(activeArtifact?.id || null);
+  const { streamData, isPaused } = useGauntletStream(activeArtifact?.id || null);
 
   // Fetch evaluation artifacts
   const { data: artifacts = [], isLoading: isLoadingArtifacts } = useQuery({
@@ -233,6 +235,35 @@ const AppContent: React.FC = () => {
     setActiveCreation(creation);
   };
 
+  const handleEvolution = (taskId: string) => {
+    setEvolutionTaskId(taskId);
+  };
+
+  const handleResume = async (tweak?: any) => {
+    if (!activeArtifact) return;
+
+    try {
+      const RENDER_HUB = import.meta.env.VITE_RENDER_HUB || "https://med-safety-hub.onrender.com";
+      const url = `${RENDER_HUB}/gauntlet/command/${activeArtifact.id}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: tweak ? 'TWEAK' : 'RESUME',
+          tweak: tweak || {}
+        })
+      });
+
+      if (response.ok) {
+        showToast("Signal sent: Resuming Evaluation...", "success");
+      }
+    } catch (err) {
+      console.error("Failed to send resume signal:", err);
+      showToast("Connection failed. Check Hub status.", "error");
+    }
+  };
+
   const handleImportClick = () => {
     importInputRef.current?.click();
   };
@@ -298,6 +329,7 @@ const AppContent: React.FC = () => {
           <ResultSelector
             artifacts={artifacts}
             onSelect={handleSelectArtifact}
+            onEvolution={handleEvolution}
             isLoading={isLoadingArtifacts}
           />
         </section>
@@ -345,6 +377,69 @@ const AppContent: React.FC = () => {
             initialPathType={suggestedPathType}
             accentColor={suggestedColor}
           />
+
+          {/* Real-time Intervention Overlay */}
+          <AnimatePresence>
+            {isPaused && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 w-full max-w-md"
+              >
+                <div className="bg-zinc-950/80 backdrop-blur-2xl border border-rose-500/30 rounded-3xl p-8 shadow-[0_0_50px_rgba(244,63,94,0.2)]">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="p-3 rounded-2xl bg-rose-500/20 animate-pulse">
+                      <ExclamationCircleIcon className="w-8 h-8 text-rose-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-white">
+                        {streamData.snapshots[streamData.snapshots.length - 1]?.challenge ? "Safety Dance Initiated" : "Intervention Required"}
+                      </h3>
+                      <p className="text-rose-400/60 text-xs font-mono">NEURAL TRAJECTORY PAUSED AT INDEX {streamData.snapshots.length - 1}</p>
+                    </div>
+                  </div>
+
+                  {streamData.snapshots[streamData.snapshots.length - 1]?.challenge ? (
+                    <div className="mb-6 space-y-4">
+                      <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
+                        <p className="text-zinc-300 text-sm leading-relaxed">
+                          {streamData.snapshots[streamData.snapshots.length - 1].challenge.question}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {streamData.snapshots[streamData.snapshots.length - 1].challenge.options.map((opt: string) => (
+                          <button
+                            key={opt}
+                            onClick={() => handleResume({ solution: opt })}
+                            className="bg-zinc-900 hover:bg-zinc-800 border border-white/5 text-zinc-400 py-3 rounded-xl text-xs font-bold transition-all"
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => handleResume()}
+                        className="w-full bg-white text-black py-4 rounded-2xl font-black hover:bg-zinc-200 transition-all flex items-center justify-center gap-2"
+                      >
+                        <PlayIcon className="w-5 h-5" /> Proceed with Current Rubric
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => handleIntervention(streamData.snapshots.length - 1)}
+                    className="w-full mt-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 py-4 rounded-2xl font-bold hover:bg-rose-500/20 transition-all"
+                  >
+                    Investigate & Tweak Model
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
@@ -435,6 +530,13 @@ const AppContent: React.FC = () => {
           className="hidden"
         />
       </div>
+      {/* Evolution Portal */}
+      {evolutionTaskId && (
+        <EvolutionPortal
+          taskId={evolutionTaskId}
+          onClose={() => setEvolutionTaskId(null)}
+        />
+      )}
     </div>
   );
 };

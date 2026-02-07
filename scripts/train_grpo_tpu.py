@@ -212,14 +212,28 @@ class DIPGRaxReward:
             session_id = f"grpo_run_{int(time.time())}"
             logger.info(f"🎥 Data Agent Recording Session: {session_id}")
             
+            # Metadata for Evolution Mode (pairs SFT and GRPO runs by task_id)
+            base_metadata = {
+                "run_type": "grpo",
+                "task_id": "dipg_safety_v1",  # Standard DIPG evaluation task
+                "model": "gemma-3-2b",
+                "timestamp": int(time.time())
+            }
+            
             try:
                 # Initialize sinks for observability
                 sinks = [
                     DatabaseSink(table_name="grpo_training_snapshots"),
                     WebsocketSink(session_id=session_id)
                 ]
-                self.observer = RubricObserver(self.rubric, sinks, session_id=session_id)
+                self.observer = RubricObserver(
+                    self.rubric, 
+                    sinks, 
+                    session_id=session_id,
+                    base_metadata=base_metadata  # Pass metadata to observer
+                )
                 logger.info("✓ Data Agent Observer Attached (DatabaseSink + WebsocketSink)")
+                logger.info(f"   Metadata: {base_metadata}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to attach Data Agent Observer: {e}")
 

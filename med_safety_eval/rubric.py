@@ -130,6 +130,22 @@ class Rubric(abc.ABC):
             }
         )
 
+    def update_config(self, config: Dict[str, Any]):
+        """
+        Updates the rubric's configuration (e.g., reward values).
+        Environment authors can override this for specific logic.
+        Default: Recursively update children and try to set attributes.
+        """
+        for k, v in config.items():
+            if k in self._children:
+                self._children[k].update_config(v)
+            elif hasattr(self, k):
+                # Only update if it's a basic type (not a child rubric or method)
+                current_val = getattr(self, k)
+                if not isinstance(current_val, (Rubric, Callable)):
+                    setattr(self, k, v)
+                    logger.debug(f"Updated {self.__class__.__name__}.{k} to {v}")
+
 class Sequential(Rubric):
     """
     Runs child rubrics in order. 

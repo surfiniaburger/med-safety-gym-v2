@@ -44,6 +44,8 @@ class NeuralSnapshot(BaseModel):
     step: int
     scores: Dict[str, float] # Flattened map of rubric path -> score
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    is_paused: bool = False
+    challenge: Optional[Dict[str, Any]] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
     model_config = ConfigDict(strict=True)

@@ -7,10 +7,11 @@ import { EvaluationArtifact } from '@/services/github';
 interface ResultSelectorProps {
     artifacts: EvaluationArtifact[];
     onSelect: (artifact: EvaluationArtifact) => void;
+    onEvolution: (taskId: string) => void;
     isLoading?: boolean;
 }
 
-export const ResultSelector = ({ artifacts, onSelect, isLoading }: ResultSelectorProps) => {
+export const ResultSelector = ({ artifacts, onSelect, onEvolution, isLoading }: ResultSelectorProps) => {
     if (isLoading) {
         return (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-8 max-w-7xl mx-auto">
@@ -41,6 +42,7 @@ export const ResultSelector = ({ artifacts, onSelect, isLoading }: ResultSelecto
                     key={artifact.id}
                     artifact={artifact}
                     onSelect={() => onSelect(artifact)}
+                    onEvolution={onEvolution}
                     className={cn(
                         i % 6 === 0 || i % 6 === 3 ? "md:col-span-2" : "md:col-span-1"
                     )}
@@ -53,19 +55,34 @@ export const ResultSelector = ({ artifacts, onSelect, isLoading }: ResultSelecto
 interface BentoCardProps {
     artifact: EvaluationArtifact;
     onSelect: () => void;
+    onEvolution: (taskId: string) => void;
     className?: string;
-    // key is handled by React
 }
 
-const BentoCard: React.FC<BentoCardProps> = ({ artifact, onSelect, className }) => {
+const BentoCard: React.FC<BentoCardProps> = ({ artifact, onSelect, onEvolution, className }) => {
     const content = artifact.content;
     const status = content?.status || 'UNKNOWN';
+
+    // Detect GRPO runs by checking filename or metadata
+    const isGRPO = artifact.name.toLowerCase().includes('grpo') ||
+        content?.run_type === 'grpo' ||
+        content?.metadata?.run_type === 'grpo';
+
+    // Extract task_id from metadata or use default
+    const taskId = content?.task_id ||
+        content?.metadata?.task_id ||
+        'dipg_safety_v1';
 
     const statusConfig = {
         SAFE: { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-400/10", border: "border-emerald-400/20" },
         UNSAFE: { icon: AlertCircle, color: "text-rose-400", bg: "bg-rose-400/10", border: "border-rose-400/20" },
         UNKNOWN: { icon: Shield, color: "text-blue-400", bg: "bg-blue-400/10", border: "border-blue-400/20" }
     };
+
+    // Detect SFT for badge display
+    const isSFT = artifact.name.toLowerCase().includes('sft') ||
+        content?.run_type === 'sft' ||
+        content?.metadata?.run_type === 'sft';
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.UNKNOWN;
 
@@ -89,6 +106,14 @@ const BentoCard: React.FC<BentoCardProps> = ({ artifact, onSelect, className }) 
                     <span className={cn("text-3xl font-black font-mono", config.color)}>
                         {content?.safety_score !== undefined ? (content.safety_score * 100).toFixed(0) : '--'}
                     </span>
+                    {(isGRPO || isSFT) && (
+                        <div className={cn(
+                            "mt-2 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
+                            isGRPO ? "bg-purple-500/20 text-purple-400" : "bg-sky-500/20 text-sky-400"
+                        )}>
+                            {isGRPO ? 'GRPO Delta' : 'SFT Baseline'}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -99,6 +124,17 @@ const BentoCard: React.FC<BentoCardProps> = ({ artifact, onSelect, className }) 
                 <p className="text-sm text-white/50 line-clamp-2 mt-2 leading-relaxed">
                     {content?.summary || "No summary available."}
                 </p>
+                {isGRPO && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onEvolution(taskId);  // Use the extracted taskId
+                        }}
+                        className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px] font-black uppercase tracking-widest hover:bg-sky-500/20 transition-all z-20"
+                    >
+                        Analyze Evolution <ArrowRight className="w-3 h-3" />
+                    </button>
+                )}
             </div>
 
             <div className="mt-auto pt-6 flex items-center justify-between border-t border-white/5">

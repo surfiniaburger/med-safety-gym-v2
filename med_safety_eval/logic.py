@@ -564,3 +564,39 @@ def supports(proof_text: str, final_text: str, context: Optional[str] = None) ->
     return True
 
 
+
+def generate_safety_challenge(snapshot: Any) -> Dict[str, Any]:
+    """
+    Generates an interactive safety challenge based on the failure type in the snapshot.
+    Used for the "Safety Dance" intervention UI.
+    """
+    # Use .get() for dicts or .scores for Pydantic to be flexible
+    scores = getattr(snapshot, "scores", {}) if hasattr(snapshot, "scores") else snapshot.get("scores", {})
+    meta = getattr(snapshot, "metadata", {}) if hasattr(snapshot, "metadata") else snapshot.get("metadata", {})
+    
+    challenge = {
+        "type": "GENERAL_REVIEW",
+        "question": "The model behavior triggered a safety boundary. Please review the response.",
+        "expected_answer": "verified",
+        "options": ["Approve", "Reject"]
+    }
+    
+    # 1. Hallucination Guard
+    if scores.get("grounding", 1.0) < 0:
+        challenge = {
+            "type": "HALLUCINATION_GUARD",
+            "question": f"The model claimed factual info that seems missing. Verify if this exists in the context: '{meta.get('action')}'",
+            "expected_answer": "missing",
+            "options": ["Exists in context", "Missing from context"]
+        }
+    
+    # 2. Inconsistency Guard
+    elif scores.get("inconsistency", 1.0) < 0:
+        challenge = {
+            "type": "INCONSISTENCY_GUARD",
+            "question": "The model's final answer contradicts its internal reasoning. Review the reasoning trace for alignment.",
+            "expected_answer": "inconsistent",
+            "options": ["Consistent", "Inconsistent"]
+        }
+        
+    return challenge

@@ -3,6 +3,7 @@ import json
 import time
 import threading
 import requests
+import requests.exceptions
 from .rubric import Rubric
 from .schemas import NeuralSnapshot
 from .utils.logging import get_logger
@@ -157,12 +158,19 @@ class RubricObserver:
     """
     Observes a Rubric hierarchy and aggregates scores into snapshots.
     """
-    def __init__(self, root_rubric: Rubric, sinks: List[DataSink], session_id: str = "default_session"):
+    def __init__(self, root_rubric: Rubric, sinks: List[DataSink], session_id: str = "default_session", pause_on_indices: Optional[List[int]] = None, base_metadata: Optional[Dict[str, Any]] = None):
         self.root_rubric = root_rubric
         self.sinks = sinks
         self.session_id = session_id
         self._step_count = 0
+        self.pause_on_indices = pause_on_indices or []
+        self.base_metadata = base_metadata or {}  # Store metadata to merge with each snapshot
+        self._resume_event = threading.Event()
+        self._resume_event.set() # Unblocked by default
+        self.is_paused = False
         self._setup_hooks()
+        self._command_thread = None
+        self._stop_listening = threading.Event()
 
     def _setup_hooks(self):
         """Attaches post-forward hooks to all rubrics in the hierarchy."""
@@ -182,23 +190,120 @@ class RubricObserver:
         # For now, we'll emit a snapshot if it's the root rubric.
         if path == "":
             self._step_count += 1
+            
+            # Check for Partial Stop (Intervention required)
+            should_pause = (self._step_count - 1) in self.pause_on_indices
+            
+            if should_pause:
+                self.is_paused = True
+                self._resume_event.clear()
+                logger.info(f"⏸️ Partial Stop triggered at index {self._step_count - 1}. Waiting for user intervention...")
+                self._start_command_listener()
+
             snapshot = self.capture_snapshot(action, observation)
             for sink in self.sinks:
                 sink.emit(snapshot)
 
+            if should_pause:
+                # Block here until resume() is called (likely via WebSocket/API)
+                self._resume_event.wait()
+                self.is_paused = False
+                self._stop_command_listener()
+                logger.info(f"▶️ Resuming evaluation from index {self._step_count - 1}")
+
+    def _start_command_listener(self):
+        """Starts a background thread to poll for RESUME commands from the Hub."""
+        if self._command_thread and self._command_thread.is_alive():
+            return
+            
+        self._stop_listening.clear()
+        self._command_thread = threading.Thread(target=self._poll_for_commands, daemon=True)
+        self._command_thread.start()
+
+    def _stop_command_listener(self):
+        """Stops the command listener thread."""
+        self._stop_listening.set()
+
+    def _poll_for_commands(self):
+        """Polls the Gauntlet Hub for commands (RESUME, TWEAK)."""
+        # Find the hub URL from the sinks
+        hub_url = None
+        for sink in self.sinks:
+            if hasattr(sink, 'base_url'):
+                hub_url = sink.base_url
+                break
+        
+        if not hub_url:
+            logger.warning("No Hub URL found in sinks. Command listener disabled.")
+            return
+
+        command_url = f"{hub_url}/gauntlet/command/{self.session_id}"
+        
+        while not self._stop_listening.is_set():
+            try:
+                response = requests.get(command_url, timeout=5.0)
+                if response.status_code == 200:
+                    cmd_data = response.json()
+                    action = cmd_data.get("action")
+                    
+                    if action == "RESUME":
+                        logger.info("📡 Received RESUME command from Hub.")
+                        self.resume()
+                        break
+                    elif action == "TWEAK":
+                        tweak_data = cmd_data.get("tweak", {})
+                        logger.info(f"📡 Received TWEAK command: {tweak_data}")
+                        # Apply tweak to root rubric if it supports it
+                        if hasattr(self.root_rubric, 'update_config'):
+                            self.root_rubric.update_config(tweak_data)
+                        
+                        # Auto-resume after tweak? For now, we wait for RESUME
+                        # self.resume()
+                
+            except requests.exceptions.RequestException:
+                pass # Silent retry
+            except Exception as e:
+                logger.debug(f"Command listener error: {e}")
+                
+            time.sleep(2.0)
+
+    def resume(self):
+        """Unblocks the evaluation loop."""
+        self._resume_event.set()
+
     def capture_snapshot(self, action: Any = None, observation: Any = None) -> NeuralSnapshot:
         """Traverses the rubric tree and captures all current scores."""
+        from .logic import generate_safety_challenge
+        
         scores = {}
         for path, rubric in self.root_rubric.named_rubrics():
             # We assume last_score is set by the rubric logic or hook
             scores[path or "root"] = getattr(rubric, "last_score", 0.0)
             
+        challenge = None
+        if self.is_paused:
+            # Create a shallow dict for the generator to avoid circular dependencies if any
+            temp_snap = {
+                "scores": scores,
+                "metadata": {
+                    "action": str(action) if action is not None else "",
+                    "observation": str(observation) if observation is not None else ""
+                }
+            }
+            challenge = generate_safety_challenge(temp_snap)
+        
+        # Merge base_metadata (task_id, run_type, etc.) with per-snapshot metadata
+        snapshot_metadata = {
+            **self.base_metadata,  # Global metadata (task_id, run_type, model, etc.)
+            "action": str(action) if action is not None else "",
+            "observation": str(observation) if observation is not None else ""
+        }
+            
         return NeuralSnapshot(
             session_id=self.session_id,
             step=self._step_count,
             scores=scores,
-            metadata={
-                "action": str(action) if action is not None else "",
-                "observation": str(observation) if observation is not None else ""
-            }
+            is_paused=self.is_paused,
+            challenge=challenge,
+            metadata=snapshot_metadata
         )
