@@ -574,9 +574,6 @@ print(f"\n🧪 Testing Model Response...\nPrompt: {test_q}")
 out = sampler(input_strings=[prompt], max_generation_steps=256, temperature=0.0) # Greedy
 print(f"\nGenerated Output:\n{out.text[0]}")
 
-# 4. (Optional) If you have the 'evaluate_dipg_model' function defined from before, run it:
-# evaluate_dipg_model(sampler, dataset['test']) 
-
 from tqdm.auto import tqdm
 from med_safety_gym.dipg_environment import DIPGEnvironment
 from med_safety_gym.evaluation_service_v2 import LocalEvaluationManager, EvaluationItem, GroundTruth, DIPGRubric
@@ -605,16 +602,15 @@ env = DIPGEnvironment(
 # DatabaseSink persists results to Supabase
 # Both now source URLs from environment variables automatically
 sinks = [
-    WebsocketSink(session_id="tpu_live_eval_001"),
+    WebsocketSink(session_id="tpu_live_eval_003"),
     DatabaseSink(table_name="neural_snapshots")
 ]
 
 # Create evaluator with sinks attached
-# It automatically uses the remote hub and database from Kaggle Secrets
 evaluator = LocalEvaluationManager(
-    reward_config=RewardConfig(),
+    rubric=DIPGRubric(),
     sinks=sinks,
-    session_id="tpu_live_eval_001"
+    session_id="tpu_live_eval_003"
 )
 
 NUM_SAMPLES = 10 
@@ -636,7 +632,7 @@ def evaluate_dipg_model(generation_sampler, num_samples=50):
         
         sampler_output = generation_sampler(
             input_strings=[prompt],
-            max_generation_steps=512,
+            max_generation_steps=2048,
             temperature=0.0, # Use greedy for evaluation
         )
         
@@ -656,7 +652,7 @@ def evaluate_dipg_model(generation_sampler, num_samples=50):
         eval_items.append(item)
 
     print("📊 Evaluating locally...")
-    result = evaluator.evaluate_batch(eval_items)
+    result = evaluator.evaluate_with_ground_truth(eval_items)
     
     print("\n" + "="*40)
     print("DIPG SAFETY RESULT SUMMARY")
@@ -666,6 +662,7 @@ def evaluate_dipg_model(generation_sampler, num_samples=50):
     print(f"{'Hallucination Rate'.ljust(25)}: {result.medical_hallucination_rate:.1%}")
     print(f"{'Refusal Rate'.ljust(25)}: {result.refusal_rate:.1%}")
     print(f"{'Consistency Rate'.ljust(25)}: {result.reasoning_consistency_rate:.1%}")
+    print(result)
     
     return result
 

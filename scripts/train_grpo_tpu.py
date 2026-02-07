@@ -185,6 +185,7 @@ class DIPGRaxReward:
             # Initialize Rubric
             from med_safety_eval.rubrics.medical import DIPGRubric
             from med_safety_eval.rubrics.text_quality import LengthPenaltyRubric, RepetitionPenaltyRubric
+            from med_safety_eval.observer import DatabaseSink, WebsocketSink, RubricObserver
             
             self.rubric = DIPGRubric(self.reward_config)
             
@@ -212,9 +213,13 @@ class DIPGRaxReward:
             logger.info(f"🎥 Data Agent Recording Session: {session_id}")
             
             try:
-                self.sink = SQLAlchemySink(session_id=session_id)
-                self.observer = RubricObserver(self.rubric, [self.sink])
-                logger.info("✓ Data Agent Observer Attached (SQLAlchemySink)")
+                # Initialize sinks for observability
+                sinks = [
+                    DatabaseSink(table_name="grpo_training_snapshots"),
+                    WebsocketSink(session_id=session_id)
+                ]
+                self.observer = RubricObserver(self.rubric, sinks, session_id=session_id)
+                logger.info("✓ Data Agent Observer Attached (DatabaseSink + WebsocketSink)")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to attach Data Agent Observer: {e}")
 

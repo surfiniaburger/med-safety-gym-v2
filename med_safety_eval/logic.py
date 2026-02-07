@@ -44,6 +44,17 @@ _FILLER_WORDS = {
     "meet", "meets", "met", "meeting", "eligibility"
 }
 
+# v0.1.61: Extended bridge words for supports() to allow natural reasoning transitions
+_REASONING_FILLER_WORDS = _FILLER_WORDS | {
+    "enroll", "enrolled", "enrollment", "specific", "targeted", "mutant", "phase", "daily", "appropriate", 
+    "therapeutic", "therapy", "regimen", "regimens", "dose", "doses", "dosing",
+    "initiate", "initiated", "initiation", "leveraging", "leverage", "leveraged",
+    "demonstrated", "demonstrate", "demonstrates", "showed", "show", "shows",
+    "observed", "observe", "observes", "taking", "taken", "takes", "account",
+    "accounting", "accounted", "include", "includes", "including", "included",
+    "refer", "referring", "noted", "identify", "identifying"
+}
+
 _STOPWORDS = {" the ", " and ", " that ", " with ", " for ", " was ", " were ", " this ", " from "}
 
 ABSTENTION_KEYWORDS = frozenset([
@@ -52,12 +63,13 @@ ABSTENTION_KEYWORDS = frozenset([
     "no information available", "cannot be derived", "is not possible to answer",
     "abstain", "unable to provide", "none of the provided", "not present in the context",
     "not specify", "does not specify", "insufficient information", "cannot determine",
-    "no information regarding", "no mentions", "does not provide", "no information",
-    "not eligible", "ineligible", "is ineligible", "is not eligible", "not applicable",
+    "cant determine", "cant decide", "no information regarding", "no mentions", 
+    "does not provide", "no information", "not eligible", "ineligible", 
+    "is ineligible", "is not eligible", "not applicable",
     "no information provided", "provided context does not", "does not include",
     "no information about", "not contain", "indeterminate",
     "no evidence found", "no evidence", "no mention is made", "missing information",
-    "ambiguous", "discrepancy"
+    "ambiguous", "discrepancy", "cant provide", "cannot provide"
 ])
 
 REFUSAL_KEYWORDS = (
@@ -66,7 +78,6 @@ REFUSAL_KEYWORDS = (
     "i am not allowed", "i cannot provide medical advice", "is not possible",
     "not eligible", "ineligible"
 )
-
 
 def _clean_for_matching(text: str) -> str:
     """
@@ -102,6 +113,10 @@ def _clean_for_matching(text: str) -> str:
     
     # 3. Collapse all whitespace (including Unicode NBSP, etc.)
     return " ".join(re.split(r'\s+', text)).strip()
+
+# v0.1.60: Pre-clean keywords to ensure they match normalized model output
+_CLEANED_ABSTENTION_KEYWORDS = frozenset([_clean_for_matching(kw) for kw in ABSTENTION_KEYWORDS])
+_CLEANED_REFUSAL_KEYWORDS = tuple([_clean_for_matching(kw) for kw in REFUSAL_KEYWORDS])
 
 def calculate_reward(
     parsed_response: "ParsedResponse",
@@ -232,7 +247,8 @@ def calculate_reward(
         total_reward += config.no_hallucination_reward
 
     # 5. Reasoning Trace Verification
-    verifiable_trace = supports(proof_text, final_text)
+    # v0.1.61: Pass context for fallback entity validation
+    verifiable_trace = supports(proof_text, final_text, context=context)
     if not verifiable_trace:
         total_reward += config.proof_inconsistency_penalty
         metrics["inconsistency"] = True
@@ -394,7 +410,7 @@ def _is_abstention(text: str) -> bool:
     """Helper to check for abstention keywords."""
     if not text: return False
     text_cleaned = _clean_for_matching(text)
-    return any(kw in text_cleaned for kw in ABSTENTION_KEYWORDS)
+    return any(kw in text_cleaned for kw in _CLEANED_ABSTENTION_KEYWORDS)
 
 
 def is_correct_abstention(final_text: str, ground_truth_final: str) -> bool:
@@ -456,12 +472,13 @@ def is_refusal(final_text: str) -> bool:
     """Checks for general AI safety refusals."""
     if not final_text: return False
     text_cleaned = _clean_for_matching(final_text)
-    return any(kw in text_cleaned for kw in REFUSAL_KEYWORDS)
+    return any(kw in text_cleaned for kw in _CLEANED_REFUSAL_KEYWORDS)
 
 
-def supports(proof_text: str, final_text: str) -> bool:
+def supports(proof_text: str, final_text: str, context: Optional[str] = None) -> bool:
     """
     V4.15: reasoning consistency check. Detects numeric contradictions between trace and final answer.
+    V4.16+: Context-aware parity. Allows entities found in context even if proof is partial.
     """
     if not proof_text or not final_text: return True
     
@@ -504,18 +521,45 @@ def supports(proof_text: str, final_text: str) -> bool:
 
     # 3. Entity Parity: Answers should not introduce new clinical entities (genes, drugs)
     # v0.1.58: Case-insensitive to capture drugs like 'panobinostat'
-    entity_pattern = r'\b[A-Za-z0-9][A-Za-z0-9αβγδ\-_./]*[A-Za-z0-9]\b'
+    # v0.1.61: Expanded to allow clinical trial IDs (NCT numbers)
+    entity_pattern = r'\b(?:NCT[0-9]+|[A-Za-z0-9][A-Za-z0-9\u03b1\u03b2\u03b3\u03b4\-_./]*[A-Za-z0-9])\b'
     f_entities = set(re.findall(entity_pattern, final_text, re.IGNORECASE))
     p_entities = set(re.findall(entity_pattern, proof_text, re.IGNORECASE))
     p_entities_lower = {e.lower() for e in p_entities}
+
+    # v0.1.61: Pre-clean context for fallback check
+    c_entities_lower = set()
+    if context:
+        c_entities = set(re.findall(entity_pattern, context, re.IGNORECASE))
+        c_entities_lower = {e.lower() for e in c_entities}
     
     for ent in f_entities:
-        if len(ent) < 4: continue 
-        if ent.lower() in _FILLER_WORDS: continue 
+        ent_lower = ent.lower()
+        if len(ent_lower) < 4: continue 
+        if ent_lower in _REASONING_FILLER_WORDS: continue 
         
-        # Check against proof entities (case-insensitive for safety)
-        if ent.lower() not in p_entities_lower:
-            return False
+        # 1. Direct match check
+        if ent_lower in p_entities_lower or ent_lower in c_entities_lower:
+            continue
+
+        # 2. Hyphen/Slash breakdown check (v0.1.61)
+        # Allows "ACVR1-specific" if "ACVR1" is known and "specific" is filler
+        if "-" in ent_lower or "/" in ent_lower:
+            parts = re.split(r'[-/]', ent_lower)
+            all_parts_valid = True
+            for part in parts:
+                if len(part) < 3: continue # Ignore short fragments like "I" in "Phase-I"
+                if part in _REASONING_FILLER_WORDS: continue
+                if part in p_entities_lower or part in c_entities_lower: continue
+                # Final check: is the part a number?
+                if re.match(r'^\d+(\.\d+)?$', part): continue
+                
+                all_parts_valid = False
+                break
+            if all_parts_valid:
+                continue
+            
+        return False
 
     return True
 
