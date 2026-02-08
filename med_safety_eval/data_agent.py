@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from typing import List, Dict, Any, Optional
 from sqlalchemy import create_engine, text
 from .utils.logging import get_logger
@@ -168,7 +169,6 @@ class DataAgent:
     def queue_command(self, session_id: str, command: Dict[str, Any]):
         """Queues a command for a session."""
         if not self.engine: return
-        import time
         # Upsert command (replace existing if any)
         # Using simple delete+insert for compatibility
         with self.engine.begin() as conn:
@@ -179,21 +179,19 @@ class DataAgent:
             )
 
     def pop_command(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieves and clears a command for a session."""
+        """Retrieves and clears a command for a session atomically."""
         if not self.engine: return None
         
-        command = None
         with self.engine.begin() as conn:
-            # Select first
+            # Use DELETE ... RETURNING for an atomic pop from the queue.
+            # This is specific to PostgreSQL but avoids race conditions.
             result = conn.execute(
-                text("SELECT command FROM gauntlet_commands WHERE session_id = :sid"),
+                text("DELETE FROM gauntlet_commands WHERE session_id = :sid RETURNING command"),
                 {"sid": session_id}
             ).fetchone()
             
             if result:
                 cmd_str = result[0]
-                command = json.loads(cmd_str) if isinstance(cmd_str, str) else cmd_str
-                # Clear command
-                conn.execute(text("DELETE FROM gauntlet_commands WHERE session_id = :sid"), {"sid": session_id})
+                return json.loads(cmd_str) if isinstance(cmd_str, str) else cmd_str
                 
-        return command
+        return None
