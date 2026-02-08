@@ -2,6 +2,8 @@ name: Android Release Build
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'android-v*'
   workflow_dispatch:
@@ -17,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: 'bring-any-eval-to-life/package-lock.json'
 
@@ -39,6 +41,7 @@ jobs:
         working-directory: bring-any-eval-to-life
         env:
           VITE_RENDER_HUB: ${{ secrets.VITE_RENDER_HUB }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: npm run build
 
       - name: Sync Capacitor
