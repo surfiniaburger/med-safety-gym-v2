@@ -18,4 +18,9 @@
 
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
-#-renamesourcefileattribute SourceFile
+
+# Capacitor
+-keep public class * extends com.getcapacitor.BridgeActivity
+-keep public class * extends com.getcapacitor.Plugin
+-keep public @interface com.getcapacitor.PluginMethod
+-keep public @interface com.getcapacitor.CapacitorPlugin
