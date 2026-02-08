@@ -36,6 +36,18 @@ export const EvolutionPortal: React.FC<EvolutionPortalProps> = ({ taskId, onClos
         enabled: !!taskId
     });
 
+    if (error) {
+        return (
+            <div className={`p-6 rounded-2xl bg-rose-500/10 border border-rose-500/20`}>
+                <div className="flex items-center gap-3 text-rose-400">
+                    <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                    <span className="font-mono text-sm">Failed to load evolution data</span>
+                </div>
+                <p className="mt-2 text-rose-300/60 text-xs">{(error as Error).message || 'Unknown error'}</p>
+            </div>
+        );
+    }
+
     if (isLoading) {
         return (
             <div className="fixed inset-0 z-[150] bg-black/90 backdrop-blur-3xl flex items-center justify-center">

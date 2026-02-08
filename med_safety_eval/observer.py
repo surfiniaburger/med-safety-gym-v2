@@ -82,6 +82,13 @@ class DatabaseSink:
                 Column('scores', JSON), # Store flattened scores
                 Column('metadata', JSON)
             )
+
+            self.commands_table = Table(
+                'gauntlet_commands', metadata,
+                Column('session_id', String, primary_key=True),
+                Column('command', JSON),
+                Column('timestamp', Float)
+            )
             
             # Create table if not exists
             metadata.create_all(self.engine)

@@ -7,9 +7,15 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "android:sync": "npx cap sync android",
+    "android:build": "npm run build && npm run android:sync && cd android && ./gradlew assembleRelease",
+    "android:open": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.0.2",
+    "@capacitor/cli": "^8.0.2",
+    "@capacitor/core": "^8.0.2",
     "@google/genai": "^1.28.0",
     "@heroicons/react": "^2.2.0",
     "@react-three/drei": "^10.7.7",

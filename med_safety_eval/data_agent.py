@@ -164,3 +164,36 @@ class DataAgent:
                 if isinstance(meta, str): meta = json.loads(meta)
                 items.append({"step": step, "scores": scores, "metadata": meta})
             return items
+
+    def queue_command(self, session_id: str, command: Dict[str, Any]):
+        """Queues a command for a session."""
+        if not self.engine: return
+        import time
+        # Upsert command (replace existing if any)
+        # Using simple delete+insert for compatibility
+        with self.engine.begin() as conn:
+            conn.execute(text("DELETE FROM gauntlet_commands WHERE session_id = :sid"), {"sid": session_id})
+            conn.execute(
+                text("INSERT INTO gauntlet_commands (session_id, command, timestamp) VALUES (:sid, :cmd, :ts)"),
+                {"sid": session_id, "cmd": json.dumps(command), "ts": time.time()}
+            )
+
+    def pop_command(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves and clears a command for a session."""
+        if not self.engine: return None
+        
+        command = None
+        with self.engine.begin() as conn:
+            # Select first
+            result = conn.execute(
+                text("SELECT command FROM gauntlet_commands WHERE session_id = :sid"),
+                {"sid": session_id}
+            ).fetchone()
+            
+            if result:
+                cmd_str = result[0]
+                command = json.loads(cmd_str) if isinstance(cmd_str, str) else cmd_str
+                # Clear command
+                conn.execute(text("DELETE FROM gauntlet_commands WHERE session_id = :sid"), {"sid": session_id})
+                
+        return command

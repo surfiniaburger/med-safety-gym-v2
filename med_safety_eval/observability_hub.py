@@ -125,7 +125,11 @@ async def post_command(session_id: str, command: dict):
     Sets a pending command for an evaluation session.
     Format: {"action": "RESUME"|"TWEAK", "tweak": {...}}
     """
-    pending_commands[session_id] = command
+    if data_agent.engine:
+        data_agent.queue_command(session_id, command)
+    else:
+        pending_commands[session_id] = command
+        
     logger.info(f"📡 Registered command for {session_id}: {command['action']}")
     return {"status": "ok"}
 
@@ -135,8 +139,14 @@ async def get_command(session_id: str):
     Poll endpoint for the evaluation loop (RubricObserver) to fetch commands.
     Returns the command and clears it.
     """
-    command = pending_commands.pop(session_id, {"action": "NONE"})
-    return command
+    command = None
+    if data_agent.engine:
+        command = data_agent.pop_command(session_id)
+    
+    if not command:
+        command = pending_commands.pop(session_id, {"action": "NONE"})
+        
+    return command or {"action": "NONE"}
 
 @app.get("/health")
 async def health_check():
