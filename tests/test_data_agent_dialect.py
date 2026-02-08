@@ -37,5 +37,5 @@ def test_pop_command_postgres_call():
     assert command == {"action": "TEST"}
     # Verify the correct SQL was executed
     args, _ = mock_conn.execute.call_args
-    assert "DELETE FROM gauntlet_commands" in str(args[0])
-    assert "RETURNING command" in str(args[0])
+    assert str(args[0]) == "DELETE FROM gauntlet_commands WHERE session_id = :sid RETURNING command"
+    assert args[1] == {"sid": "test_session"}
