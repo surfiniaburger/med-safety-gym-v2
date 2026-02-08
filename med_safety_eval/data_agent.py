@@ -182,6 +182,11 @@ class DataAgent:
         """Retrieves and clears a command for a session atomically."""
         if not self.engine: return None
         
+        if self.engine.dialect.name != 'postgresql':
+            # The atomic DELETE...RETURNING is PostgreSQL-specific.
+            # To support other DBs, a different locking strategy would be needed.
+            raise NotImplementedError("Atomic pop_command is only supported for PostgreSQL backends.")
+        
         with self.engine.begin() as conn:
             # Use DELETE ... RETURNING for an atomic pop from the queue.
             # This is specific to PostgreSQL but avoids race conditions.
