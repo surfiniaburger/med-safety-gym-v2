@@ -35,13 +35,13 @@ allprojects {
         }
     }
     
-    // Resolve Kotlin stdlib duplicate classes by excluding old JDK7/JDK8 artifacts
+    ext.kotlinVersion = '1.9.22'
     configurations.all {
         exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
         exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
         resolutionStrategy.eachDependency { details ->
             if (details.requested.group == 'org.jetbrains.kotlin') {
-                details.useVersion '1.9.22'
+                details.useVersion project.ext.kotlinVersion
             }
         }
     }
