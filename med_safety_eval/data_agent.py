@@ -9,6 +9,9 @@ from .utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Constants
+EMBEDDING_DIM = 768  # Standard for Gemini embedding-001
+
 class DataAgent:
     """
     UI Data Agent: Aggregates evaluation results for the Gauntlet UI.
@@ -74,11 +77,11 @@ class DataAgent:
                         )
                     """))
                     # Table for caching embeddings using pgvector
-                    conn.execute(text("""
+                    conn.execute(text(f"""
                         CREATE TABLE IF NOT EXISTS snapshot_embeddings (
                             id SERIAL PRIMARY KEY,
                             snapshot_id INTEGER UNIQUE REFERENCES neural_snapshots(id),
-                            embedding VECTOR(768)
+                            embedding VECTOR({EMBEDDING_DIM})
                         )
                     """))
                 except Exception as e:
@@ -279,10 +282,10 @@ class DataAgent:
                         if row[0] not in keyword_ids:
                             semantic_matches.append((row[0], float(row[1])))
                 except Exception as e:
-                    logger.error(f"Postgres vector search failed: {e}")
+                    logger.error(f"Postgres vector search failed (falling back to in-memory): {e}")
             
-            if not semantic_matches and self.engine.dialect.name != 'postgresql':
-                # Fallback: In-memory numpy comparison (SQLite or missing pgvector)
+            if not semantic_matches:
+                # Fallback: In-memory numpy comparison (SQLite, missing pgvector, or failed DB search)
                 embed_data = conn.execute(text("""
                     SELECT snapshot_id, embedding FROM snapshot_embeddings
                 """)).fetchall()

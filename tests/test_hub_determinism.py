@@ -1,6 +1,5 @@
 import os
 import json
-import sqlite3
 from sqlalchemy import text
 from med_safety_eval.data_agent import DataAgent
 
@@ -32,20 +31,16 @@ def test_metadata_determinism():
     # for columns not in the DISTINCT clause.
     sessions = agent.get_all_sessions()
     
-    found = False
-    for s in sessions:
-        if s["session_id"] == "session-1":
-            found = True
-            version = s["metadata"].get("version")
-            print(f"Result for session-1: version={version}")
-            if version == "v2":
-                print("✅ PASS: Correct metadata (latest step) returned.")
-            else:
-                print("❌ FAIL: Old metadata returned. This is the non-determinism bug.")
-                # We expect this to fail BEFORE our fix
-    
-    if not found:
-        print("❌ FAIL: Session not found in results.")
+    # Assert using pytest-friendly logic
+    sessions_found = [s for s in sessions if s["session_id"] == "session-1"]
+    assert sessions_found, "FAIL: Session 'session-1' not found in results."
+
+    session = sessions_found[0]
+    version = session["metadata"].get("version")
+    print(f"Result for session-1: version={version}")
+
+    assert version == "v2", f"FAIL: Old metadata returned (v1 instead of v2). Determinism bug detected."
+    print("✅ PASS: Correct metadata (latest step) returned.")
 
     if os.path.exists(db_path):
         os.remove(db_path)
