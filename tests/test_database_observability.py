@@ -60,3 +60,10 @@ def test_database_sink_and_data_agent(db_config):
     assert pair["sft"]["scores"]["root"] == 80.0
     assert pair["grpo"]["scores"]["root"] == 20.0
     assert pair["delta"] == -60.0
+
+    # 6. Verify get_all_sessions
+    all_sessions = agent.get_all_sessions()
+    assert len(all_sessions) == 2 # sft_session and grpo_session
+    session_ids = [s['session_id'] for s in all_sessions]
+    assert sft_session in session_ids
+    assert grpo_session in session_ids

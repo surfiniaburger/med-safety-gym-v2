@@ -168,11 +168,12 @@ class DataAgent:
                 metadata,
                 (SELECT count(*) FROM neural_snapshots s2 WHERE s2.session_id = s1.session_id) as step_count
             FROM neural_snapshots s1
+            ORDER BY s1.session_id, s1.step DESC
         """)
         
         if self.engine.dialect.name != 'postgresql':
             # Fallback for SQLite/others if needed
-            query = text("SELECT DISTINCT session_id, metadata FROM neural_snapshots")
+            query = text("SELECT session_id, metadata FROM neural_snapshots GROUP BY session_id")
             
         sessions = []
         with self.engine.connect() as conn:

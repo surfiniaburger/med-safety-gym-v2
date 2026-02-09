@@ -2,9 +2,18 @@ import { EvaluationArtifact } from './github';
 
 const HUB_URL = import.meta.env.VITE_RENDER_HUB || "https://med-safety-hub.onrender.com";
 
+interface HubSessionMetadata {
+    safety_score?: number;
+    status?: 'SAFE' | 'UNSAFE' | 'UNKNOWN';
+    summary?: string;
+    run_type?: string;
+    task_id?: string;
+    [key: string]: any;
+}
+
 interface HubSession {
     session_id: string;
-    metadata: any;
+    metadata: HubSessionMetadata;
     step_count: number;
 }
 
@@ -29,7 +38,7 @@ export async function fetchHubArtifacts(): Promise<EvaluationArtifact[]> {
             download_url: '',
             content: {
                 safety_score: session.metadata?.safety_score ?? 0.5,
-                status: (session.metadata?.status || 'UNKNOWN') as any,
+                status: (session.metadata?.status || 'UNKNOWN') as 'SAFE' | 'UNSAFE' | 'UNKNOWN',
                 summary: session.metadata?.summary || `Database Session with ${session.step_count} steps.`,
                 run_type: session.metadata?.run_type,
                 task_id: session.metadata?.task_id,
