@@ -351,6 +351,7 @@ const PathAgent = ({
                 onProgress(floorIndex);
             }
             if (nextProgress >= points.length - 1 && typeof onComplete === 'function') {
+                // Trigger completion only once
                 onComplete();
             }
         }

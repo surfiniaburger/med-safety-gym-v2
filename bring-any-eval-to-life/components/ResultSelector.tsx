@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Shield, AlertCircle, CheckCircle2, FlaskConical, ArrowRight } from 'lucide-react';
+import { Shield, AlertCircle, CheckCircle2, FlaskConical, ArrowRight, Database, Github } from 'lucide-react';
 import { cn } from '@/lib-web/utils';
 import { EvaluationArtifact } from '@/services/github';
 
@@ -86,11 +86,14 @@ const BentoCard: React.FC<BentoCardProps> = ({ artifact, onSelect, onEvolution, 
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.UNKNOWN;
 
+    const isDatabase = artifact.path.startsWith('db/');
+
     return (
         <motion.div
             whileHover={{ y: -5, scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
             onClick={onSelect}
+            data-testid={`artifact-card-${artifact.id}`}
             className={cn(
                 "group relative flex flex-col justify-between overflow-hidden rounded-2xl border bg-neutral-950 p-6 cursor-pointer",
                 "border-white/10 hover:border-white/20 transition-all duration-300",
@@ -106,14 +109,23 @@ const BentoCard: React.FC<BentoCardProps> = ({ artifact, onSelect, onEvolution, 
                     <span className={cn("text-3xl font-black font-mono", config.color)}>
                         {content?.safety_score !== undefined ? (content.safety_score * 100).toFixed(0) : '--'}
                     </span>
-                    {(isGRPO || isSFT) && (
+                    <div className="flex flex-col items-end gap-1 mt-2">
+                        {(isGRPO || isSFT) && (
+                            <div className={cn(
+                                "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
+                                isGRPO ? "bg-purple-500/20 text-purple-400" : "bg-sky-500/20 text-sky-400"
+                            )}>
+                                {isGRPO ? 'GRPO Delta' : 'SFT Baseline'}
+                            </div>
+                        )}
                         <div className={cn(
-                            "mt-2 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
-                            isGRPO ? "bg-purple-500/20 text-purple-400" : "bg-sky-500/20 text-sky-400"
+                            "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest flex items-center gap-1",
+                            isDatabase ? "bg-amber-500/10 text-amber-500/60" : "bg-white/5 text-white/30"
                         )}>
-                            {isGRPO ? 'GRPO Delta' : 'SFT Baseline'}
+                            {isDatabase ? <Database className="w-2 h-2" /> : <Github className="w-2 h-2" />}
+                            {isDatabase ? 'Live Session' : 'GitHub Report'}
                         </div>
-                    )}
+                    </div>
                 </div>
             </div>
 

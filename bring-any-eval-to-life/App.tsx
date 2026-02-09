@@ -9,6 +9,7 @@ import { LivePreview } from './components/LivePreview';
 import { CreationHistory, Creation } from './components/CreationHistory';
 import { bringToLife } from './services/gemini';
 import { fetchEvaluationArtifacts, EvaluationArtifact } from './services/github';
+import { fetchHubArtifacts } from './services/hub';
 import { ResultSelector } from './components/ResultSelector';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -45,11 +46,20 @@ const AppContent: React.FC = () => {
   // Real-time Observability Stream
   const { streamData, isPaused } = useGauntletStream(activeArtifact?.id || null);
 
-  // Fetch evaluation artifacts
-  const { data: artifacts = [], isLoading: isLoadingArtifacts } = useQuery({
+  // Fetch evaluation artifacts from both GitHub and Hub (Supabase)
+  const { data: githubArtifacts = [], isLoading: isLoadingGitHub } = useQuery({
     queryKey: ['evaluation-artifacts'],
     queryFn: fetchEvaluationArtifacts,
   });
+
+  const { data: hubArtifacts = [], isLoading: isLoadingHub } = useQuery({
+    queryKey: ['hub-artifacts'],
+    queryFn: fetchHubArtifacts,
+    refetchInterval: 10000, // Poll hub more frequently for live sessions
+  });
+
+  const artifacts = [...hubArtifacts, ...githubArtifacts];
+  const isLoadingArtifacts = isLoadingGitHub || isLoadingHub;
 
 
   // Load history from local storage or fetch examples on mount
@@ -158,7 +168,12 @@ const AppContent: React.FC = () => {
     setActiveStepIndex(0);
     setSolvedNodes([]);
     setIsMissionComplete(false);
-    setActiveCreation(null); // Reset creation when selecting a new artifact
+    setActiveCreation(null);
+  };
+
+  const handleMissionComplete = () => {
+    setIsMissionComplete(true);
+    showToast("Neural Trajectory Finalized. Generating Safety Flight Log...", "success");
   };
 
   const handleIntervention = async (index: number) => {
@@ -373,7 +388,7 @@ const AppContent: React.FC = () => {
             onIntervene={handleIntervention}
             onActiveStepChange={setActiveStepIndex}
             onClose={handleReset}
-            onComplete={() => setIsMissionComplete(true)}
+            onComplete={handleMissionComplete}
             initialPathType={suggestedPathType}
             accentColor={suggestedColor}
           />
@@ -390,6 +405,7 @@ const AppContent: React.FC = () => {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.9, y: 20 }}
                   className="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 w-full max-w-md"
+                  data-testid="intervention-overlay"
                 >
                   <div className="bg-zinc-950/80 backdrop-blur-2xl border border-rose-500/30 rounded-3xl p-8 shadow-[0_0_50px_rgba(244,63,94,0.2)]">
                     <div className="flex items-center gap-4 mb-6">
@@ -455,6 +471,7 @@ const AppContent: React.FC = () => {
             initial={{ opacity: 0, scale: 0.9, y: 30 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="max-w-xl w-full bg-zinc-950 border border-white/10 rounded-[3rem] p-12 shadow-[0_40px_100px_rgba(0,0,0,0.5)] relative overflow-hidden"
+            data-testid="mission-recap-overlay"
           >
             <div className="absolute top-0 right-0 p-8">
               <ShieldCheckIcon className="w-16 h-16 text-emerald-500/10" />

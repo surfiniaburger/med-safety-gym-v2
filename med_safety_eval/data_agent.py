@@ -152,6 +152,43 @@ class DataAgent:
         
         return []
 
+    def get_all_sessions(self) -> List[Dict[str, Any]]:
+        """
+        Lists all unique sessions in the database with their latest metadata.
+        """
+        if not self.engine: return []
+        
+        # PostgreSQL specific query to get latest metadata for each session
+        # For simplicity and cross-DB support, we'll use a basic group by if possible
+        # but metadata is JSON so we need a different approach.
+        
+        query = text("""
+            SELECT DISTINCT ON (session_id) 
+                session_id, 
+                metadata,
+                (SELECT count(*) FROM neural_snapshots s2 WHERE s2.session_id = s1.session_id) as step_count
+            FROM neural_snapshots s1
+        """)
+        
+        if self.engine.dialect.name != 'postgresql':
+            # Fallback for SQLite/others if needed
+            query = text("SELECT DISTINCT session_id, metadata FROM neural_snapshots")
+            
+        sessions = []
+        with self.engine.connect() as conn:
+            result = conn.execute(query)
+            for row in result:
+                sid, meta = row[0], row[1]
+                steps = row[2] if len(row) > 2 else 0
+                if isinstance(meta, str):
+                    meta = json.loads(meta)
+                sessions.append({
+                    "session_id": sid,
+                    "metadata": meta,
+                    "step_count": steps
+                })
+        return sessions
+
     def get_session_snapshots(self, session_id: str) -> List[Dict[str, Any]]:
         """Utility to get all snapshots for a session."""
         if not self.engine: return []

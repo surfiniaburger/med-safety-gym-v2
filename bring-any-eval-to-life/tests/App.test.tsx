@@ -5,10 +5,12 @@ import App from '../App';
 import * as githubService from '../services/github';
 import * as geminiService from '../services/gemini';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fetchHubArtifacts } from '../services/hub';
 
 // Mock the services
 vi.mock('../services/github');
 vi.mock('../services/gemini');
+vi.mock('../services/hub');
 vi.mock('../components/Gauntlet/GauntletView', () => ({
     GauntletView: vi.fn(({ onIntervene }) => (
         <div data-testid="gauntlet-view">
@@ -35,6 +37,7 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
 describe('App Integration', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        vi.mocked(fetchHubArtifacts).mockResolvedValue([]);
     });
 
     it('renders artifacts and triggers simulation generation on selection', async () => {

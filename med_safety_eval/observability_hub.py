@@ -89,14 +89,14 @@ async def stream_snapshot(session_id: str, snapshot: dict):
 
 # --- Data Agent & Command Endpoints ---
 
-@app.get("/gauntlet/data/{session_id}")
-async def get_gauntlet_data(session_id: str, limit: int = 50):
-    """Returns interesting indices and scores for a session."""
+@app.get("/gauntlet/sessions")
+async def get_sessions():
+    """Returns a list of all training sessions and their metadata."""
     try:
-        data = data_agent.get_interesting_indices(session_id, limit=limit)
-        return {"session_id": session_id, "indices": data}
+        data = data_agent.get_all_sessions()
+        return {"sessions": data}
     except Exception as e:
-        logger.error(f"DataAgent error: {e}")
+        logger.error(f"DataAgent session list error: {e}")
         return {"error": str(e)}, 500
 
 @app.get("/gauntlet/comparison")
