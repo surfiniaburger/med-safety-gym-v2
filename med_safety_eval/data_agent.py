@@ -264,6 +264,7 @@ class DataAgent:
 
         keyword_ids = {k["id"] for k in keyword_results}
         semantic_matches = []
+        db_search_succeeded = False  # Flag to track if DB search completed successfully
         
         with self.engine.connect() as conn:
             if self.engine.dialect.name == 'postgresql':
@@ -281,14 +282,17 @@ class DataAgent:
                     for row in res:
                         if row[0] not in keyword_ids:
                             semantic_matches.append((row[0], float(row[1])))
+                    db_search_succeeded = True  # DB search completed, even if no results
                 except Exception as e:
                     logger.error(f"Postgres vector search failed (falling back to in-memory): {e}")
             
-            if not semantic_matches:
-                # Fallback: In-memory numpy comparison (SQLite, missing pgvector, or failed DB search)
+            # Only fallback if DB search was NOT attempted or FAILED
+            if not db_search_succeeded:
+                # Fallback: In-memory numpy comparison (SQLite or failed pgvector)
                 embed_data = conn.execute(text("""
                     SELECT snapshot_id, embedding FROM snapshot_embeddings
                 """)).fetchall()
+
 
                 for row in embed_data:
                     snap_id, vec_json = row[0], row[1]
