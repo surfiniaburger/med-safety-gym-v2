@@ -12,7 +12,7 @@ logger = logging.getLogger("observability_hub")
 app = FastAPI(title="Med Safety Gym - Observability Hub")
 
 # CORS for UI access
-origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000,https://surfiniaburger.github.io").split(",")
 
 # Command Center State
 # session_id -> {"action": "RESUME"|"TWEAK", "tweak": {...}}
