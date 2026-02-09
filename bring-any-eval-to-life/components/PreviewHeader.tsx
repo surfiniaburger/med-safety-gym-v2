@@ -8,7 +8,8 @@ import {
     PlusIcon,
     ViewColumnsIcon,
     CodeBracketIcon,
-    XMarkIcon
+    XMarkIcon,
+    CheckCircleIcon
 } from '@heroicons/react/24/outline';
 import { SparklesIcon as SparklesIconSolid } from '@heroicons/react/24/solid';
 import { Creation } from './CreationHistory';
@@ -18,6 +19,7 @@ interface PreviewHeaderProps {
     isLoading: boolean;
     title?: string;
     onReset: () => void;
+    onSolveNode?: () => void;
     showRegenForm: boolean;
     setShowRegenForm: (show: boolean) => void;
     showSplitView: boolean;
@@ -31,6 +33,7 @@ export const PreviewHeader: React.FC<PreviewHeaderProps> = ({
     isLoading,
     title,
     onReset,
+    onSolveNode,
     showRegenForm,
     setShowRegenForm,
     showSplitView,
@@ -72,8 +75,8 @@ export const PreviewHeader: React.FC<PreviewHeaderProps> = ({
                             onClick={() => setShowRegenForm(!showRegenForm)}
                             title="Agentic Refinement (Vision)"
                             className={`group p-2 rounded-lg transition-all duration-300 shadow-sm flex items-center justify-center ${showRegenForm
-                                    ? 'bg-blue-600 text-white shadow-blue-500/40'
-                                    : 'bg-blue-500/10 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 border border-blue-500/20'
+                                ? 'bg-blue-600 text-white shadow-blue-500/40'
+                                : 'bg-blue-500/10 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 border border-blue-500/20'
                                 }`}
                         >
                             <SparklesIconSolid
@@ -109,6 +112,17 @@ export const PreviewHeader: React.FC<PreviewHeaderProps> = ({
                             <PlusIcon className="w-3 h-3" />
                             <span className="hidden sm:inline">New</span>
                         </button>
+
+                        {onSolveNode && (
+                            <button
+                                onClick={onSolveNode}
+                                title="Complete Intervention"
+                                className="ml-2 flex items-center space-x-1 text-xs font-bold bg-green-600 text-white hover:bg-green-700 px-3 py-1.5 rounded-md transition-all shadow-[0_0_15px_rgba(22,163,74,0.3)]"
+                            >
+                                <CheckCircleIcon className="w-4 h-4" />
+                                <span className="hidden sm:inline">Complete</span>
+                            </button>
+                        )}
                     </>
                 )}
             </div>

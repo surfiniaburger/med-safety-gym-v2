@@ -689,3 +689,10 @@ Terms
 Privacy
 
 English
+
+
+
+My Recommendation for the "ROI-First" Roadmap:
+Phase 13 (Unified RAG - HIGH ROI): Consolidate the data into the Hub. This is the Data Advantage. If you have all historical failures in one RAG, you have the world's best medical safety database.
+Phase 14.5 (The Persistent Planner - HIGH ROI): Add a simple "Memory" layer where the user's critiques are stored and injected into the system prompt for future simulations.
+Phase 15 (Security - COMPLIANCE ROI): In the medical field, ROI is zero if you are breached. Security Hardening is your "License to Operate."

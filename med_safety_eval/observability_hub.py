@@ -119,6 +119,24 @@ async def get_evolution(task_id: str):
         logger.error(f"DataAgent evolution error: {e}")
         return {"error": str(e)}, 500
 
+@app.post("/gauntlet/sync")
+async def sync_artifacts():
+    """Synchronizes historical GitHub results into the Hub database."""
+    count = data_agent.sync_github_results()
+    return {"status": "success", "synced_count": count}
+
+@app.get("/gauntlet/rag")
+async def get_rag_context(query: str):
+    """Returns a RAG-ready context string based on historical failures."""
+    context = data_agent.get_rag_context(query)
+    return {"query": query, "context": context}
+
+@app.get("/gauntlet/search")
+async def search_artifacts(query: str):
+    """Searches historical artifacts for specific behavior or tasks."""
+    results = data_agent.search_snapshots(query)
+    return {"query": query, "results": results}
+
 @app.post("/gauntlet/command/{session_id}")
 async def post_command(session_id: str, command: dict):
     """

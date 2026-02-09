@@ -11,12 +11,14 @@ import { LoadingExperience } from './LoadingExperience';
 import { PreviewHeader } from './PreviewHeader';
 import { PdfRenderer } from './PdfRenderer';
 import { validateHtmlSafety } from '../lib-web/security';
+import { useToast } from './Toast';
 
 interface LivePreviewProps {
   creation: Creation | null;
   isLoading: boolean;
   isFocused: boolean;
   onReset: () => void;
+  onSolveNode?: () => void;
   onUpdate?: (updatedCreation: Creation) => void;
   title?: string;
 }
@@ -33,9 +35,11 @@ export const LivePreview: React.FC<LivePreviewProps> = ({
   isLoading,
   isFocused,
   onReset,
+  onSolveNode,
   onUpdate,
   title
 }) => {
+  const { showToast } = useToast();
   const [loadingStep, setLoadingStep] = useState(0);
   const [showSplitView, setShowSplitView] = useState(false);
   const [showRegenForm, setShowRegenForm] = useState(false);
@@ -58,7 +62,7 @@ export const LivePreview: React.FC<LivePreviewProps> = ({
       const validation = validateHtmlSafety(newHtml);
       if (!validation.safe) {
         console.error("Agentic Vision safety check failed:", validation.reason);
-        alert(`Safety Warning: The generated simulation contained restricted patterns and was blocked. Reason: ${validation.reason}`);
+        showToast(`Safety Warning: ${validation.reason}`, "error");
         return;
       }
 
@@ -128,6 +132,7 @@ export const LivePreview: React.FC<LivePreviewProps> = ({
         isLoading={isLoading}
         title={title}
         onReset={onReset}
+        onSolveNode={onSolveNode}
         showRegenForm={showRegenForm}
         setShowRegenForm={setShowRegenForm}
         showSplitView={showSplitView}

@@ -72,7 +72,11 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     if (history.length > 0) {
-      localStorage.setItem('gemini_app_history', JSON.stringify(history));
+      try {
+        localStorage.setItem('gemini_app_history', JSON.stringify(history));
+      } catch (e) {
+        console.warn("Local storage full or error saving history", e);
+      }
     }
   }, [history]);
 
@@ -293,7 +297,11 @@ const AppContent: React.FC = () => {
         creation={activeCreation}
         isLoading={isGenerating}
         isFocused={view === 'simulator' || (view === 'selection' && (isGenerating || activeCreation !== null))}
-        onReset={view === 'simulator' ? () => { setSolvedNodes(prev => [...prev, activeStepIndex]); setView('gauntlet'); } : handleReset}
+        onReset={handleReset}
+        onSolveNode={() => {
+          setSolvedNodes(prev => [...prev, activeStepIndex]);
+          setView('gauntlet');
+        }}
         onUpdate={setActiveCreation}
         title={view === 'simulator' ? "Intervention: NEURO-SIM Dashboard" : undefined}
       />

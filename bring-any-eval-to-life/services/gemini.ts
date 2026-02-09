@@ -55,7 +55,7 @@ export async function bringToLife(jsonContent: string, customPrompt?: string): P
       }],
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.4,
+        temperature: 0.0, // Maximum determinism for safety-critical simulations
       },
     });
 
@@ -115,7 +115,7 @@ export async function regenerateWithVision(
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         tools: [{ codeExecution: {} }], // Enable Agentic Vision Code Execution
-        temperature: 0.1, // Even lower for maximum consistency and safety
+        temperature: 0.0, // Maximum determinism and consistency
       },
     });
 

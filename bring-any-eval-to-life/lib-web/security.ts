@@ -11,25 +11,25 @@ export const validateHtmlSafety = (html: string): { safe: boolean; reason?: stri
     // Check for suspicious patterns that might try to break out of sandboxes
     // or perform sensitive actions.
 
-    const suspiciousKeywords = [
-        'localStorage',
-        'sessionStorage',
-        'indexedDB',
-        'cookie',
-        'fetch(',
-        'XMLHttpRequest',
-        'WebSocket',
-        'window.parent',
-        'window.top',
-        'eval(',
-        'Function('
+    const suspiciousPatterns = [
+        /\blocalStorage\b/i,
+        /\bsessionStorage\b/i,
+        /\bindindexedDB\b/i,
+        /\bcookie\b/i,
+        /\bfetch\s*\(/i,
+        /\bXMLHttpRequest\b/i,
+        /\bWebSocket\b/i,
+        /\bwindow\.parent\b/i,
+        /\bwindow\.top\b/i,
+        /\beval\s*\(/i,
+        /\bFunction\s*\(/i
     ];
 
-    for (const keyword of suspiciousKeywords) {
-        if (html.includes(keyword)) {
+    for (const pattern of suspiciousPatterns) {
+        if (pattern.test(html)) {
             return {
                 safe: false,
-                reason: `Suspicious pattern detected: ${keyword}`
+                reason: `Suspicious pattern detected: ${pattern.source}`
             };
         }
     }
