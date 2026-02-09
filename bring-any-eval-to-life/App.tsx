@@ -7,7 +7,7 @@ import { LivePreview } from './components/LivePreview';
 import { Creation } from './components/CreationHistory';
 import { bringToLife } from './services/gemini';
 import { fetchEvaluationArtifacts, EvaluationArtifact } from './services/github';
-import { fetchHubArtifacts, fetchHubSessionData } from './services/hub';
+import { fetchHubArtifacts, fetchHubSessionData, HUB_ARTIFACT_PATH_PREFIX } from './services/hub';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpTrayIcon } from '@heroicons/react/24/solid';
 import { GauntletView } from './components/Gauntlet/GauntletView';
@@ -108,8 +108,8 @@ const AppContent: React.FC = () => {
     setIsGenerating(true);
     try {
       // Phase 17: Detect Hub artifacts by path prefix and fetch snapshot data
-      if (artifact.path?.startsWith('db/')) {
-        const sessionId = artifact.path.replace('db/', '');
+      if (artifact.path?.startsWith(HUB_ARTIFACT_PATH_PREFIX)) {
+        const sessionId = artifact.path.replace(HUB_ARTIFACT_PATH_PREFIX, '');
         const snapshots = await fetchHubSessionData(sessionId);
         if (snapshots.length > 0) {
           currentArtifact = {

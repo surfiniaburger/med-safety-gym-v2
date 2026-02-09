@@ -51,11 +51,20 @@ export async function fetchHubArtifacts(): Promise<EvaluationArtifact[]> {
     }
 }
 
+export const HUB_ARTIFACT_PATH_PREFIX = 'db/';
+
+export interface HubSessionSnapshot {
+    step: number;
+    scores: Record<string, number>;
+    metadata?: any;
+    [key: string]: any;
+}
+
 /**
  * Fetches snapshot data for a specific Hub session.
  * Phase 17: Data Format Unification
  */
-export async function fetchHubSessionData(sessionId: string): Promise<any[]> {
+export async function fetchHubSessionData(sessionId: string): Promise<HubSessionSnapshot[]> {
     try {
         const response = await fetch(`${HUB_URL}/gauntlet/data/${sessionId}`);
         if (!response.ok) {

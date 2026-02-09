@@ -1,3 +1,13 @@
+import { HubSessionSnapshot } from '../services/hub';
+
+interface HubDataObject {
+    scores?: {
+        root?: number;
+        [key: string]: any;
+    };
+    [key: string]: any;
+}
+
 /**
  * Helper to extract rewards from various potential JSON structures 
  * found in medical evaluation results.
@@ -29,13 +39,13 @@ export const extractRewards = (content: any): number[] => {
     // Strategy 4: Hub snapshots array with scores.root (Phase 17)
     const snapshots = content.snapshots;
     if (Array.isArray(snapshots) && snapshots.length > 0 && snapshots[0]?.scores !== undefined) {
-        return snapshots.map((s: any) => s.scores?.root ?? 0);
+        return snapshots.map((s: HubDataObject) => s.scores?.root ?? 0);
     }
 
     // Strategy 5: Hub results array with scores.root (flat format, Phase 17)
     const hubResults = content.results;
     if (Array.isArray(hubResults) && hubResults.length > 0 && hubResults[0]?.scores?.root !== undefined) {
-        return hubResults.map((r: any) => r.scores?.root ?? 0);
+        return hubResults.map((r: HubDataObject) => r.scores?.root ?? 0);
     }
 
     return [];
@@ -60,7 +70,7 @@ export const extractStepMetrics = (content: any): StepMetrics[] => {
     return [];
 };
 
-export const extractSnapshots = (content: any): any[] => {
+export const extractSnapshots = (content: any): any[] | HubSessionSnapshot[] => {
     if (!content) return [];
 
     // Strategy 1: Direct snapshots array (from export_gauntlet.py)

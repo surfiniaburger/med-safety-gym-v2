@@ -100,7 +100,7 @@ async def get_sessions():
         return {"error": str(e)}, 500
 
 @app.get("/gauntlet/data/{session_id}")
-async def get_session_data(session_id: str):
+def get_session_data(session_id: str):
     """Returns snapshot data for a specific session. Phase 17: Data Format Unification."""
     try:
         snapshots = data_agent.get_session_snapshots(session_id)
