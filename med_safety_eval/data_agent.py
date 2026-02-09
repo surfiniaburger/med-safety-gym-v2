@@ -173,7 +173,15 @@ class DataAgent:
         
         if self.engine.dialect.name != 'postgresql':
             # Fallback for SQLite/others if needed
-            query = text("SELECT session_id, metadata FROM neural_snapshots GROUP BY session_id")
+            # Correlation query to ensure we get metadata from the LATEST step and calculate step_count
+            query = text("""
+                SELECT 
+                    s1.session_id, 
+                    s1.metadata,
+                    (SELECT count(*) FROM neural_snapshots s2 WHERE s2.session_id = s1.session_id) as step_count
+                FROM neural_snapshots s1
+                WHERE s1.step = (SELECT MAX(s3.step) FROM neural_snapshots s3 WHERE s3.session_id = s1.session_id)
+            """)
             
         sessions = []
         with self.engine.connect() as conn:
