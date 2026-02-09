@@ -26,6 +26,18 @@ export const extractRewards = (content: any): number[] => {
         return detailed.map((r: any) => typeof r.reward === 'number' ? r.reward : 0);
     }
 
+    // Strategy 4: Hub snapshots array with scores.root (Phase 17)
+    const snapshots = content.snapshots;
+    if (Array.isArray(snapshots) && snapshots.length > 0 && snapshots[0]?.scores !== undefined) {
+        return snapshots.map((s: any) => s.scores?.root ?? 0);
+    }
+
+    // Strategy 5: Hub results array with scores.root (flat format, Phase 17)
+    const hubResults = content.results;
+    if (Array.isArray(hubResults) && hubResults.length > 0 && hubResults[0]?.scores?.root !== undefined) {
+        return hubResults.map((r: any) => r.scores?.root ?? 0);
+    }
+
     return [];
 };
 

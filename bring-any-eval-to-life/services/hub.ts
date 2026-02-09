@@ -50,3 +50,22 @@ export async function fetchHubArtifacts(): Promise<EvaluationArtifact[]> {
         return [];
     }
 }
+
+/**
+ * Fetches snapshot data for a specific Hub session.
+ * Phase 17: Data Format Unification
+ */
+export async function fetchHubSessionData(sessionId: string): Promise<any[]> {
+    try {
+        const response = await fetch(`${HUB_URL}/gauntlet/data/${sessionId}`);
+        if (!response.ok) {
+            console.warn(`Hub session data fetch failed for ${sessionId}:`, response.statusText);
+            return [];
+        }
+        const data = await response.json();
+        return data.snapshots || data.results || [];
+    } catch (error) {
+        console.error(`Failed to fetch hub session data for ${sessionId}:`, error);
+        return [];
+    }
+}

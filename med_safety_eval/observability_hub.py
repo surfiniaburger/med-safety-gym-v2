@@ -99,6 +99,17 @@ async def get_sessions():
         logger.error(f"DataAgent session list error: {e}")
         return {"error": str(e)}, 500
 
+@app.get("/gauntlet/data/{session_id}")
+async def get_session_data(session_id: str):
+    """Returns snapshot data for a specific session. Phase 17: Data Format Unification."""
+    try:
+        snapshots = data_agent.get_session_snapshots(session_id)
+        return {"session_id": session_id, "snapshots": snapshots}
+    except Exception as e:
+        logger.error(f"DataAgent session data error: {e}")
+        return {"error": str(e)}, 500
+
+
 @app.get("/gauntlet/comparison")
 async def get_comparison(sft_session: str, grpo_session: str):
     """Compares SFT and GRPO sessions."""

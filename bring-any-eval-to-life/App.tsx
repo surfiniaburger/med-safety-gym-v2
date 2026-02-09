@@ -7,7 +7,7 @@ import { LivePreview } from './components/LivePreview';
 import { Creation } from './components/CreationHistory';
 import { bringToLife } from './services/gemini';
 import { fetchEvaluationArtifacts, EvaluationArtifact } from './services/github';
-import { fetchHubArtifacts } from './services/hub';
+import { fetchHubArtifacts, fetchHubSessionData } from './services/hub';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpTrayIcon } from '@heroicons/react/24/solid';
 import { GauntletView } from './components/Gauntlet/GauntletView';
@@ -105,9 +105,23 @@ const AppContent: React.FC = () => {
 
   const handleSelectArtifact = async (artifact: EvaluationArtifact) => {
     let currentArtifact = artifact;
-    if (!artifact.content && artifact.url) {
-      setIsGenerating(true);
-      try {
+    setIsGenerating(true);
+    try {
+      // Phase 17: Detect Hub artifacts by path prefix and fetch snapshot data
+      if (artifact.path?.startsWith('db/')) {
+        const sessionId = artifact.path.replace('db/', '');
+        const snapshots = await fetchHubSessionData(sessionId);
+        if (snapshots.length > 0) {
+          currentArtifact = {
+            ...artifact,
+            content: {
+              ...artifact.content,
+              snapshots
+            }
+          };
+        }
+      } else if (!artifact.content && artifact.url) {
+        // GitHub artifact: fetch Base64-encoded JSON
         const response = await fetch(artifact.url);
         if (response.ok) {
           const fileData = await response.json();
@@ -116,11 +130,11 @@ const AppContent: React.FC = () => {
             currentArtifact = { ...artifact, content: JSON.parse(decodedString) };
           }
         }
-      } catch (err) {
-        console.error("On-demand fetch failed", err);
-      } finally {
-        setIsGenerating(false);
       }
+    } catch (err) {
+      console.error("On-demand fetch failed", err);
+    } finally {
+      setIsGenerating(false);
     }
 
     setActiveArtifact(currentArtifact);
