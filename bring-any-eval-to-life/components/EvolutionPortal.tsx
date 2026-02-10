@@ -29,15 +29,10 @@ export const EvolutionPortal: React.FC<EvolutionPortalProps> = ({ taskId, onClos
         queryKey: ['evolution', taskId],
         queryFn: async () => {
             const RENDER_HUB = import.meta.env.VITE_RENDER_HUB || "https://med-safety-hub.onrender.com";
-            try {
-                const res = await fetch(`${RENDER_HUB}/gauntlet/evolution/${taskId}`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                return (data.pairs || []) as EvolutionPair[];
-            } catch (err) {
-                console.warn('Evolution fetch failed, defaulting to empty', err);
-                return [];
-            }
+            const res = await fetch(`${RENDER_HUB}/gauntlet/evolution/${taskId}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            return (data.pairs || []) as EvolutionPair[];
         },
         enabled: !!taskId
     });

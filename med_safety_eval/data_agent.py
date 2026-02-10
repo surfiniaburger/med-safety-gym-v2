@@ -420,10 +420,8 @@ class DataAgent:
             if step in sft_map:
                 s = sft_map[step]
                 delta = g["scores"].get("root", 0) - s["scores"].get("root", 0)
-                # V4 FIX: Loosen filtering to ensure visibility of successful runs.
-                # Previously abs(delta) > 5.0 was too aggressive.
-                if abs(delta) >= 0.0 or g["scores"].get("root", 0) < 0:
-                    paired.append({"step": step, "sft": s, "grpo": g, "delta": delta})
+                # V4 FIX: Include all pairs to ensure visibility of successful runs.
+                paired.append({"step": step, "sft": s, "grpo": g, "delta": delta})
         return paired
 
     def get_evolution_data(self, task_id: str) -> List[Dict[str, Any]]:
