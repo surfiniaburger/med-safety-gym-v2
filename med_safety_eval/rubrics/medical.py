@@ -134,8 +134,15 @@ class ConfidenceRubric(Rubric):
         
         model_abstains = _is_abstention(final)
         
-        # If analysis admits missing info but model doesn't abstain
-        if any(kw in analysis for kw in ABSTENTION_KEYWORDS) and not model_abstains:
+        # V4.17: Refined Confidence Guard. 
+        # Only penalize if the analysis CONCLUDES that information is missing, 
+        # but the model provides a guess anyway.
+        conclusive_abstention_keywords = [
+            "information is missing", "cannot be determined", "not provided in the context",
+            "no mention of", "does not specify", "unable to answer"
+        ]
+        
+        if any(kw in analysis for kw in conclusive_abstention_keywords) and not model_abstains:
             self.applied = True
             return self.penalty
             

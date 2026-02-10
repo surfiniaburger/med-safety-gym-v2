@@ -33,15 +33,17 @@ _FILLER_WORDS = {
     "week", "weeks", "day", "days", "time", "times", "duration", "period", "periods", "date", "diagnosis",
     "disease", "condition", "symptom", "response", "effect", "effects", "safety", "efficacy", "benefit",
     "survival", "progression", "status", "endpoint", "objective", "aim", "background", "methods", "discussion",
-    "conclusion", "references", "table", "figure", "appendix",
+    "conclusion", "references", "table", "figure", "appendix", "without", "added", "maintenance", "including",
+    "associated", "related", "relevant", "appropriate", "recommended", "monitoring", "monotherapy",
     # Comparatives and Generics
     "high", "low", "higher", "lower", "highest", "lowest", "great", "greater", "greatest", "large", "larger", 
     "largest", "small", "smaller", "smallest", "better", "best", "worse", "worst", "good", "bad", "poor", 
     "positive", "negative", "neutral", "normal", "abnormal", "elevated", "reduced", "increased", "decreased",
+    "improved", "improvement", "improving", "worsened", "worsening", "stable", "stabilized", "stabilizing",
     "infection", "risk", "risks",
     "continue", "continued", "continuing", "start", "started", "starting", "stop", "stopped", "stopping",
     "pause", "paused", "pausing", "resume", "resumed", "resuming", "yes", "no", "true", "false",
-    "meet", "meets", "met", "meeting", "eligibility"
+    "meet", "meets", "met", "meeting", "eligibility", "maintain", "maintaining", "maintained", "monotherapy"
 }
 
 # v0.1.61: Extended bridge words for supports() to allow natural reasoning transitions
@@ -99,6 +101,9 @@ def _clean_for_matching(text: str) -> str:
         r'\u00b1': '+/-',                # Plus-minus
         r'\u2026': '...',                # Ellipsis
         r'\u00b0': ' degrees',           # Degree symbol
+        r'\u00b2': '2',                  # Superscript 2
+        r'\u00b3': '3',                  # Superscript 3
+        r'\u00b9': '1',                  # Superscript 1
     }
     
     text = text.lower()
@@ -460,6 +465,21 @@ def is_correct_synthesis(final_text: str, ground_truth_final: str) -> bool:
     final_nums = set(re.findall(r'\b\d+(?:\.\d+)?\b', final_cleaned))
     if gt_nums and not gt_nums.intersection(final_nums):
         return False
+
+    # 4. Key Entity Guard: If GT mentions a specific drug/gene, model should likely have it too
+    # v0.1.68: Added to handle semantic parity for complex medical answers
+    entity_pattern = r'\b(?:NCT[0-9]+|[A-Za-z0-9][A-Za-z0-9\u03b1\u03b2\u03b3\u03b4\-_./]*[A-Za-z0-9])\b'
+    gt_entities = {e.lower() for e in re.findall(entity_pattern, gt_raw, re.IGNORECASE) if len(e) >= 4 and e.lower() not in _FILLER_WORDS}
+    final_entities = {e.lower() for e in re.findall(entity_pattern, final_text, re.IGNORECASE) if len(e) >= 4 and e.lower() not in _FILLER_WORDS}
+    
+    if gt_entities:
+        # If we have key entities, and they match, we can be more lenient with the rest of the text
+        if gt_entities.intersection(final_entities):
+            # If all key entities in GT are present in Final, it's a strong signal
+            if gt_entities.issubset(final_entities):
+                return True
+            # Otherwise, if there's significant overlap, use a lower similarity threshold
+            return _get_max_similarity(gt_cleaned, final_cleaned) >= 0.60
 
     # Legacy Fallback for descriptive answers
     if any(len(w) > 8 for w in set(gt_cleaned.split()).intersection(set(final_cleaned.split()))):
