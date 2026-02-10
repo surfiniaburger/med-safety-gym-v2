@@ -563,12 +563,12 @@ def supports(proof_text: str, final_text: str, context: Optional[str] = None) ->
     # v0.1.58: Case-insensitive to capture drugs like 'panobinostat'
     # v0.1.61: Expanded to allow clinical trial IDs (NCT numbers)
     f_entities_lower = _extract_entities(final_text, filler_words=_REASONING_FILLER_WORDS)
-    p_entities_lower = {e.lower() for e in re.findall(ENTITY_PATTERN, proof_text, re.IGNORECASE)}
+    p_entities_lower = _extract_entities(proof_text, min_len=0, filler_words=set())
 
     # v0.1.61: Pre-clean context for fallback check
     c_entities_lower = set()
     if context:
-        c_entities_lower = {e.lower() for e in re.findall(ENTITY_PATTERN, context, re.IGNORECASE)}
+        c_entities_lower = _extract_entities(context, min_len=0, filler_words=set())
     
     for ent_lower in f_entities_lower:
         # 1. Direct match check
