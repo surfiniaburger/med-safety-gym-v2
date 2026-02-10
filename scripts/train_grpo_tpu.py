@@ -14,6 +14,15 @@ import sys
 import jax
 import jax.numpy as jnp
 from datetime import datetime
+from kaggle_secrets import UserSecretsClient
+
+
+# 1. Fetch the WandB API key from Kaggle Secrets
+user_secrets = UserSecretsClient()
+# Fetch secrets from Kaggle (ensure you have added these in Add-ons -> Secrets)
+os.environ["DATABASE_URL"] = user_secrets.get_secret("DATABASE_URL")
+os.environ["GAUNTLET_HUB_URL"] = user_secrets.get_secret("GAUNTLET_HUB_URL") or "https://med-safety-hub.onrender.com"
+
 
 # --- 0. Logging Setup ---
 logging.basicConfig(
@@ -96,6 +105,7 @@ try:
     from med_safety_gym.evaluation_service_v2 import EvaluationManager, EvaluationItem, GroundTruth
     from med_safety_eval.logic import calculate_reward
     from med_safety_eval.models import RewardConfig
+    from med_safety_eval.observer import DatabaseSink, WebsocketSink, RubricObserver    
     logger.info("✓ med_safety_gym and med_safety_eval verified")
 except ImportError:
     logger.error("⚠️  med_safety_gym or med_safety_eval not found.")
@@ -110,7 +120,7 @@ MESH = jax.make_mesh((8, 1), ('fsdp', 'tp'))
 
 
 # Training
-MAX_STEPS = 900 # After the first checkpoint, increase to 600, then to 900.
+MAX_STEPS = 300 # After the first checkpoint, increase to 600, then to 900.
 TRAIN_MICRO_BATCH_SIZE = 1 # Absolute minimum batch size for GRPO stability
 NUM_EPOCHS = 1
 LEARNING_RATE = 3e-6
@@ -122,7 +132,7 @@ WEIGHT_DECAY = 0.1
 MAX_GRAD_NORM = 0.1
 
 # GRPO Config
-MAX_PROMPT_LENGTH = 1024 
+MAX_PROMPT_LENGTH = 2048
 TOTAL_GENERATION_STEPS = 512 
 NUM_GENERATIONS = 4 # Increased to 4 for stable advantage calculation (G=2 was too noisy)
 NUM_ITERATIONS = 1 
@@ -185,8 +195,8 @@ class DIPGRaxReward:
             # Initialize Rubric
             from med_safety_eval.rubrics.medical import DIPGRubric
             from med_safety_eval.rubrics.text_quality import LengthPenaltyRubric, RepetitionPenaltyRubric
-            from med_safety_eval.observer import DatabaseSink, WebsocketSink, RubricObserver
             
+
             self.rubric = DIPGRubric(self.reward_config)
             
             # Composition: Add text quality checks
@@ -207,18 +217,17 @@ class DIPGRaxReward:
             for name, r in self.rubric.named_rubrics():
                 if name: # Only log named children
                     r.register_forward_hook(create_log_hook(name))
-
-            # Observability: Data Agent Layer (Database Recording)
-            session_id = f"grpo_run_{int(time.time())}"
-            logger.info(f"🎥 Data Agent Recording Session: {session_id}")
             
             # Metadata for Evolution Mode (pairs SFT and GRPO runs by task_id)
             base_metadata = {
                 "run_type": "grpo",
                 "task_id": "dipg_safety_v1",  # Standard DIPG evaluation task
-                "model": "gemma-3-2b",
+                "model": "gemma-3-1b",
                 "timestamp": int(time.time())
             }
+            # Observability: Data Agent Layer (Database Recording)
+            session_id = f"grpo_run_{int(time.time())}"
+            logger.info(f"🎥 Data Agent Recording Session: {session_id}")
             
             try:
                 # Initialize sinks for observability
@@ -421,7 +430,7 @@ def evaluate_dipg_model(env, eval_manager, generation_sampler, num_samples=50):
         
         sampler_output = generation_sampler(
             input_strings=[prompt],
-            max_generation_steps=1024,
+            max_generation_steps=2048,
             temperature=0.0, # Use greedy for evaluation
         )
         
@@ -451,6 +460,7 @@ def evaluate_dipg_model(env, eval_manager, generation_sampler, num_samples=50):
     logger.info(f"{'Hallucination Rate'.ljust(25)}: {result.medical_hallucination_rate:.1%}")
     logger.info(f"{'Refusal Rate'.ljust(25)}: {result.refusal_rate:.1%}")
     logger.info(f"{'Consistency Rate'.ljust(25)}: {result.reasoning_consistency_rate:.1%}")
+    logger.info(result)
     
     return result
 
@@ -643,7 +653,26 @@ def main():
         )
 
         # 2. Create evaluator
-        eval_manager = EvaluationManager(eval_env)
+        # Generate Evaluation Session ID
+        eval_session_id = f"grpo_eval_{int(time.time())}"
+        
+        # Metadata for Evolution Mode
+        eval_metadata = {
+            "run_type": "grpo",
+            "task_id": "dipg_safety_v1",  # Matches SFT
+            "model": "gemma-3-1b-it", 
+            "timestamp": int(time.time()),
+            "env": "tpu_prod"
+        }
+        
+        eval_manager = EvaluationManager(
+            environment=eval_env,
+            session_id=eval_session_id,
+            metadata=eval_metadata
+        )
+        
+        logger.info(f"🎥 Data Agent Eval Session: {eval_session_id}")
+        logger.info(f"✅ Metadata injected: {eval_metadata}")
 
         # 3. Create Sampler with trained model and LARGER Cache
         logger.info("Resizing KV Cache to 4096 for Inference...")
