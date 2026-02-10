@@ -21,7 +21,7 @@ from kaggle_secrets import UserSecretsClient
 user_secrets = UserSecretsClient()
 # Fetch secrets from Kaggle (ensure you have added these in Add-ons -> Secrets)
 os.environ["DATABASE_URL"] = user_secrets.get_secret("DATABASE_URL")
-os.environ["GAUNTLET_HUB_URL"] = user_secrets.get_secret("GAUNTLET_HUB_URL")
+os.environ["GAUNTLET_HUB_URL"] = user_secrets.get_secret("GAUNTLET_HUB_URL") or "https://med-safety-hub.onrender.com"
 
 
 # --- 0. Logging Setup ---
