@@ -115,19 +115,13 @@ class EvaluationManager:
             no_hallucination_reward=environment.no_hallucination_reward
         )
         
-        # Create local evaluator
+        # Create local evaluator with clean API
         self.local_evaluator = LocalEvaluationManager(
             reward_config=self.reward_config,
             sinks=sinks,
-            session_id=session_id or "eval_service_v2" 
+            session_id=session_id or "eval_service_v2",
+            metadata=metadata
         )
-        
-        # Inject metadata if provided (for Evolution Mode)
-        if metadata and hasattr(self.local_evaluator, '_observer'):
-            from med_safety_eval.observer import RubricObserver
-            if isinstance(self.local_evaluator._observer, RubricObserver):
-                 self.local_evaluator._observer.base_metadata = metadata
-                 logger.info(f"✅ Metadata injected into EvaluationManager: {metadata}")
     
     def evaluate_batch(
         self,

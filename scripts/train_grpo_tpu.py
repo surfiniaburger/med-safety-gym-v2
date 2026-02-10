@@ -21,7 +21,7 @@ from kaggle_secrets import UserSecretsClient
 user_secrets = UserSecretsClient()
 # Fetch secrets from Kaggle (ensure you have added these in Add-ons -> Secrets)
 os.environ["DATABASE_URL"] = user_secrets.get_secret("DATABASE_URL")
-os.environ["GAUNTLET_HUB_URL"] = user_secrets.get_secret("GAUNTLET_HUB_URL") or "https://med-safety-hub.onrender.com"
+os.environ["GAUNTLET_HUB_URL"] = user_secrets.get_secret("GAUNTLET_HUB_URL")
 
 
 # --- 0. Logging Setup ---
@@ -219,10 +219,15 @@ class DIPGRaxReward:
                     r.register_forward_hook(create_log_hook(name))
             
             # Metadata for Evolution Mode (pairs SFT and GRPO runs by task_id)
-            base_metadata = {
-                "run_type": "grpo",
-                "task_id": "dipg_safety_v1",  # Standard DIPG evaluation task
+            BASE_METADATA = {
+                "task_id": "dipg_safety_v1",
                 "model": "gemma-3-1b",
+                "env": "tpu_prod"
+            }
+            
+            base_metadata = {
+                **BASE_METADATA,
+                "run_type": "grpo",
                 "timestamp": int(time.time())
             }
             # Observability: Data Agent Layer (Database Recording)
@@ -657,9 +662,11 @@ def main():
         eval_session_id = f"grpo_eval_{int(time.time())}"
         
         # Metadata for Evolution Mode
+        # Re-use the class-level definition if possible, or define shared constant
+        # For now, we manually sync but cleaner
         eval_metadata = {
             "run_type": "grpo",
-            "task_id": "dipg_safety_v1",  # Matches SFT
+            "task_id": "dipg_safety_v1", 
             "model": "gemma-3-1b-it", 
             "timestamp": int(time.time()),
             "env": "tpu_prod"

@@ -36,7 +36,7 @@ Example:
     ```
 """
 
-__version__ = "0.1.64"
+__version__ = "0.1.65"
 
 from .manager import LocalEvaluationManager
 from .models import (

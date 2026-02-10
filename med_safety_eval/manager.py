@@ -77,7 +77,8 @@ class LocalEvaluationManager:
         reward_config: Optional[RewardConfig] = None, 
         sinks: Optional[List['DataSink']] = None, 
         session_id: Optional[str] = None,
-        rubric: Optional['Rubric'] = None
+        rubric: Optional['Rubric'] = None,
+        metadata: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize the local evaluation manager.
@@ -87,6 +88,7 @@ class LocalEvaluationManager:
             sinks: Optional list of DataSinks for observability streaming
             session_id: Optional session ID for streaming
             rubric: Optional custom Rubric instance (overrides reward_config)
+            metadata: Optional metadata to attach to all observations
         """
         if reward_config is None and rubric is None:
             reward_config = RewardConfig()
@@ -100,7 +102,8 @@ class LocalEvaluationManager:
         self._observer = setup_rubric_observer(
             self.rubric, 
             self.sinks, 
-            session_id
+            session_id,
+            base_metadata=metadata
         )
         
     def evaluate_batch(
