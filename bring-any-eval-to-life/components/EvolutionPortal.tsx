@@ -29,21 +29,35 @@ export const EvolutionPortal: React.FC<EvolutionPortalProps> = ({ taskId, onClos
         queryKey: ['evolution', taskId],
         queryFn: async () => {
             const RENDER_HUB = import.meta.env.VITE_RENDER_HUB || "https://med-safety-hub.onrender.com";
-            const res = await fetch(`${RENDER_HUB}/gauntlet/evolution/${taskId}`);
-            const data = await res.json();
-            return data.pairs as EvolutionPair[];
+            try {
+                const res = await fetch(`${RENDER_HUB}/gauntlet/evolution/${taskId}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                return (data.pairs || []) as EvolutionPair[];
+            } catch (err) {
+                console.warn('Evolution fetch failed, defaulting to empty', err);
+                return [];
+            }
         },
         enabled: !!taskId
     });
 
     if (error) {
         return (
-            <div className={`p-6 rounded-2xl bg-rose-500/10 border border-rose-500/20`}>
-                <div className="flex items-center gap-3 text-rose-400">
-                    <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                    <span className="font-mono text-sm">Failed to load evolution data</span>
+            <div className="fixed inset-0 z-[150] bg-black/90 backdrop-blur-3xl flex items-center justify-center p-8">
+                <div className="max-w-md w-full p-6 rounded-2xl bg-rose-500/10 border border-rose-500/20 relative">
+                    <button
+                        onClick={onClose}
+                        className="absolute top-4 right-4 p-2 text-rose-400 hover:bg-rose-500/20 rounded-lg"
+                    >
+                        <XMarkIcon className="w-5 h-5" />
+                    </button>
+                    <div className="flex items-center gap-3 text-rose-400 mb-2">
+                        <ExclamationTriangleIcon className="w-6 h-6" />
+                        <span className="font-mono font-bold">Evolution Data Error</span>
+                    </div>
+                    <p className="text-rose-300/60 text-sm font-mono">{(error as Error).message || 'Failed to load evolution data'}</p>
                 </div>
-                <p className="mt-2 text-rose-300/60 text-xs">{(error as Error).message || 'Unknown error'}</p>
             </div>
         );
     }

@@ -105,7 +105,8 @@ const AppContent: React.FC = () => {
 
   const handleSelectArtifact = async (artifact: EvaluationArtifact) => {
     let currentArtifact = artifact;
-    setIsGenerating(true);
+    // Removed setIsGenerating(true) to prevent "Simulation" flash/cost
+    // We are just loading data, not generating with Gemini.
     try {
       // Phase 17: Detect Hub artifacts by path prefix and fetch snapshot data
       if (artifact.path?.startsWith(HUB_ARTIFACT_PATH_PREFIX)) {
@@ -133,9 +134,8 @@ const AppContent: React.FC = () => {
       }
     } catch (err) {
       console.error("On-demand fetch failed", err);
-    } finally {
-      setIsGenerating(false);
     }
+
 
     setActiveArtifact(currentArtifact);
     const score = currentArtifact.content?.safety_score ?? 0.5;

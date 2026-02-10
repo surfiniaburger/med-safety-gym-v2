@@ -14,6 +14,7 @@ def mock_db():
     with engine.connect() as conn:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS neural_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT,
                 step INTEGER,
                 scores TEXT,

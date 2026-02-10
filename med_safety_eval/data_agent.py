@@ -420,25 +420,36 @@ class DataAgent:
             if step in sft_map:
                 s = sft_map[step]
                 delta = g["scores"].get("root", 0) - s["scores"].get("root", 0)
-                if abs(delta) > 5.0 or g["scores"].get("root", 0) < 0:
+                # V4 FIX: Loosen filtering to ensure visibility of successful runs.
+                # Previously abs(delta) > 5.0 was too aggressive.
+                if abs(delta) >= 0.0 or g["scores"].get("root", 0) < 0:
                     paired.append({"step": step, "sft": s, "grpo": g, "delta": delta})
         return paired
 
     def get_evolution_data(self, task_id: str) -> List[Dict[str, Any]]:
         """Finds latest SFT and GRPO sessions for a task_id and pairs them."""
         if not self.engine: return []
-        query = text("SELECT DISTINCT session_id, metadata FROM neural_snapshots")
+        # V4 FIX: Remove DISTINCT to avoid ORDER BY conflicts; use in-memory deduplication.
+        query = text("SELECT session_id, metadata FROM neural_snapshots ORDER BY id DESC")
         sft_session = None
         grpo_session = None
+        seen_sessions = set()
         with self.engine.connect() as conn:
             result = conn.execute(query)
             for row in result:
                 sid, meta = row[0], row[1]
+                if sid in seen_sessions: continue
+                seen_sessions.add(sid)
+
                 if isinstance(meta, str): meta = json.loads(meta)
                 if meta.get("task_id") == task_id:
                     run_type = meta.get("run_type")
-                    if run_type == "sft": sft_session = sid
-                    elif run_type == "grpo": grpo_session = sid
+                    if run_type == "sft" and not sft_session: sft_session = sid
+                    elif run_type == "grpo" and not grpo_session: grpo_session = sid
+                
+                if sft_session and grpo_session:
+                    break
+                    
         if sft_session and grpo_session:
             return self.pair_sft_and_grpo(sft_session, grpo_session)
         return []

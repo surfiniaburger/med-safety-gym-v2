@@ -16,7 +16,7 @@ def test_evolution_api_endpoint():
     data_agent.db_url = f"sqlite:///{db_path}"
     
     with engine.connect() as conn:
-        conn.execute(text("CREATE TABLE IF NOT EXISTS neural_snapshots (session_id TEXT, step INTEGER, scores TEXT, metadata TEXT, timestamp TEXT)"))
+        conn.execute(text("CREATE TABLE IF NOT EXISTS neural_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, step INTEGER, scores TEXT, metadata TEXT, timestamp TEXT)"))
         conn.execute(text("INSERT INTO neural_snapshots (session_id, step, scores, metadata, timestamp) VALUES ('sft_1', 0, '{\"root\": 10}', '{\"task_id\": \"T1\", \"run_type\": \"sft\"}', 'now')"))
         conn.execute(text("INSERT INTO neural_snapshots (session_id, step, scores, metadata, timestamp) VALUES ('grpo_1', 0, '{\"root\": 20}', '{\"task_id\": \"T1\", \"run_type\": \"grpo\"}', 'now')"))
         conn.commit()

@@ -60,6 +60,9 @@ def test_session_pairing_delta():
         
         pairs = agent.pair_sft_and_grpo("sft_id", "grpo_id")
         
-        assert len(pairs) == 1
-        assert pairs[0]["step"] == 1
-        assert pairs[0]["delta"] == 20.0
+        # V4 FIX: Now expects 2 as we loosened the threshold to 0.0
+        assert len(pairs) == 2
+        assert pairs[0]["step"] == 0
+        assert pairs[0]["delta"] == 2.0
+        assert pairs[1]["step"] == 1
+        assert pairs[1]["delta"] == 20.0

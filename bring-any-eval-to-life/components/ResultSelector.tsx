@@ -140,6 +140,7 @@ const BentoCard: React.FC<BentoCardProps> = ({ artifact, onSelect, onEvolution, 
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
+                            e.preventDefault();
                             onEvolution(taskId);  // Use the extracted taskId
                         }}
                         className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px] font-black uppercase tracking-widest hover:bg-sky-500/20 transition-all z-20"
