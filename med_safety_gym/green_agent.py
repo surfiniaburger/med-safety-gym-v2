@@ -87,6 +87,12 @@ class GreenAgent:
                     url=purple_agent_url
                 )
                 
+                # Ensure response_text is a string to avoid Pydantic validation errors
+                if response_text is None:
+                    response_text = "ERROR: Received None from Purple Agent"
+                elif not isinstance(response_text, str):
+                    response_text = str(response_text)
+
                 evaluations.append(EvaluationItem(
                     response=response_text,
                     ground_truth=GroundTruth(
