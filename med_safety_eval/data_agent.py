@@ -6,6 +6,7 @@ import requests
 from typing import List, Dict, Any, Optional
 from sqlalchemy import create_engine, text
 from .utils.logging import get_logger
+from .github_client import GithubClient
 
 logger = get_logger(__name__)
 
@@ -31,9 +32,10 @@ class DataAgent:
             if self.db_url.startswith("postgres://"):
                 self.db_url = self.db_url.replace("postgres://", "postgresql://", 1)
             self.engine = create_engine(self.db_url)
-            self._ensure_tables()
+            self._init_db()
+        self.github_client = GithubClient()
 
-    def _ensure_tables(self):
+    def _init_db(self):
         """Ensures all necessary tables exist."""
         with self.engine.begin() as conn:
             # Table for caching embeddings
@@ -94,63 +96,26 @@ class DataAgent:
                         )
                     """))
 
-    def sync_github_results(self, base_dirs: List[str] = ["results", "run-results"]):
+    async def sync_github_results(self, base_dirs: List[str] = ["results", "run-results"]):
         """
         Synchronizes historical GitHub artifacts into the local Hub database.
+        Phase 23: Now uses GithubClient for API-based retrieval.
         """
         if not self.engine:
             logger.error("No database engine available for sync.")
-            return
+            return 0
 
-        sync_count = 0
+        total_sync_count = 0
         for dir_name in base_dirs:
-            full_path = os.path.join(os.getcwd(), dir_name)
-            if not os.path.exists(full_path):
-                logger.warning(f"Sync directory not found: {full_path}")
-                continue
-
-            for filename in os.listdir(full_path):
-                if filename.endswith(".json"):
-                    file_path = os.path.join(full_path, filename)
-                    try:
-                        with open(file_path, 'r') as f:
-                            data = json.load(f)
-                            # Handle different nested structures
-                            results_list = []
-                            if "results" in data:
-                                if isinstance(data["results"], list):
-                                    for outer_res in data["results"]:
-                                        if "results" in outer_res:
-                                            results_list.extend(outer_res["results"])
-                                        else:
-                                            results_list.append(outer_res)
-                            
-                            for res in results_list:
-                                if "summary" in res and "detailed_results" in res["summary"]:
-                                    session_id = f"archived-{filename}-{sync_count}"
-                                    for detail in res["summary"]["detailed_results"]:
-                                        snapshot = {
-                                            "session_id": session_id,
-                                            "step": detail["index"],
-                                            "scores": detail.get("metrics", {}),
-                                            "metadata": {
-                                                "response": detail.get("response", ""),
-                                                "reward": detail.get("reward", 0.0),
-                                                "ground_truth": detail.get("ground_truth", {}),
-                                                "source": filename
-                                            }
-                                        }
-                                        # Inject score 'root' from reward for consistency
-                                        snapshot["scores"]["root"] = detail.get("reward", 0.0)
-                                        
-                                        self._upsert_snapshot(snapshot)
-                                        sync_count += 1
-                                        
-                    except Exception as e:
-                        logger.error(f"Failed to sync {filename}: {e}")
-
-        logger.info(f"✅ Synced {sync_count} snapshots from GitHub artifacts.")
-        return sync_count
+            file_paths = await self.github_client.fetch_directory_contents(dir_name)
+            for path in file_paths:
+                snapshots = await self.github_client.download_and_parse_artifact(path)
+                for snapshot in snapshots:
+                    self._upsert_snapshot(snapshot)
+                    total_sync_count += 1
+        
+        logger.info(f"✅ Synced {total_sync_count} snapshots from GitHub API.")
+        return total_sync_count
 
     def _upsert_snapshot(self, snapshot: Dict[str, Any]):
         """Internal helper to upsert into neural_snapshots."""
