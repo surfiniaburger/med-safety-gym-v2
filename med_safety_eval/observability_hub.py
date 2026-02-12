@@ -21,9 +21,10 @@ pending_commands: Dict[str, dict] = {}
 # Initialize DataAgent
 data_agent = DataAgent()
 
+# CORS for UI and Platform access (Allowing all for easier debugging)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -139,12 +140,14 @@ async def sync_artifacts():
 @app.get("/gauntlet/rag")
 async def get_rag_context(query: str):
     """Returns a RAG-ready context string based on historical failures."""
+    logger.info(f"🎤 RAG Query received: {query}")
     context = data_agent.get_rag_context(query)
     return {"query": query, "context": context}
 
 @app.get("/gauntlet/search")
 async def search_artifacts(query: str, semantic: bool = True):
     """Searches historical artifacts for specific behavior or tasks."""
+    logger.info(f"🎤 Search Query received: {query}")
     results = data_agent.search_snapshots(query, semantic=semantic)
     return {"query": query, "semantic": semantic, "results": results}
 

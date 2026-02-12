@@ -236,18 +236,32 @@ class DataAgent:
         """
         if not self.engine: return []
         
+        # Typo correction for common project terms
+        corrections = {
+            "grpr": "grpo",
+            "gpr": "grpo",
+            "sft-eval": "sft_eval",
+            "hallucinations": "grounding" 
+        }
+        normalized_query = query.lower()
+        for typo, fix in corrections.items():
+            if typo in normalized_query:
+                normalized_query = normalized_query.replace(typo, fix)
+                logger.info(f"🔮 Auto-corrected query: {query} -> {normalized_query}")
+
         # 1. Keyword Search
         keyword_results = []
         search_query = text("""
             SELECT id, session_id, step, scores, metadata 
             FROM neural_snapshots 
             WHERE LOWER(CAST(metadata AS TEXT)) LIKE LOWER(:q)
+               OR LOWER(session_id) LIKE LOWER(:q)
             ORDER BY id DESC
             LIMIT :limit
         """)
         
         with self.engine.connect() as conn:
-            res = conn.execute(search_query, {"q": f"%{query}%", "limit": limit})
+            res = conn.execute(search_query, {"q": f"%{normalized_query}%", "limit": limit})
             for row in res:
                 sid, step, scores, meta = row[1], row[2], row[3], row[4]
                 if isinstance(scores, str): scores = json.loads(scores)

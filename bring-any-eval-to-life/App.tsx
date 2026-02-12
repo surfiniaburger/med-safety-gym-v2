@@ -20,6 +20,7 @@ import { EvolutionPortal } from './components/EvolutionPortal';
 import { SelectionScreen } from './components/SelectionScreen';
 import { MissionRecapOverlay } from './components/MissionRecapOverlay';
 import { InterventionOverlay } from './components/InterventionOverlay';
+import { VoiceInsightAgent } from './components/VoiceInsightAgent';
 
 const AppContent: React.FC = () => {
   const [activeCreation, setActiveCreation] = useState<Creation | null>(null);
@@ -328,6 +329,7 @@ const AppContent: React.FC = () => {
         <input type="file" ref={importInputRef} onChange={handleImportFile} accept=".json" className="hidden" />
       </div>
 
+      <VoiceInsightAgent />
       {evolutionTaskId && <EvolutionPortal taskId={evolutionTaskId} onClose={() => setEvolutionTaskId(null)} />}
     </div>
   );
