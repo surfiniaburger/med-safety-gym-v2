@@ -44,6 +44,6 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.purple
-          push: true
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

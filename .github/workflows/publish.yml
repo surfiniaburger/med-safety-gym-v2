@@ -37,8 +37,5 @@ jobs:
     - name: Run tests
       run: uv run --all-extras pytest tests/
 
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        # No password/token needed, using Trusted Publishing
-        print-hash: true
+    - name: Skip PyPI Publish
+      run: echo "PyPI publishing temporarily disabled in v2 sandbox."

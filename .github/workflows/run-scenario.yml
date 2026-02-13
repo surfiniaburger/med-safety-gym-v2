@@ -123,8 +123,8 @@ jobs:
           git commit -m "Submission: ${{ steps.metadata.outputs.unique_name }}
 
           Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          git push origin ${{ steps.metadata.outputs.branch_name }}
-          echo "::notice title=Submission Branch Created::Your results are ready for submission on branch: ${{ steps.metadata.outputs.branch_name }}"
+          # git push origin ${{ steps.metadata.outputs.branch_name }}
+          echo "::notice title=Submission Branch Simulation::Branch creation skipped in v2 sandbox."
 
       - name: Output PR link
         run: |
