@@ -38,9 +38,9 @@ def check_filesystem(path: str, allowed_paths: List[str]) -> PolicyResult:
             real_allowed = os.path.realpath(allowed)
             
             # Check if real_path starts with real_allowed
-            # We use commonpath to ensure path boundary respect (avoids /tmp/test matching /tmp/testing)
-            # OR simple string startswith with OS separator
-            if real_path == real_allowed or real_path.startswith(real_allowed + os.sep):
+            # Use os.path.commonpath to robustly check if the resolved
+            # path is contained within an allowed directory.
+            if os.path.commonpath([real_allowed, real_path]) == real_allowed:
                 return PolicyResult(allowed=True, reason="")
                 
     except Exception as e:
