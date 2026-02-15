@@ -1,11 +1,14 @@
 
 import logging
+import os
 import re
 import json
 from typing import Any, Callable, Optional, Union
 from a2a.types import Message, TaskState
 from a2a.utils import new_agent_text_message
 from .mcp_client_adapter import MCPClientAdapter
+from .skill_manifest import load_manifest, DEFAULT_MANIFEST
+from .manifest_interceptor import ManifestInterceptor
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +47,15 @@ class SafeClawAgent:
             )
         )
         self._github_session = None
+
+        # Load manifest for permission enforcement
+        manifest_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "claw_manifest.json"
+        )
+        if os.path.exists(manifest_path):
+            self.interceptor = ManifestInterceptor(load_manifest(manifest_path))
+        else:
+            self.interceptor = ManifestInterceptor(DEFAULT_MANIFEST)
 
     async def run(self, message: Message, updater: Any, session: Any = None) -> None:
         """
@@ -134,6 +146,11 @@ class SafeClawAgent:
                 set_repo_match = re.match(r'(set|configure|use)\s+repo\s+(?:to\s+)?(.+)', cmd)
                 if set_repo_match:
                     repo_name = set_repo_match.group(2).strip()
+                    # Manifest check before execution
+                    intercept = self.interceptor.intercept("configure_repo", {"repo_name": repo_name})
+                    if not intercept.allowed:
+                        await updater.update_status(TaskState.failed, new_agent_text_message(f"🚨 BLOCKED: {intercept.reason}"))
+                        return
                     result = await session_client.call_tool("configure_repo", {"repo_name": repo_name})
                     # Sync back to session memory for persistence
                     if session:
@@ -141,7 +158,13 @@ class SafeClawAgent:
                 
                 # 2. Issues (Improved with Regex for better extraction)
                 elif re.search(r'\bissues?\b', cmd):
-                    if re.search(r'\b(create|new|add)\b', cmd):
+                    tool_name = "create_issue" if re.search(r'\b(create|new|add)\b', cmd) else "list_issues"
+                    # Manifest check
+                    intercept = self.interceptor.intercept(tool_name, {})
+                    if not intercept.allowed:
+                        await updater.update_status(TaskState.failed, new_agent_text_message(f"🚨 BLOCKED: {intercept.reason}"))
+                        return
+                    if tool_name == "create_issue":
                         title_match = re.search(r'title="([^"]+)"', action)
                         body_match = re.search(r'body="([^"]+)"', action)
                         title = title_match.group(1) if title_match else "Untitled"
@@ -152,6 +175,10 @@ class SafeClawAgent:
                 
                 # 3. Pull Requests (Improved with Regex)
                 elif re.search(r'\b(pulls?|prs?|requests)\b', cmd):
+                    intercept = self.interceptor.intercept("list_pull_requests", {})
+                    if not intercept.allowed:
+                        await updater.update_status(TaskState.failed, new_agent_text_message(f"🚨 BLOCKED: {intercept.reason}"))
+                        return
                     result = await session_client.call_tool("list_pull_requests", {})
                 
                 # 4. Check/Info (Default list issues or meta info)
