@@ -142,6 +142,20 @@ class SafeClawAgent:
                 # Clean command
                 cmd = action.lower().replace("gh:", "").strip()
                 
+                # 0. Admin Escalation
+                if "unlock" in cmd and "admin" in cmd:
+                    # 1. Update Manifest Interceptor (Client-side)
+                    self.interceptor.escalate_all_admin()
+                    # 2. Update FastMCP Server (Server-side)
+                    # We need to call unlock_admin_tools to show the tools
+                    # Note: We don't intercept this call because it IS the unlocker
+                    result = await session_client.call_tool("unlock_admin_tools", {})
+                    await updater.update_status(
+                        TaskState.working, 
+                        new_agent_text_message(f"🔓 Admin Escalation: {result}")
+                    )
+                    return
+
                 # 1. Set Repo (Improved with Regex as per code review)
                 set_repo_match = re.match(r'(set|configure|use)\s+repo\s+(?:to\s+)?(.+)', cmd)
                 if set_repo_match:
@@ -156,7 +170,25 @@ class SafeClawAgent:
                     if session:
                         session.github_repo = repo_name
                 
-                # 2. Issues (Improved with Regex for better extraction)
+                # 2. Delete Comment Action (Admin Tool) - Must be before generic 'issues' check
+                elif "delete" in cmd and "comment" in cmd:
+                    # Regex: delete comment 123 on issue 456
+                    match = re.search(r'delete\s+comment\s+(\d+)\s+(?:on|from)\s+issue\s+(\d+)', cmd)
+                    if match:
+                        comment_id = int(match.group(1))
+                        issue_num = int(match.group(2))
+                        
+                        intercept = self.interceptor.intercept("delete_issue_comment", {"issue_number": issue_num, "comment_id": comment_id})
+                        if not intercept.allowed:
+                             await updater.update_status(TaskState.failed, new_agent_text_message(f"🚨 BLOCKED: {intercept.reason}"))
+                             return
+                        
+                        result = await session_client.call_tool("delete_issue_comment", {"issue_number": issue_num, "comment_id": comment_id})
+                    else:
+                        await updater.update_status(TaskState.failed, new_agent_text_message("⚠️ Usage: gh: delete comment <id> on issue <num>"))
+                        return
+
+                # 3. Issues (Improved with Regex for better extraction)
                 elif re.search(r'\bissues?\b', cmd):
                     tool_name = "create_issue" if re.search(r'\b(create|new|add)\b', cmd) else "list_issues"
                     # Manifest check
@@ -181,7 +213,7 @@ class SafeClawAgent:
                         return
                     result = await session_client.call_tool("list_pull_requests", {})
                 
-                # 4. Check/Info (Default list issues or meta info)
+                # 5. Check/Info (Default list issues or meta info)
                 elif re.search(r'\b(check|info)\b', cmd):
                     result = await session_client.call_tool("list_issues", {})
                 

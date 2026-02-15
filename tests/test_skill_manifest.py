@@ -27,14 +27,18 @@ def test_load_valid_manifest_from_dict():
         "permissions": {
             "net": ["api.weather.gov"],
             "fs": ["./workspace/weather-cache.json"],
-            "tools": ["get_weather"],
+            "tools": {
+                "user": ["get_weather"],
+                "admin": ["reset_weather_satellite"]
+            },
         },
     }
     manifest = SkillManifest.from_dict(data)
     assert manifest.name == "weather-skill"
     assert manifest.version == "1.0.0"
     assert "api.weather.gov" in manifest.permissions.net
-    assert "get_weather" in manifest.permissions.tools
+    assert "get_weather" in manifest.permissions.tools.user
+    assert "reset_weather_satellite" in manifest.permissions.tools.admin
 
 
 def test_load_manifest_with_missing_fields_uses_defaults():
@@ -44,7 +48,7 @@ def test_load_manifest_with_missing_fields_uses_defaults():
     assert manifest.version == "0.0.0"
     assert manifest.permissions.net == []
     assert manifest.permissions.fs == []
-    assert manifest.permissions.tools == []
+    assert manifest.permissions.tools.all_tools == []
 
 
 def test_load_manifest_from_json_file():
@@ -64,7 +68,8 @@ def test_load_manifest_from_json_file():
         manifest = load_manifest(tmp_path)
         assert manifest.name == "file-skill"
         assert manifest.version == "2.0.0"
-        assert "read_file" in manifest.permissions.tools
+        # Flat list should be mapped to 'user' tier
+        assert "read_file" in manifest.permissions.tools.user
     finally:
         os.remove(tmp_path)
 
@@ -77,3 +82,27 @@ def test_default_manifest_blocks_all_network():
 def test_default_manifest_restricts_fs_to_workspace():
     """The built-in DEFAULT_MANIFEST only allows ./workspace."""
     assert DEFAULT_MANIFEST.permissions.fs == ["./workspace"]
+
+
+def test_generate_scope_config():
+    """Verify scope generation from tiers."""
+    data = {
+        "name": "tiered-skill",
+        "permissions": {
+            "tools": {
+                "user": ["public_tool"],
+                "write": ["writer_tool"],
+                "admin": ["admin_tool"]
+            }
+        }
+    }
+    manifest = SkillManifest.from_dict(data)
+    config = manifest.generate_scope_config()
+    
+    assert config["public_tool"].auth == ""
+    assert config["public_tool"].tags == []
+    
+    assert config["writer_tool"].auth == "write"
+    
+    assert config["admin_tool"].auth == "admin"
+    assert "admin" in config["admin_tool"].tags

@@ -21,7 +21,10 @@ def interceptor():
         "permissions": {
             "net": ["api.github.com"],
             "fs": ["./workspace"],
-            "tools": ["list_issues", "create_issue"],
+            "tools": {
+                "user": ["list_issues", "create_issue"],
+                "admin": ["delete_repo"]
+            },
         },
     })
     return ManifestInterceptor(manifest)
@@ -33,9 +36,9 @@ def test_allowed_tool_passes(interceptor):
 
 
 def test_disallowed_tool_blocked(interceptor):
-    result = interceptor.intercept("delete_repo", {})
+    result = interceptor.intercept("unknown_tool", {})
     assert result.allowed is False
-    assert "delete_repo" in result.reason
+    assert "not declared" in result.reason
 
 
 def test_network_arg_disallowed_blocked(interceptor):
@@ -50,8 +53,35 @@ def test_filesystem_traversal_blocked(interceptor):
 
 
 def test_audit_log_records_blocked(interceptor):
-    interceptor.intercept("delete_repo", {})
+    interceptor.intercept("unknown_tool", {})
     assert len(interceptor.audit_entries) == 1
     entry = interceptor.audit_entries[0]
-    assert entry["tool"] == "delete_repo"
+    assert entry["tool"] == "unknown_tool"
     assert entry["allowed"] is False
+
+
+def test_admin_tool_blocked_by_default(interceptor):
+    """Admin tools require explicit escalation."""
+    result = interceptor.intercept("delete_repo", {})
+    assert result.allowed is False
+    assert "escalation" in result.reason
+    assert result.tier == "admin"
+
+
+def test_escalation_unlocks_admin_tool(interceptor):
+    """Calling escalate() allows the admin tool for this session."""
+    # Initially blocked
+    assert interceptor.intercept("delete_repo", {}).allowed is False
+    
+    # Escalate
+    interceptor.escalate("delete_repo")
+    
+    # Now allowed
+    result = interceptor.intercept("delete_repo", {})
+    assert result.allowed is True
+    assert result.tier == "admin"
+
+
+def test_escalate_all_admin_unlocks_everything(interceptor):
+    interceptor.escalate_all_admin()
+    assert interceptor.intercept("delete_repo", {}).allowed is True

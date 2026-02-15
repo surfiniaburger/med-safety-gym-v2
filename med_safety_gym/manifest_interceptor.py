@@ -3,13 +3,13 @@ SafeClaw Manifest Interceptor — Orchestrator
 
 Wires together the SkillManifest and policy checks.
 Sits between the agent and MCP tool execution layer.
+Tier-aware: user tools pass, write tools pass, admin tools require escalation.
 
 Design: Single responsibility — intercept and audit. (Farley)
 """
 import logging
-import re
-from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from dataclasses import dataclass
+from typing import Any, Dict, List, Set
 from urllib.parse import urlparse
 
 from .skill_manifest import SkillManifest
@@ -23,6 +23,7 @@ class InterceptResult:
     """Outcome of a full interception check."""
     allowed: bool
     reason: str
+    tier: str = ""  # "user", "write", "admin", or "denied"
 
 
 class ManifestInterceptor:
@@ -31,29 +32,50 @@ class ManifestInterceptor:
     def __init__(self, manifest: SkillManifest):
         self.manifest = manifest
         self.audit_entries: List[Dict[str, Any]] = []
+        self._escalated_tools: Set[str] = set()  # admin tools unlocked this session
 
     def intercept(self, tool_name: str, tool_args: Dict[str, Any]) -> InterceptResult:
         """Run all policy checks for a tool call."""
-        # 1. Check tool name
-        tool_result = check_tool(tool_name, self.manifest.permissions.tools)
-        if not tool_result.allowed:
-            self._audit(tool_name, tool_args, False, tool_result.reason)
-            return InterceptResult(allowed=False, reason=tool_result.reason)
+        # 1. Check tool tier
+        tier = self.manifest.permissions.tools.tier_for(tool_name)
+
+        if tier == "denied":
+            reason = f"Tool '{tool_name}' not declared in manifest"
+            self._audit(tool_name, tool_args, False, reason, tier)
+            return InterceptResult(allowed=False, reason=reason, tier=tier)
+
+        if tier == "admin" and tool_name not in self._escalated_tools:
+            reason = f"Tool '{tool_name}' requires admin escalation. Use 'gh: unlock admin tools' first."
+            self._audit(tool_name, tool_args, False, reason, tier)
+            return InterceptResult(allowed=False, reason=reason, tier=tier)
 
         # 2. Scan args for network URLs
         net_result = self._check_args_for_urls(tool_args)
         if not net_result.allowed:
-            self._audit(tool_name, tool_args, False, net_result.reason)
-            return InterceptResult(allowed=False, reason=net_result.reason)
+            self._audit(tool_name, tool_args, False, net_result.reason, tier)
+            return InterceptResult(allowed=False, reason=net_result.reason, tier=tier)
 
         # 3. Scan args for filesystem paths
         fs_result = self._check_args_for_paths(tool_args)
         if not fs_result.allowed:
-            self._audit(tool_name, tool_args, False, fs_result.reason)
-            return InterceptResult(allowed=False, reason=fs_result.reason)
+            self._audit(tool_name, tool_args, False, fs_result.reason, tier)
+            return InterceptResult(allowed=False, reason=fs_result.reason, tier=tier)
 
-        self._audit(tool_name, tool_args, True, "")
-        return InterceptResult(allowed=True, reason="")
+        self._audit(tool_name, tool_args, True, "", tier)
+        return InterceptResult(allowed=True, reason="", tier=tier)
+
+    def escalate(self, tool_name: str):
+        """Temporarily unlock an admin tool for this session."""
+        tier = self.manifest.permissions.tools.tier_for(tool_name)
+        if tier == "admin":
+            self._escalated_tools.add(tool_name)
+            logger.info(f"Escalated: '{tool_name}' unlocked for this session")
+
+    def escalate_all_admin(self):
+        """Unlock ALL admin tools for this session."""
+        for tool_name in self.manifest.permissions.tools.admin:
+            self._escalated_tools.add(tool_name)
+        logger.info(f"Escalated: all admin tools unlocked ({len(self._escalated_tools)})")
 
     def _check_args_for_urls(self, args: Dict[str, Any]) -> PolicyResult:
         """Scan tool arguments for URLs and validate domains."""
@@ -72,26 +94,25 @@ class ManifestInterceptor:
         for key, value in args.items():
             if not isinstance(value, str):
                 continue
-            # Heuristic: if arg name suggests a path or value looks like one
             if key in ("path", "file", "filepath", "filename", "directory"):
                 result = check_filesystem(value, self.manifest.permissions.fs)
                 if not result.allowed:
                     return result
-            # Also catch values that look like paths
             elif value.startswith("./") or value.startswith("/") or ".." in value:
                 result = check_filesystem(value, self.manifest.permissions.fs)
                 if not result.allowed:
                     return result
         return PolicyResult(allowed=True, reason="")
 
-    def _audit(self, tool: str, args: Dict, allowed: bool, reason: str):
+    def _audit(self, tool: str, args: Dict, allowed: bool, reason: str, tier: str):
         """Record the interception for review."""
         entry = {
             "tool": tool,
             "args": args,
             "allowed": allowed,
             "reason": reason,
+            "tier": tier,
         }
         self.audit_entries.append(entry)
         level = logging.INFO if allowed else logging.WARNING
-        logger.log(level, f"Manifest {'ALLOW' if allowed else 'BLOCK'}: {tool} — {reason}")
+        logger.log(level, f"Manifest {'ALLOW' if allowed else 'BLOCK'} [{tier}]: {tool} — {reason}")
