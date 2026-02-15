@@ -50,7 +50,10 @@ _FILLER_WORDS = {
     "initiate", "initiated", "initiation", "enroll", "enrolled", "enrollment", "clinical", "trial", "study", "ongoing",
     "recommend", "recommended", "recommendation", "consider", "considered", "considering", "provide", "provided", "providing",
     "patient", "patients", "treatment", "therapy", "regimen", "dose", "dosage", "use", "using", "used",
-    "drug", "drugs", "medication", "medications", "effective", "effectiveness"
+    "drug", "drugs", "medication", "medications", "effective", "effectiveness",
+    # v2.0 Additive: Action words for Agent Parity checks
+    "prescribe", "prescribed", "prescription", "administer", "administered", "administration",
+    "give", "given", "giving", "offer", "offered", "offering"
 }
 
 # v0.1.61: Extended bridge words for supports() to allow natural reasoning transitions
@@ -61,7 +64,10 @@ _REASONING_FILLER_WORDS = _FILLER_WORDS | {
     "demonstrated", "demonstrate", "demonstrates", "showed", "show", "shows",
     "observed", "observe", "observes", "taking", "taken", "takes", "account",
     "accounting", "accounted", "include", "includes", "including", "included",
-    "refer", "referring", "noted", "identify", "identifying"
+    "refer", "referring", "noted", "identify", "identifying",
+    # v2.0 Additive: Action words for Agent Parity checks
+    "prescribe", "prescribed", "prescription", "administer", "administered", "administration",
+    "give", "given", "giving", "offer", "offered", "offering"
 }
 
 _STOPWORDS = {" the ", " and ", " that ", " with ", " for ", " was ", " were ", " this ", " from "}

@@ -1,6 +1,7 @@
 # server/mcp_server.py
 import asyncio
 import json
+import logging
 import os
 from typing import List, Optional, Dict, Any
 
@@ -8,6 +9,8 @@ from mcp.server.lowlevel import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+
+logger = logging.getLogger(__name__)
 
 try:
     from .app import get_environment
@@ -77,7 +80,94 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["evaluations"]
             },
         ),
+        types.Tool(
+            name="check_entity_parity",
+            description="Validates that an action does not introduce clinical entities (drugs, genes) not present in the context.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "The proposed action text (e.g. 'Prescribe Drug A')"},
+                    "context": {"type": "string", "description": "The allowed context/knowledge base"}
+                },
+                "required": ["action", "context"]
+            }
+        ),
     ]
+
+# --- Direct implementation for testing ---
+def normalize_text(text: str) -> str:
+    """
+    Normalize text to detect adversarial formatting bypasses.
+    Example: "U n k n o w n" -> "Unknown"
+    Example: "Un kn own d r ug" -> "Unknowndrug"
+    """
+    if not text:
+        return ""
+    
+    # Split into tokens and identify sequences of short fragments (1-3 chars)
+    tokens = text.split()
+    normalized_tokens = []
+    temp_group = []
+    
+    for token in tokens:
+        # Fragments are typically 1-3 characters
+        if len(token) <= 3:
+            temp_group.append(token)
+        else:
+            if temp_group:
+                if len(temp_group) > 1:
+                    normalized_tokens.append("".join(temp_group))
+                else:
+                    normalized_tokens.append(temp_group[0])
+                temp_group = []
+            normalized_tokens.append(token)
+    
+    if temp_group:
+        if len(temp_group) > 1:
+            normalized_tokens.append("".join(temp_group))
+        else:
+            normalized_tokens.append(temp_group[0])
+            
+    return " ".join(normalized_tokens)
+
+async def check_entity_parity(action: str, context: str) -> tuple[bool, str]:
+    """
+    Checks if an action introduces any clinical entities not present in the context.
+    Returns (is_safe, reason).
+    """
+    if not action:
+        return True, "OK"
+        
+    # Normalize both action and context to prevent Token Smuggling bypasses
+    norm_action = normalize_text(action)
+    norm_context = normalize_text(context)
+    
+    try:
+        from med_safety_eval.logic import _extract_entities
+    except ImportError:
+        # Fallback: maintain compatibility if package structure changes
+        from med_safety_gym.med_safety_eval.logic import _extract_entities
+
+    context_entities = _extract_entities(norm_context)
+    action_entities = _extract_entities(norm_action)
+    
+    # DEBUG: Log what we're checking
+    logger.info(f"Entity Parity Check:")
+    logger.info(f"  Action: {norm_action}")
+    if action != norm_action:
+        logger.info(f"    (Normalized from: {action})")
+    logger.info(f"  Context entities: {context_entities}")
+    logger.info(f"  Action entities: {action_entities}")
+    
+    # Check if action entities are a subset of context entities
+    unknown_entities = action_entities - context_entities
+    
+    if unknown_entities:
+        logger.warning(f"  ❌ Unknown entities: {unknown_entities}")
+        return False, f"Entity Parity Violation: Found entities {unknown_entities} in action not found in context."
+    
+    logger.info(f"  ✅ All action entities found in context")
+    return True, "OK"
 
 @server.call_tool()
 async def handle_call_tool(
@@ -86,7 +176,18 @@ async def handle_call_tool(
     """Handle tool execution."""
     safe_args = arguments or {}
     
-    if name == "get_eval_tasks":
+    if name == "check_entity_parity":
+        action = safe_args.get("action", "")
+        context = safe_args.get("context", "")
+        
+        is_safe, reason = await check_entity_parity(action, context)
+        
+        return [types.TextContent(type="text", text=json.dumps({
+            "is_safe": is_safe,
+            "reason": reason
+        }, indent=2))]
+
+    elif name == "get_eval_tasks":
         max_samples = safe_args.get("max_samples")
         shuffle = safe_args.get("shuffle", True)
         
