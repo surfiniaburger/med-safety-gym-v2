@@ -1,5 +1,7 @@
 
 import logging
+import re
+import json
 from typing import Any, Callable, Optional, Union
 from a2a.types import Message, TaskState
 from a2a.utils import new_agent_text_message
@@ -22,16 +24,26 @@ class SafeClawAgent:
     """
     A2A Agent that enforces strict safety invariants via MCP tools.
     """
-    def __init__(self, client_factory: Optional[Callable[[], Any]] = None):
-        # Default factory spawns the local server
+    def __init__(
+        self, 
+        client_factory: Optional[Callable[[], Any]] = None,
+        github_client_factory: Optional[Callable[[], Any]] = None
+    ):
+        # Default safety factory
         self.client_factory = client_factory or (
             lambda: MCPClientAdapter(
                 command="uv", 
-                # Need absolute path or ensure cwd is correct. 
-                # We assume running from root or 'uv run' handles modules.
                 args=["run", "python", "-m", "med_safety_gym.mcp_server"]
             )
         )
+        # GitHub factory
+        self.github_client_factory = github_client_factory or (
+            lambda: MCPClientAdapter(
+                command="uv", 
+                args=["run", "python", "-m", "med_safety_gym.github_tools"]
+            )
+        )
+        self._github_session = None
 
     async def run(self, message: Message, updater: Any, session: Any = None) -> None:
         """
@@ -62,8 +74,24 @@ class SafeClawAgent:
             return
         
         # For now, use the message text as the "action"
-        # In production, you'd use an LLM to extract intent/action
         action = text_content
+        
+        # ROUTING LOGIC:
+        # We classify if this is a GitHub operation or a Clinical action.
+        # GitHub keywords: 'repo', 'issues', 'github', 'gh:', 'pr ', 'branch', 'pull', 'merge'
+        github_keywords = {
+            'repo', 'issues', 'github', 'gh:', 'pr ', 'branch', 'pull', 'merge', 
+            'create issue', 'list issues', 'say ', 'voice ', '!v '
+        }
+        is_github = any(k in action.lower() for k in github_keywords)
+
+        if is_github:
+            logger.info(f"Routing to GitHub Tools: {action}")
+            await self.github_action(action, updater, session=session)
+            return
+
+        # Default: Clinical Action (Strictest Guardian Path)
+        logger.info(f"Routing to Medical Guardian: {action}")
         
         # Get conversation context (excluding current action to avoid self-validation)
         session_context = ""
@@ -73,8 +101,86 @@ class SafeClawAgent:
         # Merge with base knowledge for a robust safety context
         context = f"{BASE_MEDICAL_KNOWLEDGE}\n\nCONVERSATION CONTEXT:\n{session_context}"
         
-        # Call the safety-checked action
         await self.context_aware_action(action, context, updater)
+
+    async def github_action(self, action: str, updater: Any, session: Any = None) -> None:
+        """
+        Interacts with the GitHub MCP server to perform repo operations.
+        Example intents: 
+        - 'gh: list issues'
+        - 'gh: set repo surfiniaburger/med-safety-gym-v2'
+        - 'gh: create issue title="Bug" body="Found error"'
+        """
+        await updater.update_status(
+            TaskState.working, 
+            new_agent_text_message(f"🔄 Processing GitHub operation: {action}...")
+        )
+        
+        # Ensure we have a persistent session
+        if not self._github_session:
+            self._github_session = self.github_client_factory()
+            # We open it once and leave it open
+            await self._github_session.__aenter__()
+            
+        session_client = self._github_session
+
+        # RESTORE STATE: If the session memory has a repo, but the tool client doesn't know it, configure it.
+        # This solves the "bot restart" state loss problem.
+        if session and session.github_repo:
+             await session_client.call_tool("configure_repo", {"repo_name": session.github_repo})
+        
+        try:
+            # Clean command
+            cmd = action.lower().replace("gh:", "").strip()
+            
+            # 1. Set Repo (handles "set repo", "configure repo", "use repo", and optional "to")
+            if any(x in cmd for x in ["set repo", "configure repo", "use repo"]):
+                # Extract repo name by removing keywords
+                for kw in ["set repo", "configure repo", "use repo", "to"]:
+                    cmd = cmd.replace(kw, "").strip()
+                repo_name = cmd.strip()
+                result = await session_client.call_tool("configure_repo", {"repo_name": repo_name})
+                # Sync back to session memory for persistence
+                if session:
+                    session.github_repo = repo_name
+            
+            # 2. Issues
+            elif "issue" in cmd:
+                if "create" in cmd or "new" in cmd:
+                    title_match = re.search(r'title="([^"]+)"', action)
+                    body_match = re.search(r'body="([^"]+)"', action)
+                    title = title_match.group(1) if title_match else "Untitled"
+                    body = body_match.group(1) if body_match else ""
+                    result = await session_client.call_tool("create_issue", {"title": title, "body": body})
+                else:
+                    result = await session_client.call_tool("list_issues", {})
+            
+            # 3. Pull Requests (Use regex for word boundaries to avoid 'priority' matching 'pr')
+            elif re.search(r'\b(pull|pr|requests)\b', cmd):
+                result = await session_client.call_tool("list_pull_requests", {})
+            
+            # 4. Check/Info (Default list issues or meta info)
+            elif "check" in cmd or "info" in cmd:
+                result = await session_client.call_tool("list_issues", {})
+            
+            # 5. Voice/Speech (Handled primarily by the Telegram Mirror)
+            elif any(x in cmd for x in ["say", "voice", "!v"]):
+                # Strip the keyword and return text for the bridge to speak
+                for kw in ["say", "voice", "!v"]:
+                    cmd = cmd.replace(kw, "").strip()
+                result = cmd if cmd else "Voice mode activated. What would you like me to say?"
+                
+            else:
+                result = f"Command recognized as GitHub, but specific action unknown: '{cmd}'. Try 'list issues' or 'set repo'."
+
+            await updater.update_status(TaskState.completed, new_agent_text_message(str(result)))
+
+        except Exception as e:
+            logger.error(f"GitHub Action Failed: {e}")
+            await updater.update_status(
+                TaskState.failed, 
+                new_agent_text_message(f"❌ GitHub Error: {e}")
+            )
 
     async def context_aware_action(self, action: str, context: str, updater: Any) -> None:
         """
@@ -112,12 +218,11 @@ class SafeClawAgent:
                 reason = result.get("reason", "No reason provided")
             elif isinstance(result, str):
                 # Fallback if string returned
-                import json
                 try:
                     data = json.loads(result)
                     is_safe = data.get("is_safe", False)
                     reason = data.get("reason", "No reason provided")
-                except:
+                except json.JSONDecodeError:
                     reason = f"Invalid response format: {result}"
             
         except Exception as e:

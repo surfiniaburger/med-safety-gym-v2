@@ -7,7 +7,7 @@ You have **3 ways** to test SafeClaw locally:
 Test the agent logic without starting a server:
 
 ```bash
-cd /Users/surfiniaburger/Desktop/med-safety-gym-v2
+cd <project_root>
 
 # Test Entity Parity (Tool Layer)
 uv run pytest tests/test_mcp_entity_parity.py -v
@@ -84,7 +84,7 @@ The Telegram bridge:
 - ✅ Enforces Entity Parity via MCP
 - ✅ Sends Guardian responses back to Telegram
 
-See [`TELEGRAM_SETUP.md`](file:///Users/surfiniaburger/Desktop/med-safety-gym-v2/TELEGRAM_SETUP.md) for detailed instructions.
+See [`TELEGRAM_SETUP.md`](./TELEGRAM_SETUP.md) for detailed instructions.
 
 ---
 

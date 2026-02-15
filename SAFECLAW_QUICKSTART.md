@@ -33,7 +33,7 @@ SAFECLAW_PORT=8003
 ## Step 2: Install Dependencies
 
 ```bash
-cd /Users/surfiniaburger/Desktop/med-safety-gym-v2
+cd <project_root>
 uv sync --extra dev --extra mcp --extra agent
 ```
 

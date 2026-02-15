@@ -11,6 +11,7 @@ from typing import Optional
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import html
 
 from a2a.types import Message, Part, TextPart, TaskState
 from a2a.server.tasks import TaskUpdater, InMemoryTaskStore
@@ -19,6 +20,7 @@ from a2a.utils import new_task
 
 from .claw_agent import SafeClawAgent
 from .session_memory import SessionStore
+from .voice import text_to_speech, cleanup_voice_note
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -40,6 +42,10 @@ class TelegramBridge:
         self.app.add_handler(CommandHandler("start", self.start_command))
         self.app.add_handler(CommandHandler("help", self.help_command))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        
+        # Temp directory for voice notes
+        self.temp_dir = "/tmp/safeclaw_voice"
+        os.makedirs(self.temp_dir, exist_ok=True)
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send welcome message when /start is issued."""
@@ -131,20 +137,56 @@ class TelegramBridge:
                 if responses:
                     session.add_message("assistant", "\n\n".join(responses))
             
+            # Persist to database (SQLite)
+            self.sessions.save(session)
+            
             # Send response back to Telegram
             if responses:
                 final_response = "\n\n".join(responses)
             else:
                 final_response = "✅ Request processed."
             
-            await update.message.reply_text(final_response, parse_mode='Markdown')
+            # Use HTML for better escaping of repo names with underscores
+            await update.message.reply_text(html.escape(final_response), parse_mode='HTML')
+            
+            # VOICE LOGIC:
+            # 1. Automatic voice for Safety Failures (Guardian Alerts)
+            # 2. Manual voice for "!v" or "say" keywords
+            should_voice = updater.is_failed or any(k in user_text.lower() for k in ["!v ", "say ", "voice "])
+            
+            if should_voice and responses:
+                await self.send_voice_note(update, final_response)
             
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
             await update.message.reply_text(
-                f"❌ Error: {str(e)}",
-                parse_mode='Markdown'
+                f"❌ <b>Error:</b> {html.escape(str(e))}",
+                parse_mode='HTML'
             )
+
+    async def send_voice_note(self, update: Update, text: str):
+        """Generate and send a voice note to the user."""
+        chat_id = update.effective_chat.id
+        msg_id = update.message.message_id
+        file_path = os.path.join(self.temp_dir, f"voice_{chat_id}_{msg_id}.mp3")
+        
+        # Clean text for TTS (remove HTML tags if any, though we escaped it above)
+        clean_text = text.replace("<b>", "").replace("</b>", "").replace("🚨", "Alert!").replace("❌", "Denied.")
+        
+        await update.message.reply_chat_action("record_voice")
+        
+        success = await text_to_speech(clean_text, file_path)
+        if success:
+            try:
+                with open(file_path, "rb") as audio:
+                    await update.message.reply_voice(
+                        voice=audio,
+                        caption="🎙️ Audio Safety Alert" if "BLOCK" in text or "Denied" in text else "🎙️ Voice Note"
+                    )
+            finally:
+                await cleanup_voice_note(file_path)
+        else:
+            logger.error("Failed to generate voice note.")
     
     def run(self):
         """Start the Telegram bot."""

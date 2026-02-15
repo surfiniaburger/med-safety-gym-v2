@@ -13,7 +13,7 @@
 
 ### 2. Configure Your .env
 
-Add the token to `/Users/surfiniaburger/Desktop/med-safety-gym-v2/.env`:
+Add the token to the `.env` file in the project's root:
 
 ```bash
 # Existing keys
@@ -27,7 +27,7 @@ TELEGRAM_BOT_TOKEN="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
 ### 3. Install Dependencies
 
 ```bash
-cd /Users/surfiniaburger/Desktop/med-safety-gym-v2
+cd <project_root>
 uv sync --extra telegram --extra agent --extra mcp
 ```
 

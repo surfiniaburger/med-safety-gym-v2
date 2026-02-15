@@ -15,17 +15,8 @@ from a2a.types import (
 from .claw_agent import SafeClawAgent
 from .executor import Executor
 
-def main():
-    parser = argparse.ArgumentParser(description="Run the SafeClaw Agent with Guardian safety checks.")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind the server")
-    parser.add_argument("--port", type=int, default=8003, help="Port to bind the server")
-    parser.add_argument("--card-url", type=str, help="URL to advertise in the agent card")
-    args = parser.parse_args()
-
-    # Prioritize environment variable for CARD_URL
-    import os
-    card_url = args.card_url or os.environ.get("CARD_URL")
-
+def create_app(host="0.0.0.0", port=8003, card_url=None):
+    """Factory to create the A2A application instance."""
     # Define the skill
     skill = AgentSkill(
         id="safe-claw-guardian",
@@ -38,7 +29,7 @@ def main():
     agent_card = AgentCard(
         name="SafeClaw",
         description="A safe, entity-parity-enforced agent for medical operations.",
-        url=card_url or f"http://{args.host}:{args.port}/",
+        url=card_url or f"http://{host}:{port}/",
         version='2.0.0',
         default_input_modes=['text'],
         default_output_modes=['text'],
@@ -56,10 +47,27 @@ def main():
         agent_card=agent_card,
         http_handler=request_handler,
     )
+    return server.build()
+
+app = create_app()
+
+def main():
+    parser = argparse.ArgumentParser(description="Run the SafeClaw Agent with Guardian safety checks.")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind the server")
+    parser.add_argument("--port", type=int, default=8003, help="Port to bind the server")
+    parser.add_argument("--card-url", type=str, help="URL to advertise in the agent card")
+    args = parser.parse_args()
+
+    # Prioritize environment variable for CARD_URL
+    import os
+    card_url = args.card_url or os.environ.get("CARD_URL")
+
+    global app
+    app = create_app(host=args.host, port=args.port, card_url=card_url)
     
     print(f"🤖 SafeClaw Agent serving on {args.host}:{args.port}")
     print(f"🛡️  Guardian safety checks: ENABLED")
-    uvicorn.run(server.build(), host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port)
 
 if __name__ == "__main__":
     main()
