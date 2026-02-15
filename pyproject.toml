@@ -63,10 +63,14 @@ visualization = [
     "pandas>=2.1.0",
     "reportlab>=4.0.0",
 ]
+telegram = [
+    "python-telegram-bot>=21.0.0",
+]
 
 # This creates a command 'dipg-server' you can run from the terminal
 [project.scripts]
 dipg-server = "med_safety_gym.app:main"
+safeclaw-telegram = "med_safety_gym.telegram_bridge:main"
 
 [tool.setuptools]
 include-package-data = true
