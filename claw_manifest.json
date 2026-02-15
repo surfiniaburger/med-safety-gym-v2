@@ -1,0 +1,28 @@
+{
+    "name": "safeclaw-core",
+    "version": "1.1.0",
+    "permissions": {
+        "net": [
+            "api.github.com"
+        ],
+        "fs": [
+            "./workspace"
+        ],
+        "tools": {
+            "user": [
+                "configure_repo",
+                "list_issues",
+                "list_pull_requests",
+                "get_eval_tasks",
+                "evaluate_responses"
+            ],
+            "write": [
+                "create_issue"
+            ],
+            "admin": [
+                "delete_issue_comment",
+                "unlock_admin_tools"
+            ]
+        }
+    }
+}
