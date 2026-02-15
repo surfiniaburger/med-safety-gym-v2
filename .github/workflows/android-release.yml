@@ -52,8 +52,23 @@ jobs:
         working-directory: bring-any-eval-to-life
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          printf "%s" "$KEYSTORE_BASE64" | base64 -d > android/app/dipgsafety-release.keystore
+          # 1. Decode base64 to temp file
+          printf "%s" "$KEYSTORE_BASE64" | base64 -d > android/app/original-release.keystore
+          
+          # 2. Sanitize keystore (Fixes 'Tag number over 30' error)
+          # Re-importing ensures a clean PKCS12 format compatible with current AGP
+          keytool -importkeystore \
+            -srckeystore android/app/original-release.keystore \
+            -srcstorepass "$KEYSTORE_PASSWORD" \
+            -destkeystore android/app/dipgsafety-release.keystore \
+            -deststoretype pkcs12 \
+            -deststorepass "$KEYSTORE_PASSWORD" \
+            -noprompt
+            
+          # Clean up
+          rm android/app/original-release.keystore
 
       - name: Build Android Release APK
         working-directory: bring-any-eval-to-life/android
