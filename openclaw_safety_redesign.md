@@ -38,14 +38,14 @@ Instead of a direct "LLM -> Shell" loop, we introduce a **Guardian** middleware.
 **Architecture:**
 ```mermaid
 graph TD
-    User((User)) -->|Telegram| Bot[Telegram Bot Interface]
-    Bot -->|Msg| Guardian[🛡️ Safety Guardian]
-    Guardian -->|Sanitized Prompt| LLM[Model (M2.5/Claude)]
+    User((User)) -->|Telegram| Bot["Telegram Bot Interface"]
+    Bot -->|Msg| Guardian["🛡️ Safety Guardian"]
+    Guardian -->|Sanitized Prompt| LLM["Model (M2.5/Claude)"]
     LLM -->|Tool Call| Guardian
     
-    Guardian -->|Verify: Entity Parity| Rubric{Check Rubric}
-    Rubric -->|Pass| Tool[🛠️ Tool Execution]
-    Rubric -->|Fail| Alert[🚨 Security Alert]
+    Guardian -->|"Verify: Entity Parity"| Rubric{Check Rubric}
+    Rubric -->|Pass| Tool["🛠️ Tool Execution"]
+    Rubric -->|Fail| Alert["🚨 Security Alert"]
     
     Tool -->|Result| Guardian
     Guardian -->|Response| Bot
