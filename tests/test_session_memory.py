@@ -49,42 +49,47 @@ class TestMessageManagement:
 class TestMedicalEntityExtraction:
     """Test extracting medical entities from conversation."""
     
-    def test_extract_drug_names(self):
+    @pytest.mark.asyncio
+    async def test_extract_drug_names(self):
         """Extract drug names from conversation history."""
         session = SessionMemory(user_id="user_1")
         session.add_message("user", "Patient needs Panobinostat")
         session.add_message("assistant", "ONC201 is also an option")
         
-        entities = session.get_known_entities()
+        entities = await session.get_known_entities()
         assert "panobinostat" in entities
         assert "onc201" in entities
     
-    def test_extract_condition_names(self):
+    @pytest.mark.asyncio
+    async def test_extract_condition_names(self):
         """Extract medical conditions from history."""
         session = SessionMemory(user_id="user_1")
         session.add_message("user", "Patient has DIPG")
         
-        entities = session.get_known_entities()
+        entities = await session.get_known_entities()
         assert "dipg" in entities
     
-    def test_extract_trial_ids(self):
+    @pytest.mark.asyncio
+    async def test_extract_trial_ids(self):
         """Extract clinical trial IDs."""
         session = SessionMemory(user_id="user_1")
         session.add_message("user", "Enrolled in NCT03416530")
         
-        entities = session.get_known_entities()
+        entities = await session.get_known_entities()
         assert "nct03416530" in entities
     
-    def test_build_medical_context_string(self):
+    @pytest.mark.asyncio
+    async def test_build_medical_context_string(self):
         """Build context string suitable for Entity Parity."""
         session = SessionMemory(user_id="user_1")
         session.add_message("user", "Patient has DIPG, considering Panobinostat")
         
-        context = session.get_medical_context()
+        context = await session.get_medical_context()
         assert "DIPG" in context or "dipg" in context
         assert "Panobinostat" in context or "panobinostat" in context
 
-    def test_context_leakage_prevention(self):
+    @pytest.mark.asyncio
+    async def test_context_leakage_prevention(self):
         """
         The current message shouldn't leak into the safety context 
         used to check it if we use exclude_latest.
@@ -93,12 +98,13 @@ class TestMedicalEntityExtraction:
         session.add_message("user", "Prescribe UnknownDrug")
         
         # FIXED: Use exclude_latest=True to prevent contamination
-        context = session.get_medical_context(exclude_latest=True)
+        context = await session.get_medical_context(exclude_latest=True)
         assert "unknowndrug" not in context.lower()
 
 
 
-    def test_context_rollback_with_pop(self):
+    @pytest.mark.asyncio
+    async def test_context_rollback_with_pop(self):
         """
         Verify that popping a message removes its entities from context.
         This simulates Toxic Context Prevention.
@@ -108,17 +114,18 @@ class TestMedicalEntityExtraction:
         session.add_message("user", "Prescribe ToxicDrug")
         
         # Before rollback, ToxicDrug is present
-        assert "toxicdrug" in session.get_known_entities()
+        assert "toxicdrug" in await session.get_known_entities()
         
         # Rollback latest message
         session.pop_message()
         
         # After rollback, ToxicDrug should be GONE
-        entities = session.get_known_entities()
+        entities = await session.get_known_entities()
         assert "dipg" in entities
         assert "toxicdrug" not in entities
 
-    def test_multi_turn_medical_learning(self):
+    @pytest.mark.asyncio
+    async def test_multi_turn_medical_learning(self):
         """
         Verify that context builds up correctly over multiple turns.
         """
@@ -126,34 +133,37 @@ class TestMedicalEntityExtraction:
         
         # Turn 1
         session.add_message("user", "My patient was diagnosed with DIPG.")
-        assert "dipg" in session.get_known_entities()
+        assert "dipg" in await session.get_known_entities()
         
         # Turn 2
         session.add_message("assistant", "I see. Standard care often involves biopsy.")
         session.add_message("user", "They are also starting Panobinostat.")
         
-        entities = session.get_known_entities()
+        entities = await session.get_known_entities()
         assert "dipg" in entities
         assert "panobinostat" in entities
         
-    def test_empty_context_behavior(self):
+    @pytest.mark.asyncio
+    async def test_empty_context_behavior(self):
         """
         Verify get_medical_context returns appropriate placeholder for empty sessions.
         """
         session = SessionMemory(user_id="empty_1")
-        assert "No prior medical context" in session.get_medical_context()
+        assert "No prior medical context" in await session.get_medical_context()
         
-    def test_case_insensitivity_and_duplicates(self):
+    @pytest.mark.asyncio
+    async def test_case_insensitivity_and_duplicates(self):
         """
         Verify that extraction handles case and duplicates correctly.
         """
         session = SessionMemory(user_id="case_1")
         session.add_message("user", "DIPG dipg DiPg")
-        entities = session.get_known_entities()
+        entities = await session.get_known_entities()
         assert entities == {"dipg"}
         assert len(entities) == 1
 
-    def test_token_smuggling_bypass(self):
+    @pytest.mark.asyncio
+    async def test_token_smuggling_bypass(self):
         """
         Verify that spaced-out words (Token Smuggling) are correctly
         rejoined and identified as entities.
@@ -161,11 +171,12 @@ class TestMedicalEntityExtraction:
         session = SessionMemory(user_id="smug_1")
         session.add_message("user", "U n k n o w n D r u g")
         
-        entities = session.get_known_entities()
+        entities = await session.get_known_entities()
         # This is expected to FAIL initially until normalization is implemented
         assert "unknowndrug" in entities
 
-    def test_advanced_token_smuggling(self):
+    @pytest.mark.asyncio
+    async def test_advanced_token_smuggling(self):
         """
         Verify that multi-character splits like 'Un kn own d r ug' 
         are correctly rejoined and identified.
@@ -173,7 +184,7 @@ class TestMedicalEntityExtraction:
         session = SessionMemory(user_id="adv_smug_1")
         session.add_message("user", "prescribe Un kn own d r ug")
         
-        entities = session.get_known_entities()
+        entities = await session.get_known_entities()
         assert "unknowndrug" in entities
     
     def test_get_or_create_new_session(self):
@@ -204,3 +215,28 @@ class TestMedicalEntityExtraction:
         
         assert session_a.get_messages()[0]["content"] == "Message from A"
         assert session_b.get_messages()[0]["content"] == "Message from B"
+
+
+class TestSessionEscalation:
+    """Test managing admin escalation state."""
+    
+    def test_session_starts_without_escalation(self):
+        """New session has no escalated tools."""
+        session = SessionMemory(user_id="user_1")
+        assert session.escalated_tools == set()
+
+    def test_escalate_tool(self):
+        """Can escalate a tool."""
+        session = SessionMemory(user_id="user_1")
+        session.escalate_tool("delete_repo")
+        assert "delete_repo" in session.escalated_tools
+        
+    def test_escalation_is_isolated(self):
+        """Escalation in one session doesn't affect another."""
+        store = SessionStore()
+        s1 = store.get_or_create("u1")
+        s2 = store.get_or_create("u2")
+        
+        s1.escalate_tool("admin_tool")
+        assert "admin_tool" in s1.escalated_tools
+        assert "admin_tool" not in s2.escalated_tools

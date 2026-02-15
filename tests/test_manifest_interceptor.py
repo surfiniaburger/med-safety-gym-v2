@@ -53,35 +53,44 @@ def test_filesystem_traversal_blocked(interceptor):
 
 
 def test_audit_log_records_blocked(interceptor):
-    interceptor.intercept("unknown_tool", {})
-    assert len(interceptor.audit_entries) == 1
-    entry = interceptor.audit_entries[0]
+    # Pass mutable audit log
+    audit_log = []
+    interceptor.intercept("unknown_tool", {}, audit_log=audit_log)
+    assert len(audit_log) == 1
+    entry = audit_log[0]
     assert entry["tool"] == "unknown_tool"
     assert entry["allowed"] is False
 
 
 def test_admin_tool_blocked_by_default(interceptor):
     """Admin tools require explicit escalation."""
-    result = interceptor.intercept("delete_repo", {})
+    result = interceptor.intercept("delete_repo", {}, escalated_tools=set())
     assert result.allowed is False
     assert "escalation" in result.reason
     assert result.tier == "admin"
 
 
 def test_escalation_unlocks_admin_tool(interceptor):
-    """Calling escalate() allows the admin tool for this session."""
+    """Passing escalated_tools allows the admin tool."""
+    # Session state
+    escalated = set()
+
     # Initially blocked
-    assert interceptor.intercept("delete_repo", {}).allowed is False
+    assert interceptor.intercept("delete_repo", {}, escalated_tools=escalated).allowed is False
     
-    # Escalate
-    interceptor.escalate("delete_repo")
+    # Escalate (simulate session update)
+    escalated.add("delete_repo")
     
     # Now allowed
-    result = interceptor.intercept("delete_repo", {})
+    result = interceptor.intercept("delete_repo", {}, escalated_tools=escalated)
     assert result.allowed is True
     assert result.tier == "admin"
 
 
 def test_escalate_all_admin_unlocks_everything(interceptor):
-    interceptor.escalate_all_admin()
-    assert interceptor.intercept("delete_repo", {}).allowed is True
+    escalated = set()
+    # Simulate "escalate all" logic (now outside interceptor)
+    for tool in interceptor.manifest.permissions.tools.admin:
+        escalated.add(tool)
+
+    assert interceptor.intercept("delete_repo", {}, escalated_tools=escalated).allowed is True

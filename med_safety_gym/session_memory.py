@@ -30,6 +30,12 @@ class SessionMemory:
         self.user_id = user_id
         self._messages: List[Dict[str, str]] = messages or []
         self.github_repo = github_repo
+        self.escalated_tools: Set[str] = set()  # Session-scoped admin tools
+        self.audit_log: List[Dict[str, Any]] = []   # Session-scoped audit log
+
+    def escalate_tool(self, tool_name: str) -> None:
+        """Unlock an admin tool for this session."""
+        self.escalated_tools.add(tool_name)
     
     def add_message(self, role: str, content: str) -> None:
         """Add message to history."""

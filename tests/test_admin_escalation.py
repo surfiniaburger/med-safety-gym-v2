@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 from med_safety_gym.claw_agent import SafeClawAgent
 from med_safety_gym.manifest_interceptor import ManifestInterceptor
 from med_safety_gym.skill_manifest import SkillManifest, PermissionSet, ToolTiers
+from med_safety_gym.session_memory import SessionMemory
 
 @pytest.mark.asyncio
 async def test_admin_escalation_command():
@@ -38,13 +39,15 @@ async def test_admin_escalation_command():
         )
     ))
 
-    # Execute command
-    await agent.github_action("gh: unlock admin tools", mock_updater)
+    # Create session
+    session = SessionMemory("test_user")
+
+    # Execute command with session
+    await agent.github_action("gh: unlock admin tools", mock_updater, session=session)
     
-    # Verify Interceptor was escalated
-    # escalate_all_admin() adds all admin tools to _escalated_tools
-    # We check if *any* admin tool is now in escalated set
-    assert len(agent.interceptor._escalated_tools) > 0
+    # Verify Session was escalated
+    assert len(session.escalated_tools) > 0
+    assert "delete_issue_comment" in session.escalated_tools
     
     # Verify Server tool was called
     mock_client.call_tool.assert_called_with("unlock_admin_tools", {})
@@ -82,24 +85,25 @@ async def test_delete_comment_routing_and_blocking():
         )
     ))
 
+    # Create session
+    session = SessionMemory("test_user")
+
     # 1. Attempt delete without escalation -> BLOCKED
-    await agent.github_action("gh: delete comment 123 on issue 1", mock_updater)
+    await agent.github_action("gh: delete comment 123 on issue 1", mock_updater, session=session)
     
     # Check it was blocked
     args, _ = mock_updater.update_status.call_args
-    # Check string representation for robustness
     assert "BLOCKED" in str(args[1])
-    # The reason should mention admin escalation
     assert "admin escalation" in str(args[1])
     
     # Check server was NOT called
     mock_client.call_tool.assert_not_called()
     
     # 2. Escalate (manually for test speed)
-    agent.interceptor.escalate("delete_issue_comment")
+    session.escalate_tool("delete_issue_comment")
     
     # 3. Attempt delete again -> ALLOWED
-    await agent.github_action("gh: delete comment 123 on issue 1", mock_updater)
+    await agent.github_action("gh: delete comment 123 on issue 1", mock_updater, session=session)
     
     # Check server called
     mock_client.call_tool.assert_called_with(

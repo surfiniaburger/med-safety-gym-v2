@@ -144,8 +144,12 @@ class SafeClawAgent:
                 
                 # 0. Admin Escalation
                 if "unlock" in cmd and "admin" in cmd:
-                    # 1. Update Manifest Interceptor (Client-side)
-                    self.interceptor.escalate_all_admin()
+                    # 1. Update Session Memory (Client-side state)
+                    if session:
+                        # Manually escalate all admin tools from manifest
+                        for tool in self.interceptor.manifest.permissions.tools.admin:
+                            session.escalate_tool(tool)
+                    
                     # 2. Update FastMCP Server (Server-side)
                     # We need to call unlock_admin_tools to show the tools
                     # Note: We don't intercept this call because it IS the unlocker
@@ -160,12 +164,16 @@ class SafeClawAgent:
                 set_repo_match = re.match(r'(set|configure|use)\s+repo\s+(?:to\s+)?(.+)', cmd)
                 if set_repo_match:
                     repo_name = set_repo_match.group(2).strip()
-                    # Manifest check before execution
-                    intercept = self.interceptor.intercept("configure_repo", {"repo_name": repo_name})
-                    if not intercept.allowed:
-                        await updater.update_status(TaskState.failed, new_agent_text_message(f"🚨 BLOCKED: {intercept.reason}"))
-                        return
-                    result = await session_client.call_tool("configure_repo", {"repo_name": repo_name})
+                    # Use helper for interception + execution
+                    result = await self._call_tool_with_interception(
+                        "configure_repo", 
+                        {"repo_name": repo_name}, 
+                        session_client, 
+                        updater, 
+                        session
+                    )
+                    if result is None: return # Blocked
+
                     # Sync back to session memory for persistence
                     if session:
                         session.github_repo = repo_name
@@ -178,12 +186,14 @@ class SafeClawAgent:
                         comment_id = int(match.group(1))
                         issue_num = int(match.group(2))
                         
-                        intercept = self.interceptor.intercept("delete_issue_comment", {"issue_number": issue_num, "comment_id": comment_id})
-                        if not intercept.allowed:
-                             await updater.update_status(TaskState.failed, new_agent_text_message(f"🚨 BLOCKED: {intercept.reason}"))
-                             return
-                        
-                        result = await session_client.call_tool("delete_issue_comment", {"issue_number": issue_num, "comment_id": comment_id})
+                        result = await self._call_tool_with_interception(
+                            "delete_issue_comment", 
+                            {"issue_number": issue_num, "comment_id": comment_id},
+                            session_client, 
+                            updater, 
+                            session
+                        )
+                        if result is None: return # Blocked
                     else:
                         await updater.update_status(TaskState.failed, new_agent_text_message("⚠️ Usage: gh: delete comment <id> on issue <num>"))
                         return
@@ -191,27 +201,35 @@ class SafeClawAgent:
                 # 3. Issues (Improved with Regex for better extraction)
                 elif re.search(r'\bissues?\b', cmd):
                     tool_name = "create_issue" if re.search(r'\b(create|new|add)\b', cmd) else "list_issues"
-                    # Manifest check
-                    intercept = self.interceptor.intercept(tool_name, {})
-                    if not intercept.allowed:
-                        await updater.update_status(TaskState.failed, new_agent_text_message(f"🚨 BLOCKED: {intercept.reason}"))
-                        return
+                    
                     if tool_name == "create_issue":
                         title_match = re.search(r'title="([^"]+)"', action)
                         body_match = re.search(r'body="([^"]+)"', action)
                         title = title_match.group(1) if title_match else "Untitled"
                         body = body_match.group(1) if body_match else ""
-                        result = await session_client.call_tool("create_issue", {"title": title, "body": body})
+                        tool_args = {"title": title, "body": body}
                     else:
-                        result = await session_client.call_tool("list_issues", {})
+                        tool_args = {}
+
+                    result = await self._call_tool_with_interception(
+                        tool_name, 
+                        tool_args, 
+                        session_client, 
+                        updater, 
+                        session
+                    )
+                    if result is None: return # Blocked
                 
                 # 3. Pull Requests (Improved with Regex)
                 elif re.search(r'\b(pulls?|prs?|requests)\b', cmd):
-                    intercept = self.interceptor.intercept("list_pull_requests", {})
-                    if not intercept.allowed:
-                        await updater.update_status(TaskState.failed, new_agent_text_message(f"🚨 BLOCKED: {intercept.reason}"))
-                        return
-                    result = await session_client.call_tool("list_pull_requests", {})
+                    result = await self._call_tool_with_interception(
+                        "list_pull_requests", 
+                        {}, 
+                        session_client, 
+                        updater, 
+                        session
+                    )
+                    if result is None: return # Blocked
                 
                 # 5. Check/Info (Default list issues or meta info)
                 elif re.search(r'\b(check|info)\b', cmd):
@@ -235,6 +253,40 @@ class SafeClawAgent:
                     TaskState.failed, 
                     new_agent_text_message(f"❌ GitHub Error: {e}")
                 )
+
+    async def _call_tool_with_interception(
+        self,
+        tool_name: str,
+        tool_args: dict,
+        session_client: Any,
+        updater: Any,
+        session: Any = None
+    ) -> Optional[Any]:
+        """
+        Helper: intercept -> audit -> call tool -> return result.
+        Returns None if blocked.
+        """
+        # Prepare session state
+        escalated_tools = getattr(session, "escalated_tools", set()) if session else set()
+        audit_log = getattr(session, "audit_log", []) if session else []
+
+        # Check Manifest
+        check = self.interceptor.intercept(
+            tool_name, 
+            tool_args, 
+            escalated_tools=escalated_tools,
+            audit_log=audit_log
+        )
+
+        if not check.allowed:
+            await updater.update_status(
+                TaskState.failed, 
+                new_agent_text_message(f"🚨 BLOCKED: {check.reason}")
+            )
+            return None
+
+        # Execute
+        return await session_client.call_tool(tool_name, tool_args)
 
     async def context_aware_action(self, action: str, context: str, updater: Any) -> None:
         """
