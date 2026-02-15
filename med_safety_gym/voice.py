@@ -35,6 +35,7 @@ async def cleanup_voice_note(path: str):
     """Delete a temporary voice note file."""
     try:
         if os.path.exists(path):
-            os.remove(path)
+            import aiofiles.os
+            await aiofiles.os.remove(path)
     except Exception as e:
         logger.warning(f"Failed to cleanup voice note {path}: {e}")

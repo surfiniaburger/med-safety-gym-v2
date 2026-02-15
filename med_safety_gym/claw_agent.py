@@ -80,10 +80,13 @@ class SafeClawAgent:
         # We classify if this is a GitHub operation or a Clinical action.
         # GitHub keywords: 'repo', 'issues', 'github', 'gh:', 'pr ', 'branch', 'pull', 'merge'
         github_keywords = {
-            'repo', 'issues', 'github', 'gh:', 'pr ', 'branch', 'pull', 'merge', 
-            'create issue', 'list issues', 'say ', 'voice ', '!v '
+            'gh:', 'github', 'repo', 'say ', 'voice ', '!v '
         }
-        is_github = any(k in action.lower() for k in github_keywords)
+        # Harden GitHub detection with word boundaries for sensitive keywords
+        # Only auto-route very specific GitHub-related tokens or phrases.
+        # Generic words like 'pull', 'merge', 'issue', 'branch' now require 'gh:' prefix.
+        is_github = (any(k in action.lower() for k in github_keywords) or 
+                     re.search(r'\b(pr|pull request|pull requests|list issues|create issue)\b', action.lower()))
 
         if is_github:
             logger.info(f"Routing to GitHub Tools: {action}")
@@ -116,71 +119,63 @@ class SafeClawAgent:
             new_agent_text_message(f"🔄 Processing GitHub operation: {action}...")
         )
         
-        # Ensure we have a persistent session
-        if not self._github_session:
-            self._github_session = self.github_client_factory()
-            # We open it once and leave it open
-            await self._github_session.__aenter__()
+        # Per PR feedback: Manage client with async with to prevent resource leaks
+        async with self.github_client_factory() as session_client:
+            # RESTORE STATE: If the session memory has a repo, but the tool client doesn't know it, configure it.
+            # This solves the "bot restart" state loss problem.
+            if session and session.github_repo:
+                 await session_client.call_tool("configure_repo", {"repo_name": session.github_repo})
             
-        session_client = self._github_session
-
-        # RESTORE STATE: If the session memory has a repo, but the tool client doesn't know it, configure it.
-        # This solves the "bot restart" state loss problem.
-        if session and session.github_repo:
-             await session_client.call_tool("configure_repo", {"repo_name": session.github_repo})
-        
-        try:
-            # Clean command
-            cmd = action.lower().replace("gh:", "").strip()
-            
-            # 1. Set Repo (handles "set repo", "configure repo", "use repo", and optional "to")
-            if any(x in cmd for x in ["set repo", "configure repo", "use repo"]):
-                # Extract repo name by removing keywords
-                for kw in ["set repo", "configure repo", "use repo", "to"]:
-                    cmd = cmd.replace(kw, "").strip()
-                repo_name = cmd.strip()
-                result = await session_client.call_tool("configure_repo", {"repo_name": repo_name})
-                # Sync back to session memory for persistence
-                if session:
-                    session.github_repo = repo_name
-            
-            # 2. Issues
-            elif "issue" in cmd:
-                if "create" in cmd or "new" in cmd:
-                    title_match = re.search(r'title="([^"]+)"', action)
-                    body_match = re.search(r'body="([^"]+)"', action)
-                    title = title_match.group(1) if title_match else "Untitled"
-                    body = body_match.group(1) if body_match else ""
-                    result = await session_client.call_tool("create_issue", {"title": title, "body": body})
-                else:
-                    result = await session_client.call_tool("list_issues", {})
-            
-            # 3. Pull Requests (Use regex for word boundaries to avoid 'priority' matching 'pr')
-            elif re.search(r'\b(pull|pr|requests)\b', cmd):
-                result = await session_client.call_tool("list_pull_requests", {})
-            
-            # 4. Check/Info (Default list issues or meta info)
-            elif "check" in cmd or "info" in cmd:
-                result = await session_client.call_tool("list_issues", {})
-            
-            # 5. Voice/Speech (Handled primarily by the Telegram Mirror)
-            elif any(x in cmd for x in ["say", "voice", "!v"]):
-                # Strip the keyword and return text for the bridge to speak
-                for kw in ["say", "voice", "!v"]:
-                    cmd = cmd.replace(kw, "").strip()
-                result = cmd if cmd else "Voice mode activated. What would you like me to say?"
+            try:
+                # Clean command
+                cmd = action.lower().replace("gh:", "").strip()
                 
-            else:
-                result = f"Command recognized as GitHub, but specific action unknown: '{cmd}'. Try 'list issues' or 'set repo'."
+                # 1. Set Repo (Improved with Regex as per code review)
+                set_repo_match = re.match(r'(set|configure|use)\s+repo\s+(?:to\s+)?(.+)', cmd)
+                if set_repo_match:
+                    repo_name = set_repo_match.group(2).strip()
+                    result = await session_client.call_tool("configure_repo", {"repo_name": repo_name})
+                    # Sync back to session memory for persistence
+                    if session:
+                        session.github_repo = repo_name
+                
+                # 2. Issues (Improved with Regex for better extraction)
+                elif re.search(r'\bissues?\b', cmd):
+                    if re.search(r'\b(create|new|add)\b', cmd):
+                        title_match = re.search(r'title="([^"]+)"', action)
+                        body_match = re.search(r'body="([^"]+)"', action)
+                        title = title_match.group(1) if title_match else "Untitled"
+                        body = body_match.group(1) if body_match else ""
+                        result = await session_client.call_tool("create_issue", {"title": title, "body": body})
+                    else:
+                        result = await session_client.call_tool("list_issues", {})
+                
+                # 3. Pull Requests (Improved with Regex)
+                elif re.search(r'\b(pulls?|prs?|requests)\b', cmd):
+                    result = await session_client.call_tool("list_pull_requests", {})
+                
+                # 4. Check/Info (Default list issues or meta info)
+                elif re.search(r'\b(check|info)\b', cmd):
+                    result = await session_client.call_tool("list_issues", {})
+                
+                # 5. Voice/Speech (Handled primarily by the Telegram Mirror)
+                elif re.search(r'\b(say|voice|!v)\b', cmd):
+                    # Strip the keyword and return text for the bridge to speak
+                    for kw in ["say", "voice", "!v"]:
+                        cmd = re.sub(rf'\b{re.escape(kw)}\b', "", cmd, flags=re.IGNORECASE).strip()
+                    result = cmd if cmd else "Voice mode activated. What would you like me to say?"
+                    
+                else:
+                    result = f"Command recognized as GitHub, but specific action unknown: '{cmd}'. Try 'list issues' or 'set repo'."
 
-            await updater.update_status(TaskState.completed, new_agent_text_message(str(result)))
+                await updater.update_status(TaskState.completed, new_agent_text_message(str(result)))
 
-        except Exception as e:
-            logger.error(f"GitHub Action Failed: {e}")
-            await updater.update_status(
-                TaskState.failed, 
-                new_agent_text_message(f"❌ GitHub Error: {e}")
-            )
+            except Exception as e:
+                logger.error(f"GitHub Action Failed: {e}")
+                await updater.update_status(
+                    TaskState.failed, 
+                    new_agent_text_message(f"❌ GitHub Error: {e}")
+                )
 
     async def context_aware_action(self, action: str, context: str, updater: Any) -> None:
         """

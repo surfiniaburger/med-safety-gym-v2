@@ -44,6 +44,12 @@ dependencies = [
 "Bug Tracker" = "https://github.com/surfiniaburger/med-safety-gym/issues"
 "Repository" = "https://github.com/surfiniaburger/med-safety-gym"
 
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+filterwarnings = [
+    "ignore::DeprecationWarning:a2a.*",
+]
+
 [project.optional-dependencies]
 agent = [
     "google-adk>=1.0.0",

@@ -5,6 +5,8 @@ Converts Telegram messages → A2A protocol → SafeClaw Agent → Guardian resp
 """
 
 import os
+import re
+import tempfile
 import logging
 import asyncio
 from typing import Optional
@@ -43,8 +45,8 @@ class TelegramBridge:
         self.app.add_handler(CommandHandler("help", self.help_command))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         
-        # Temp directory for voice notes
-        self.temp_dir = "/tmp/safeclaw_voice"
+        # Portable temp directory for voice notes
+        self.temp_dir = os.path.join(tempfile.gettempdir(), "safeclaw_voice")
         os.makedirs(self.temp_dir, exist_ok=True)
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -170,8 +172,8 @@ class TelegramBridge:
         msg_id = update.message.message_id
         file_path = os.path.join(self.temp_dir, f"voice_{chat_id}_{msg_id}.mp3")
         
-        # Clean text for TTS (remove HTML tags if any, though we escaped it above)
-        clean_text = text.replace("<b>", "").replace("</b>", "").replace("🚨", "Alert!").replace("❌", "Denied.")
+        # Clean text for TTS (remove all HTML tags using regex)
+        clean_text = re.sub(r"<[^>]*>", "", text).replace("🚨", "Alert!").replace("❌", "Denied.")
         
         await update.message.reply_chat_action("record_voice")
         

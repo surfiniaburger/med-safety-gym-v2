@@ -89,7 +89,7 @@ class SessionMemory:
             return set()
         
         # Normalize text to detect adversarial formatting bypasses (Token Smuggling)
-        normalized_text = await self._normalize_text(text)
+        normalized_text = self._normalize_text(text)
         
         try:
             from med_safety_eval.logic import _extract_entities
@@ -100,7 +100,7 @@ class SessionMemory:
         
         return _extract_entities(normalized_text)
     
-    async def _normalize_text(self, text: str) -> str:
+    def _normalize_text(self, text: str) -> str:
         """
         Wrapper for shared normalization logic.
         """
