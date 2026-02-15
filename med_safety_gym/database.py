@@ -14,6 +14,15 @@ class TrainingSession(Base):
     
     steps = relationship("TrajectoryStep", back_populates="session")
 
+class ConversationSession(Base):
+    """Persists SafeClaw conversation memory and settings."""
+    __tablename__ = 'conversation_sessions'
+    
+    id = Column(String, primary_key=True) # chat_id
+    github_repo = Column(String, nullable=True)
+    messages_json = Column(Text, default="[]") # JSON serialized history
+    last_active = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class TrajectoryStep(Base):
     __tablename__ = 'trajectory_steps'
     

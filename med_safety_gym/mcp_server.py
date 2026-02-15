@@ -3,12 +3,14 @@ import asyncio
 import json
 import logging
 import os
+import re
 from typing import List, Optional, Dict, Any
 
 from mcp.server.lowlevel import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from .utils import normalize_text
 
 logger = logging.getLogger(__name__)
 
@@ -95,40 +97,7 @@ async def handle_list_tools() -> list[types.Tool]:
     ]
 
 # --- Direct implementation for testing ---
-def normalize_text(text: str) -> str:
-    """
-    Normalize text to detect adversarial formatting bypasses.
-    Example: "U n k n o w n" -> "Unknown"
-    Example: "Un kn own d r ug" -> "Unknowndrug"
-    """
-    if not text:
-        return ""
-    
-    # Split into tokens and identify sequences of short fragments (1-3 chars)
-    tokens = text.split()
-    normalized_tokens = []
-    temp_group = []
-    
-    for token in tokens:
-        # Fragments are typically 1-3 characters
-        if len(token) <= 3:
-            temp_group.append(token)
-        else:
-            if temp_group:
-                if len(temp_group) > 1:
-                    normalized_tokens.append("".join(temp_group))
-                else:
-                    normalized_tokens.append(temp_group[0])
-                temp_group = []
-            normalized_tokens.append(token)
-    
-    if temp_group:
-        if len(temp_group) > 1:
-            normalized_tokens.append("".join(temp_group))
-        else:
-            normalized_tokens.append(temp_group[0])
-            
-    return " ".join(normalized_tokens)
+# Logic moved to med_safety_gym.utils.normalize_text
 
 async def check_entity_parity(action: str, context: str) -> tuple[bool, str]:
     """

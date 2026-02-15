@@ -34,12 +34,21 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.9",
     "numpy>=1.26.0",
+    "PyGithub>=2.0.0",
+    "edge-tts>=7.2.7",
+    "aiofiles>=25.1.0",
 ]
 
 [project.urls]
 "Homepage" = "https://github.com/surfiniaburger/med-safety-gym"
 "Bug Tracker" = "https://github.com/surfiniaburger/med-safety-gym/issues"
 "Repository" = "https://github.com/surfiniaburger/med-safety-gym"
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+filterwarnings = [
+    "ignore::DeprecationWarning:a2a.*",
+]
 
 [project.optional-dependencies]
 agent = [
@@ -49,10 +58,11 @@ agent = [
 ]
 mcp = [
     "mcp>=1.0.0",
-    "fastmcp>=0.5.0",
+    "fastmcp==3.0.0b2",
 ]
 dev = [
     "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
     "ipykernel>=6.29.5",
 ]
