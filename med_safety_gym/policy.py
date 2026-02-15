@@ -28,17 +28,27 @@ def check_network(domain: str, allowed_domains: List[str]) -> PolicyResult:
 
 def check_filesystem(path: str, allowed_paths: List[str]) -> PolicyResult:
     """Check if a file path is within any allowed directory."""
-    normalized = os.path.normpath(path)
-
-    # Detect path traversal: if normpath changes the prefix, it's suspicious
-    for allowed in allowed_paths:
-        allowed_norm = os.path.normpath(allowed)
-        if normalized.startswith(allowed_norm):
-            return PolicyResult(allowed=True, reason="")
+    try:
+        # Resolve to absolute path, following symlinks
+        # We use os.path.realpath for maximum compatibility and security
+        real_path = os.path.realpath(path)
+        
+        for allowed in allowed_paths:
+            # Resolve allowed path too (e.g. if allowed is ".")
+            real_allowed = os.path.realpath(allowed)
+            
+            # Check if real_path starts with real_allowed
+            # Use os.path.commonpath to robustly check if the resolved
+            # path is contained within an allowed directory.
+            if os.path.commonpath([real_allowed, real_path]) == real_allowed:
+                return PolicyResult(allowed=True, reason="")
+                
+    except Exception as e:
+        return PolicyResult(allowed=False, reason=f"Path resolution failed: {e}")
 
     return PolicyResult(
         allowed=False,
-        reason=f"Filesystem access to '{normalized}' blocked. Allowed: {allowed_paths}",
+        reason=f"Filesystem access to '{path}' blocked. Allowed: {allowed_paths}",
     )
 
 

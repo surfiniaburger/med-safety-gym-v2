@@ -36,7 +36,8 @@ async def test_mcp_server_list_tools(server_params):
             tool_names = [tool.name for tool in tools.tools]
             assert "get_eval_tasks" in tool_names
             assert "evaluate_batch" in tool_names
-            assert len(tool_names) == 2
+            assert "check_entity_parity" in tool_names
+            assert len(tool_names) == 3
 
 
 @pytest.mark.anyio
