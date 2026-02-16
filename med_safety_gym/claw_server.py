@@ -47,7 +47,14 @@ def create_app(host="0.0.0.0", port=8003, card_url=None):
         agent_card=agent_card,
         http_handler=request_handler,
     )
-    return server.build()
+    starlette_app = server.build()
+
+    @starlette_app.on_event("shutdown")
+    async def on_shutdown():
+        logger.info("🛑 Shutting down SafeClaw A2A Server...")
+        await request_handler.agent_executor.shutdown()
+
+    return starlette_app
 
 app = create_app()
 

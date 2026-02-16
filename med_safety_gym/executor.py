@@ -25,6 +25,13 @@ class Executor(AgentExecutor):
         self.agents = {} # context_id to agent instance
         self.agent_class = agent_class
 
+    async def shutdown(self):
+        """Shutdown all active agents."""
+        for agent in self.agents.values():
+            if hasattr(agent, 'shutdown'):
+                await agent.shutdown()
+        self.agents.clear()
+
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         msg = context.message
         if not msg:

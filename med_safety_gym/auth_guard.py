@@ -2,6 +2,7 @@ import subprocess
 import os
 import sys
 import logging
+import shlex
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +18,9 @@ def require_local_auth(reason: str) -> bool:
         logger.warning(f"Local auth requested on {sys.platform}, bypassing challenge.")
         return True
 
-    # Use osascript to trigger the system Touch ID/Password dialog
-    # We use 'do shell script "true"' because it's a no-op that forces the auth prompt.
-    reason_safe = reason.replace('"', '\\"')
-    script = f'do shell script "echo Authenticating for SafeClaw: {reason_safe}" with administrator privileges'
+    # Use shlex.quote to properly escape the message for the shell
+    message = f"Authenticating for SafeClaw: {reason}"
+    script = f'do shell script "echo {shlex.quote(message)}" with administrator privileges'
     
     try:
         # We use a 60s timeout to allow the user time to react
