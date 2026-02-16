@@ -138,8 +138,7 @@ async def delete_repo(ctx: Context) -> str:
     except Exception as e:
         return f"Error deleting repository: {str(e)}"
 
-# Initialize visibility: Hide admin tools by default
-mcp.disable(tags={"admin"})
+# Admin tools are enabled here; security is enforced at the Agent level.
 
 if __name__ == "__main__":
     mcp.run()

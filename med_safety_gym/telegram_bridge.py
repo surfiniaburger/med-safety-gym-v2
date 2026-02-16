@@ -31,6 +31,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Silence noisy third-party libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+
+class TelegramUpdater:
+    """Consolidated A2A TaskUpdater for Telegram with support for direct queries."""
+    def __init__(self, callback_query=None):
+        self.callback_query = callback_query
+        self.responses = []
+        self.is_failed = False
+        self.state = None
+        self.metadata = None
+
+    async def update_status(self, state, message, metadata=None):
+        self.state = state
+        self.metadata = metadata
+        if state == TaskState.failed:
+            self.is_failed = True
+        
+        response_text = message.parts[0].root.text
+        self.responses.append(response_text)
+        
+        # If this is a direct update (callback resume), reply immediately
+        if self.callback_query:
+            await self.callback_query.message.reply_text(html.escape(response_text), parse_mode='HTML')
+
+    async def start_work(self): pass
+    async def complete(self): pass
+    async def failed(self, message):
+        await self.update_status(TaskState.failed, message)
 
 class TelegramBridge:
     """Bridges Telegram messages to SafeClaw A2A Agent."""
@@ -104,44 +136,19 @@ class TelegramBridge:
             # Create mock updater to capture agent responses
             responses = []
             
-            class TelegramUpdater:
-                """Mock updater that captures responses for Telegram."""
-                def __init__(self):
-                    self.is_failed = False
-
-                async def update_status(self, state, message, metadata=None):
-                    self.state = state
-                    self.metadata = metadata
-                    if state == TaskState.failed:
-                        self.is_failed = True
-                    response_text = message.parts[0].root.text
-                    responses.append(response_text)
-                
-                async def start_work(self):
-                    pass
-                
-                async def complete(self):
-                    pass
-                
-                async def failed(self, message):
-                    self.is_failed = True
-                    response_text = message.parts[0].root.text
-                    responses.append(response_text)
-            
             updater = TelegramUpdater()
             
             # Run agent with session context
             await self.agent.run(a2a_message, updater, session=session)
             
-            # Handle results
+            # Handle results (Toxic Context Prevention)
             if updater.is_failed:
-                # Toxic Context Prevention: Roll back the history for this session
-                # because the action was unsafe. We don't want to learn from it.
                 session.pop_message()
-            else:
-                # Commit: Add assistant response to history
-                if responses:
-                    session.add_message("assistant", "\n\n".join(responses))
+            elif updater.responses:
+                session.add_message("assistant", "\n\n".join(updater.responses))
+            
+            # Final response formatting
+            responses = updater.responses
             
             # Persist to database (SQLite)
             self.sessions.save(session)
@@ -199,12 +206,7 @@ class TelegramBridge:
             
             await query.edit_message_text(f"⏳ <b>Executing:</b> {html.escape(tool_name)}...", parse_mode='HTML')
             
-            # Use TaskUpdater logic
-            class DirectUpdater:
-                async def update_status(self, state, message, metadata=None):
-                    await query.message.reply_text(html.escape(message.parts[0].root.text), parse_mode='HTML')
-            
-            await self.agent.execute_confirmed_tool(tool_name, tool_args, DirectUpdater(), session=session)
+            await self.agent.execute_confirmed_tool(tool_name, tool_args, TelegramUpdater(query), session=session)
             session.pending_action = None
         else:
             await query.edit_message_text("❌ <b>Action Rejected.</b>", parse_mode='HTML')
