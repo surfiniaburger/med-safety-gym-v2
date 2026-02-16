@@ -223,7 +223,7 @@ class TestSessionEscalation:
     def test_session_starts_without_escalation(self):
         """New session has no escalated tools."""
         session = SessionMemory(user_id="user_1")
-        assert session.escalated_tools == set()
+        assert session.escalated_tools == {}
 
     def test_escalate_tool(self):
         """Can escalate a tool."""

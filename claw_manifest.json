@@ -22,6 +22,9 @@
             "admin": [
                 "delete_issue_comment",
                 "unlock_admin_tools"
+            ],
+            "critical": [
+                "delete_repo"
             ]
         }
     }

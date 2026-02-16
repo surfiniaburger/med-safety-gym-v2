@@ -22,11 +22,12 @@ class ToolTiers:
     user: List[str] = field(default_factory=list)
     write: List[str] = field(default_factory=list)
     admin: List[str] = field(default_factory=list)
+    critical: List[str] = field(default_factory=list)
 
     @property
     def all_tools(self) -> List[str]:
         """Flat list of every tool across all tiers."""
-        return self.user + self.write + self.admin
+        return self.user + self.write + self.admin + self.critical
 
     def tier_for(self, tool_name: str) -> str:
         """Return the tier a tool belongs to, or 'denied'."""
@@ -36,6 +37,8 @@ class ToolTiers:
             return "write"
         if tool_name in self.admin:
             return "admin"
+        if tool_name in self.critical:
+            return "critical"
         return "denied"
 
 
@@ -78,6 +81,7 @@ class SkillManifest:
                 user=raw_tools.get("user", []),
                 write=raw_tools.get("write", []),
                 admin=raw_tools.get("admin", []),
+                critical=raw_tools.get("critical", []),
             )
 
         permissions = PermissionSet(
@@ -100,6 +104,8 @@ class SkillManifest:
             config[tool_name] = ScopeConfig(auth="write", tags=[])
         for tool_name in self.permissions.tools.admin:
             config[tool_name] = ScopeConfig(auth="admin", tags=["admin"])
+        for tool_name in self.permissions.tools.critical:
+            config[tool_name] = ScopeConfig(auth="admin", tags=["admin", "critical"])
         return config
 
 

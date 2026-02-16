@@ -23,7 +23,8 @@ def interceptor():
             "fs": ["./workspace"],
             "tools": {
                 "user": ["list_issues", "create_issue"],
-                "admin": ["delete_repo"]
+                "admin": ["delete_repo"],
+                "critical": ["destroy_everything"]
             },
         },
     })
@@ -62,35 +63,7 @@ def test_audit_log_records_blocked(interceptor):
     assert entry["allowed"] is False
 
 
-def test_admin_tool_blocked_by_default(interceptor):
-    """Admin tools require explicit escalation."""
-    result = interceptor.intercept("delete_repo", {}, escalated_tools=set())
-    assert result.allowed is False
-    assert "escalation" in result.reason
-    assert result.tier == "admin"
-
-
-def test_escalation_unlocks_admin_tool(interceptor):
-    """Passing escalated_tools allows the admin tool."""
-    # Session state
-    escalated = set()
-
-    # Initially blocked
-    assert interceptor.intercept("delete_repo", {}, escalated_tools=escalated).allowed is False
-    
-    # Escalate (simulate session update)
-    escalated.add("delete_repo")
-    
-    # Now allowed
-    result = interceptor.intercept("delete_repo", {}, escalated_tools=escalated)
-    assert result.allowed is True
-    assert result.tier == "admin"
-
-
-def test_escalate_all_admin_unlocks_everything(interceptor):
-    escalated = set()
-    # Simulate "escalate all" logic (now outside interceptor)
-    for tool in interceptor.manifest.permissions.tools.admin:
-        escalated.add(tool)
-
-    assert interceptor.intercept("delete_repo", {}, escalated_tools=escalated).allowed is True
+def test_admin_and_critical_tools_allowed_by_policy(interceptor):
+    """Manifest policy allows admin/critical tools if present; guards handle escalation."""
+    assert interceptor.intercept("delete_repo", {}).allowed is True
+    assert interceptor.intercept("destroy_everything", {}).allowed is True

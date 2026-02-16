@@ -21,6 +21,8 @@ class ConversationSession(Base):
     id = Column(String, primary_key=True) # chat_id
     github_repo = Column(String, nullable=True)
     messages_json = Column(Text, default="[]") # JSON serialized history
+    pending_action_json = Column(Text, nullable=True) # HITL state
+    escalated_tools_json = Column(Text, default="[]") # Persisted escalation
     last_active = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class TrajectoryStep(Base):
