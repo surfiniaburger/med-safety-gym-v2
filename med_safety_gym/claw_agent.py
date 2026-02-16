@@ -49,6 +49,7 @@ class SafeClawAgent:
                 args=["run", "python", "-m", "med_safety_gym.github_tools"]
             )
         )
+        self._github_client = None
         self._github_session = None
 
         # Load manifest for permission enforcement
@@ -93,15 +94,20 @@ class SafeClawAgent:
         
         # ROUTING LOGIC:
         # We classify if this is a GitHub operation or a Clinical action.
-        # GitHub keywords: 'repo', 'issues', 'github', 'gh:', 'pr ', 'branch', 'pull', 'merge'
-        github_keywords = {
-            'gh:', 'github', 'repo', 'say ', 'voice ', '!v ', 'unlock', 'admin'
-        }
-        # Harden GitHub detection with word boundaries for sensitive keywords
-        # Only auto-route very specific GitHub-related tokens or phrases.
-        # Generic words like 'pull', 'merge', 'issue', 'branch' now require 'gh:' prefix.
-        is_github = (any(k in action.lower() for k in github_keywords) or 
-                     re.search(r'\b(pr|pull request|pull requests|list issues|create issue)\b', action.lower()))
+        # Use contextual regex patterns to avoid false positives (e.g., 'admin' in 'administer')
+        github_patterns = [
+            r'\b(configure_repo|delete_repo|create_issue|list_issues|list_pull_requests)\b',
+            r'\b(unlock|admin)\s+(tools|permissions|access)\b',
+            r'\b(delete|remove)\s+(repo|repository|comment)\b',
+            r'^(list|show|get|create|new|add)\s+(issues?|prs?|pulls?|repos?|repositories|comment)\b'
+        ]
+        
+        is_github = (
+            action.lower().startswith("gh:") or 
+            'gh:' in action.lower() or
+            re.search(r'^(!v|voice|say)\b', action.lower()) or
+            any(re.search(p, action.lower()) for p in github_patterns)
+        )
 
         if is_github:
             logger.info(f"Routing to GitHub Tools: {action}")
@@ -121,144 +127,95 @@ class SafeClawAgent:
         
         await self.context_aware_action(action, context, updater)
 
+    async def _get_github_session(self):
+        """Persistent GitHub session helper."""
+        if self._github_session is None:
+            self._github_client = self.github_client_factory()
+            self._github_session = await self._github_client.__aenter__()
+        return self._github_session
+
+    async def _close_github_session(self):
+        """Cleanup GitHub session."""
+        if self._github_client:
+            await self._github_client.__aexit__(None, None, None)
+            self._github_client = None
+            self._github_session = None
+
     async def github_action(self, action: str, updater: Any, session: Any = None) -> None:
-        """
-        Interacts with the GitHub MCP server to perform repo operations.
-        Example intents: 
-        - 'gh: list issues'
-        - 'gh: set repo surfiniaburger/med-safety-gym-v2'
-        - 'gh: create issue title="Bug" body="Found error"'
-        """
-        await updater.update_status(
-            TaskState.working, 
-            new_agent_text_message(f"🔄 Processing GitHub operation: {action}...")
-        )
+        """Interacts with the GitHub MCP server to perform repo operations."""
+        await updater.update_status(TaskState.working, new_agent_text_message(f"🔄 Processing GitHub operation: {action}..."))
         
-        # Per PR feedback: Manage client with async with to prevent resource leaks
-        async with self.github_client_factory() as session_client:
-            # RESTORE STATE: If the session memory has a repo, but the tool client doesn't know it, configure it.
-            # This solves the "bot restart" state loss problem.
-            if session and session.github_repo:
-                 await session_client.call_tool("configure_repo", {"repo_name": session.github_repo})
-            
-            try:
-                # Clean command
-                cmd = action.lower().replace("gh:", "").strip()
-                
-                # 0. JIT Escalation (Least Privilege)
-                # Instead of a global "unlock", we now recommend using the tool directly.
-                # If they ask to "unlock", we'll tell them to just ask for what they need.
-                if "unlock" in cmd and "admin" in cmd:
-                    await updater.update_status(
-                        TaskState.working,
-                        new_agent_text_message("🔒 Zero-Trust Policy: Global session unlock is disabled. Please request the specific high-stakes action you need (e.g., 'gh: delete repo'), and I will request a Just-In-Time (JIT) confirmation.")
-                    )
-                    return
-
-                # 1. Set Repo (Improved with Regex as per code review)
-                set_repo_match = re.match(r'(set|configure|use)\s+repo\s+(?:to\s+)?(.+)', cmd)
-                if set_repo_match:
-                    repo_name = set_repo_match.group(2).strip()
-                    # Use helper for interception + execution
-                    result = await self._call_tool_with_interception(
-                        "configure_repo", 
-                        {"repo_name": repo_name}, 
-                        session_client, 
-                        updater, 
-                        session
-                    )
-                    if result is None: return # Blocked
-
-                    # Sync back to session memory for persistence
-                    if session:
-                        session.github_repo = repo_name
-                
-                # 2. Delete Repository (Critical Tool)
-                elif re.search(r'\b(delete|remove)\s+(repo|repository)\b', cmd) or cmd == "delete_repo":
-                    result = await self._call_tool_with_interception(
-                        "delete_repo", 
-                        {}, 
-                        session_client, 
-                        updater, 
-                        session
-                    )
-                    if result is None: return # Blocked
-                
-                # 3. Delete Comment Action (Admin Tool) - Must be before generic 'issues' check
-                elif "delete" in cmd and "comment" in cmd:
-                    # Regex: delete comment 123 on issue 456
-                    match = re.search(r'delete\s+comment\s+(\d+)\s+(?:on|from)\s+issue\s+(\d+)', cmd)
-                    if match:
-                        comment_id = int(match.group(1))
-                        issue_num = int(match.group(2))
-                        
-                        result = await self._call_tool_with_interception(
-                            "delete_issue_comment", 
-                            {"issue_number": issue_num, "comment_id": comment_id},
-                            session_client, 
-                            updater, 
-                            session
-                        )
-                        if result is None: return # Blocked
-                    else:
-                        await updater.update_status(TaskState.failed, new_agent_text_message("⚠️ Usage: gh: delete comment <id> on issue <num>"))
-                        return
-
-                # 3. Issues (Improved with Regex for better extraction)
-                elif re.search(r'\bissues?\b', cmd):
-                    tool_name = "create_issue" if re.search(r'\b(create|new|add)\b', cmd) else "list_issues"
-                    
-                    if tool_name == "create_issue":
-                        title_match = re.search(r'title="([^"]+)"', action)
-                        body_match = re.search(r'body="([^"]+)"', action)
-                        title = title_match.group(1) if title_match else "Untitled"
-                        body = body_match.group(1) if body_match else ""
-                        tool_args = {"title": title, "body": body}
-                    else:
-                        tool_args = {}
-
-                    result = await self._call_tool_with_interception(
-                        tool_name, 
-                        tool_args, 
-                        session_client, 
-                        updater, 
-                        session
-                    )
-                    if result is None: return # Blocked
-                
-                # 3. Pull Requests (Improved with Regex)
-                elif re.search(r'\b(pulls?|prs?|requests)\b', cmd):
-                    result = await self._call_tool_with_interception(
-                        "list_pull_requests", 
-                        {}, 
-                        session_client, 
-                        updater, 
-                        session
-                    )
-                    if result is None: return # Blocked
-                
-                # 5. Check/Info (Default list issues or meta info)
-                elif re.search(r'\b(check|info)\b', cmd):
-                    result = await session_client.call_tool("list_issues", {})
-                
-                # 5. Voice/Speech (Handled primarily by the Telegram Mirror)
-                elif re.search(r'\b(say|voice|!v)\b', cmd):
-                    # Strip the keyword and return text for the bridge to speak
-                    for kw in ["say", "voice", "!v"]:
-                        cmd = re.sub(rf'\b{re.escape(kw)}\b', "", cmd, flags=re.IGNORECASE).strip()
-                    result = cmd if cmd else "Voice mode activated. What would you like me to say?"
-                    
-                else:
-                    result = f"Command recognized as GitHub, but specific action unknown: '{cmd}'. Try 'list issues' or 'set repo'."
-
+        session_client = await self._get_github_session()
+        if session and session.github_repo:
+             await session_client.call_tool("configure_repo", {"repo_name": session.github_repo})
+        
+        try:
+            cmd = action.lower().replace("gh:", "").strip()
+            result = await self._dispatch_github_cmd(cmd, action, session_client, updater, session)
+            if result is not None:
                 await updater.update_status(TaskState.completed, new_agent_text_message(str(result)))
+        except Exception as e:
+            logger.error(f"GitHub Action Failed: {e}")
+            await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ GitHub Error: {e}"))
 
-            except Exception as e:
-                logger.error(f"GitHub Action Failed: {e}")
-                await updater.update_status(
-                    TaskState.failed, 
-                    new_agent_text_message(f"❌ GitHub Error: {e}")
-                )
+    async def _dispatch_github_cmd(self, cmd: str, action: str, client: Any, updater: Any, session: Any) -> Any:
+        """Dispatch GitHub command to specific handler."""
+        if "unlock" in cmd and "admin" in cmd: return await self._handle_unlock_policy(updater)
+        
+        handlers = [
+            (r'(set|configure|use)\s+repo\s+(?:to\s+)?(.+)', self._handle_repo_config),
+            (r'\b(delete|remove)\s+(repo|repository)\b|delete_repo', self._handle_repo_deletion),
+            (r'delete\s+comment\s+(\d+)\s+(?:on|from)\s+issue\s+(\d+)', self._handle_comment_deletion),
+            (r'\bissues?\b', self._handle_issue_ops),
+            (r'\b(pulls?|prs?|requests)\b', self._handle_pr_ops),
+            (r'\b(check|info)\b', self._handle_info_ops),
+            (r'\b(say|voice|!v)\b', self._handle_voice_ops)
+        ]
+        
+        for pattern, handler in handlers:
+            match = re.search(pattern, cmd)
+            if match: return await handler(match, cmd, action, client, updater, session)
+            
+        return f"Command recognized as GitHub, but specific action unknown: '{cmd}'."
+
+    async def _handle_unlock_policy(self, updater: Any):
+        msg = "🔒 Zero-Trust Policy: Global session unlock is disabled. Request specific actions (e.g. 'gh: delete repo') for JIT confirmation."
+        await updater.update_status(TaskState.working, new_agent_text_message(msg))
+        return None
+
+    async def _handle_repo_config(self, match, cmd, action, client, updater, session):
+        repo_name = match.group(2).strip()
+        res = await self._call_tool_with_interception("configure_repo", {"repo_name": repo_name}, client, updater, session)
+        if res and session: session.github_repo = repo_name
+        return res
+
+    async def _handle_repo_deletion(self, match, cmd, action, client, updater, session):
+        return await self._call_tool_with_interception("delete_repo", {}, client, updater, session)
+
+    async def _handle_comment_deletion(self, match, cmd, action, client, updater, session):
+        args = {"issue_number": int(match.group(2)), "comment_id": int(match.group(1))}
+        return await self._call_tool_with_interception("delete_issue_comment", args, client, updater, session)
+
+    async def _handle_issue_ops(self, match, cmd, action, client, updater, session):
+        is_create = re.search(r'\b(create|new|add)\b', cmd)
+        tool = "create_issue" if is_create else "list_issues"
+        args = self._extract_issue_args(action) if is_create else {}
+        return await self._call_tool_with_interception(tool, args, client, updater, session)
+
+    def _extract_issue_args(self, action: str) -> dict:
+        t = re.search(r'title="([^"]+)"', action)
+        b = re.search(r'body="([^"]+)"', action)
+        return {"title": t.group(1) if t else "Untitled", "body": b.group(1) if b else ""}
+
+    async def _handle_pr_ops(self, match, cmd, action, client, updater, session):
+        return await self._call_tool_with_interception("list_pull_requests", {}, client, updater, session)
+
+    async def _handle_info_ops(self, match, cmd, action, client, updater, session):
+        return await client.call_tool("list_issues", {})
+
+    async def _handle_voice_ops(self, match, cmd, action, client, updater, session):
+        for kw in ["say", "voice", "!v"]: cmd = re.sub(rf'\b{re.escape(kw)}\b', "", cmd, flags=re.IGNORECASE).strip()
+        return cmd or "Voice mode activated. What would you like me to say?"
 
     async def _call_tool_with_interception(
         self,
@@ -269,7 +226,7 @@ class SafeClawAgent:
         session: Any = None
     ) -> Optional[Any]:
         """Orchestrate tool execution with manifest checks and security guards."""
-        check = self._check_manifest_interception(tool_name, tool_args, updater, session)
+        check = await self._check_manifest_interception(tool_name, tool_args, updater, session)
         if not check.allowed:
             return None
 
@@ -301,17 +258,16 @@ class SafeClawAgent:
             except Exception as e:
                 await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Execution error: {e}"))
 
-    def _check_manifest_interception(self, tool_name: str, tool_args: dict, updater: Any, session: Any) -> Any:
+    async def _check_manifest_interception(self, tool_name: str, tool_args: dict, updater: Any, session: Any) -> Any:
         """Verify the tool call against the manifest policy."""
         audit_log = getattr(session, "audit_log", []) if session else []
         check = self.interceptor.intercept(tool_name, tool_args, audit_log)
         
-        # We don't block here if the updater handles the message, but for consistency:
         if not check.allowed:
-            asyncio.create_task(updater.update_status(
+            await updater.update_status(
                 TaskState.failed, 
                 new_agent_text_message(f"🚨 BLOCKED: {check.reason}")
-            ))
+            )
         return check
 
     async def _apply_security_guards(self, check: Any, tool_name: str, tool_args: dict, updater: Any, session: Any = None) -> bool:

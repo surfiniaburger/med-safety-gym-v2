@@ -19,7 +19,8 @@ def require_local_auth(reason: str) -> bool:
 
     # Use osascript to trigger the system Touch ID/Password dialog
     # We use 'do shell script "true"' because it's a no-op that forces the auth prompt.
-    script = f'do shell script "echo Authenticaticating for SafeClaw: {reason}" with administrator privileges'
+    reason_safe = reason.replace('"', '\\"')
+    script = f'do shell script "echo Authenticating for SafeClaw: {reason_safe}" with administrator privileges'
     
     try:
         # We use a 60s timeout to allow the user time to react
