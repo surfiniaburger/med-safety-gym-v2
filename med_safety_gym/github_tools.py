@@ -118,6 +118,26 @@ async def list_pull_requests(ctx: Context, state: str = "open") -> str:
     except Exception as e:
         return f"Error listing PRs: {str(e)}"
 
+@mcp.tool(tags=["admin"])
+async def delete_repo(ctx: Context) -> str:
+    """
+    Delete the configured repository (Admin/Critical).
+    Requires 'delete' permissions on GitHub.
+    """
+    repo_name = await ctx.get_state("repo_name")
+    if not repo_name:
+         return "Error: Repository not configured. Call configure_repo first."
+         
+    try:
+        g = get_github_client()
+        repo = g.get_repo(repo_name)
+        repo.delete()
+        # Clear state after deletion
+        await ctx.set_state("repo_name", None)
+        return f"Successfully deleted repository: {repo_name}"
+    except Exception as e:
+        return f"Error deleting repository: {str(e)}"
+
 # Initialize visibility: Hide admin tools by default
 mcp.disable(tags={"admin"})
 

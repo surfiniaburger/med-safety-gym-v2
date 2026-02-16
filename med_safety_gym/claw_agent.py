@@ -3,12 +3,15 @@ import logging
 import os
 import re
 import json
+import asyncio
 from typing import Any, Callable, Optional, Union
 from a2a.types import Message, TaskState
 from a2a.utils import new_agent_text_message
 from .mcp_client_adapter import MCPClientAdapter
 from .skill_manifest import load_manifest, DEFAULT_MANIFEST
 from .manifest_interceptor import ManifestInterceptor
+from .auth_guard import require_local_auth
+from .vision_audit import get_audit_summary
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +95,7 @@ class SafeClawAgent:
         # We classify if this is a GitHub operation or a Clinical action.
         # GitHub keywords: 'repo', 'issues', 'github', 'gh:', 'pr ', 'branch', 'pull', 'merge'
         github_keywords = {
-            'gh:', 'github', 'repo', 'say ', 'voice ', '!v '
+            'gh:', 'github', 'repo', 'say ', 'voice ', '!v ', 'unlock', 'admin'
         }
         # Harden GitHub detection with word boundaries for sensitive keywords
         # Only auto-route very specific GitHub-related tokens or phrases.
@@ -111,7 +114,7 @@ class SafeClawAgent:
         # Get conversation context (excluding current action to avoid self-validation)
         session_context = ""
         if session:
-            session_context = session.get_medical_context(exclude_latest=True)
+            session_context = await session.get_medical_context(exclude_latest=True)
         
         # Merge with base knowledge for a robust safety context
         context = f"{BASE_MEDICAL_KNOWLEDGE}\n\nCONVERSATION CONTEXT:\n{session_context}"
@@ -142,21 +145,13 @@ class SafeClawAgent:
                 # Clean command
                 cmd = action.lower().replace("gh:", "").strip()
                 
-                # 0. Admin Escalation
+                # 0. JIT Escalation (Least Privilege)
+                # Instead of a global "unlock", we now recommend using the tool directly.
+                # If they ask to "unlock", we'll tell them to just ask for what they need.
                 if "unlock" in cmd and "admin" in cmd:
-                    # 1. Update Session Memory (Client-side state)
-                    if session:
-                        # Manually escalate all admin tools from manifest
-                        for tool in self.interceptor.manifest.permissions.tools.admin:
-                            session.escalate_tool(tool)
-                    
-                    # 2. Update FastMCP Server (Server-side)
-                    # We need to call unlock_admin_tools to show the tools
-                    # Note: We don't intercept this call because it IS the unlocker
-                    result = await session_client.call_tool("unlock_admin_tools", {})
                     await updater.update_status(
-                        TaskState.working, 
-                        new_agent_text_message(f"🔓 Admin Escalation: {result}")
+                        TaskState.working,
+                        new_agent_text_message("🔒 Zero-Trust Policy: Global session unlock is disabled. Please request the specific high-stakes action you need (e.g., 'gh: delete repo'), and I will request a Just-In-Time (JIT) confirmation.")
                     )
                     return
 
@@ -178,7 +173,18 @@ class SafeClawAgent:
                     if session:
                         session.github_repo = repo_name
                 
-                # 2. Delete Comment Action (Admin Tool) - Must be before generic 'issues' check
+                # 2. Delete Repository (Critical Tool)
+                elif re.search(r'\b(delete|remove)\s+(repo|repository)\b', cmd) or cmd == "delete_repo":
+                    result = await self._call_tool_with_interception(
+                        "delete_repo", 
+                        {}, 
+                        session_client, 
+                        updater, 
+                        session
+                    )
+                    if result is None: return # Blocked
+                
+                # 3. Delete Comment Action (Admin Tool) - Must be before generic 'issues' check
                 elif "delete" in cmd and "comment" in cmd:
                     # Regex: delete comment 123 on issue 456
                     match = re.search(r'delete\s+comment\s+(\d+)\s+(?:on|from)\s+issue\s+(\d+)', cmd)
@@ -262,31 +268,84 @@ class SafeClawAgent:
         updater: Any,
         session: Any = None
     ) -> Optional[Any]:
-        """
-        Helper: intercept -> audit -> call tool -> return result.
-        Returns None if blocked.
-        """
-        # Prepare session state
-        escalated_tools = getattr(session, "escalated_tools", set()) if session else set()
-        audit_log = getattr(session, "audit_log", []) if session else []
-
-        # Check Manifest
-        check = self.interceptor.intercept(
-            tool_name, 
-            tool_args, 
-            escalated_tools=escalated_tools,
-            audit_log=audit_log
-        )
-
+        """Orchestrate tool execution with manifest checks and security guards."""
+        check = self._check_manifest_interception(tool_name, tool_args, updater, session)
         if not check.allowed:
-            await updater.update_status(
-                TaskState.failed, 
-                new_agent_text_message(f"🚨 BLOCKED: {check.reason}")
-            )
             return None
 
-        # Execute
+        if not await self._apply_security_guards(check, tool_name, tool_args, updater, session=session):
+            return None
+
         return await session_client.call_tool(tool_name, tool_args)
+
+    async def execute_confirmed_tool(self, tool_name: str, tool_args: dict, updater: Any, session: Any = None) -> None:
+        """Bypass guards and execute a tool that has been manually approved by the user."""
+        
+        # JIT Escalation: Escalate only the approved tool with a short-lived TTL (5 mins)
+        if session:
+            session.escalate_tool(tool_name)
+            
+            # Persist to DB
+            from .session_memory import SessionStore
+            store = SessionStore()
+            store.save(session)
+        
+        async with self.github_client_factory() as session_client:
+            # Restore repo from session
+            if session and session.github_repo:
+                 await session_client.call_tool("configure_repo", {"repo_name": session.github_repo})
+            
+            try:
+                result = await session_client.call_tool(tool_name, tool_args)
+                await updater.update_status(TaskState.completed, new_agent_text_message(str(result)))
+            except Exception as e:
+                await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Execution error: {e}"))
+
+    def _check_manifest_interception(self, tool_name: str, tool_args: dict, updater: Any, session: Any) -> Any:
+        """Verify the tool call against the manifest policy."""
+        audit_log = getattr(session, "audit_log", []) if session else []
+        check = self.interceptor.intercept(tool_name, tool_args, audit_log)
+        
+        # We don't block here if the updater handles the message, but for consistency:
+        if not check.allowed:
+            asyncio.create_task(updater.update_status(
+                TaskState.failed, 
+                new_agent_text_message(f"🚨 BLOCKED: {check.reason}")
+            ))
+        return check
+
+    async def _apply_security_guards(self, check: Any, tool_name: str, tool_args: dict, updater: Any, session: Any = None) -> bool:
+        """Enforce additional guards for critical or sensitive actions."""
+        # JIT Bypass: If the tool is already escalated in the session (time-bound), skip HITL.
+        if session and session.is_tool_escalated(tool_name):
+            return True
+
+        # 1. Vision Audit (Generate summary for the user)
+        audit_summary = await get_audit_summary(tool_name, tool_args)
+        
+        # 2. Critical Tier: Local Biometrics/Auth FIRST
+        if check.tier == "critical":
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(f"🔐 CRITICAL ACTION: {tool_name}\n{audit_summary}\nPlease verify on your Mac...")
+            )
+            if not require_local_auth(f"Authorize tool: {tool_name}"):
+                await updater.update_status(TaskState.failed, new_agent_text_message("🚫 System authentication failed or canceled."))
+                return False
+
+        # 3. Sensitive Tiers (Admin, Critical): Require Telegram Approval
+        if check.tier in ("admin", "critical"):
+            # Signal that we need input/confirmation
+            await updater.update_status(
+                TaskState.input_required,
+                new_agent_text_message(f"🚨 INTERVENTION REQUIRED\n\n{audit_summary}\n\nDo you want to proceed?"),
+                metadata={"tool_name": tool_name, "tool_args": tool_args}
+            )
+            # We return False here to STOP the current execution flow.
+            # The bridge will handle the resume by calling a different method or re-running with a flag.
+            return False
+
+        return True
 
     async def context_aware_action(self, action: str, context: str, updater: Any) -> None:
         """

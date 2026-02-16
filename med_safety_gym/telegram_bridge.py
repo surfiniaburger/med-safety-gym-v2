@@ -10,9 +10,10 @@ import tempfile
 import logging
 import asyncio
 from typing import Optional
+from dotenv import load_dotenv
 
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import html
 
 from a2a.types import Message, Part, TextPart, TaskState
@@ -44,6 +45,7 @@ class TelegramBridge:
         self.app.add_handler(CommandHandler("start", self.start_command))
         self.app.add_handler(CommandHandler("help", self.help_command))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        self.app.add_handler(CallbackQueryHandler(self.handle_callback))
         
         # Portable temp directory for voice notes
         self.temp_dir = os.path.join(tempfile.gettempdir(), "safeclaw_voice")
@@ -107,7 +109,9 @@ class TelegramBridge:
                 def __init__(self):
                     self.is_failed = False
 
-                async def update_status(self, state, message):
+                async def update_status(self, state, message, metadata=None):
+                    self.state = state
+                    self.metadata = metadata
                     if state == TaskState.failed:
                         self.is_failed = True
                     response_text = message.parts[0].root.text
@@ -149,7 +153,21 @@ class TelegramBridge:
                 final_response = "✅ Request processed."
             
             # Use HTML for better escaping of repo names with underscores
-            await update.message.reply_text(html.escape(final_response), parse_mode='HTML')
+            if getattr(updater, 'state', None) == TaskState.input_required:
+                keyboard = [
+                    [
+                        InlineKeyboardButton("✅ Confirm", callback_data="approve"),
+                        InlineKeyboardButton("❌ Reject", callback_data="reject"),
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(html.escape(final_response), reply_markup=reply_markup, parse_mode='HTML')
+                
+                # Store pending action for resumption
+                session.pending_action = updater.metadata
+                self.sessions.save(session)
+            else:
+                await update.message.reply_text(html.escape(final_response), parse_mode='HTML')
             
             # VOICE LOGIC:
             # 1. Automatic voice for Safety Failures (Guardian Alerts)
@@ -165,6 +183,34 @@ class TelegramBridge:
                 f"❌ <b>Error:</b> {html.escape(str(e))}",
                 parse_mode='HTML'
             )
+
+    async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle button clicks for confirmation/rejection."""
+        query = update.callback_query
+        user_id = str(update.effective_chat.id)
+        session = self.sessions.get_or_create(user_id)
+        
+        await query.answer()
+        
+        if query.data == "approve" and session.pending_action:
+            action = session.pending_action
+            tool_name = action["tool_name"]
+            tool_args = action["tool_args"]
+            
+            await query.edit_message_text(f"⏳ <b>Executing:</b> {html.escape(tool_name)}...", parse_mode='HTML')
+            
+            # Use TaskUpdater logic
+            class DirectUpdater:
+                async def update_status(self, state, message, metadata=None):
+                    await query.message.reply_text(html.escape(message.parts[0].root.text), parse_mode='HTML')
+            
+            await self.agent.execute_confirmed_tool(tool_name, tool_args, DirectUpdater(), session=session)
+            session.pending_action = None
+        else:
+            await query.edit_message_text("❌ <b>Action Rejected.</b>", parse_mode='HTML')
+            session.pending_action = None
+            
+        self.sessions.save(session)
 
     async def send_voice_note(self, update: Update, text: str):
         """Generate and send a voice note to the user."""
@@ -198,6 +244,7 @@ class TelegramBridge:
 
 def main():
     """Entry point for Telegram bridge."""
+    load_dotenv()
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     
     if not token:

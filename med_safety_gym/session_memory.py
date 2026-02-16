@@ -30,12 +30,26 @@ class SessionMemory:
         self.user_id = user_id
         self._messages: List[Dict[str, str]] = messages or []
         self.github_repo = github_repo
-        self.escalated_tools: Set[str] = set()  # Session-scoped admin tools
+        self.escalated_tools: Dict[str, float] = {}  # tool_name -> expiration_timestamp
         self.audit_log: List[Dict[str, Any]] = []   # Session-scoped audit log
+        self.pending_action: Optional[Dict[str, Any]] = None  # HITL pending tool
 
-    def escalate_tool(self, tool_name: str) -> None:
-        """Unlock an admin tool for this session."""
-        self.escalated_tools.add(tool_name)
+    def escalate_tool(self, tool_name: str, ttl: int = 300) -> None:
+        """Unlock an admin tool for this session for a limited time (default 5 mins)."""
+        import time
+        self.escalated_tools[tool_name] = time.time() + ttl
+    
+    def is_tool_escalated(self, tool_name: str) -> bool:
+        """Check if a tool is currently escalated and not expired."""
+        import time
+        if tool_name not in self.escalated_tools:
+            return False
+        
+        expired = time.time() > self.escalated_tools[tool_name]
+        if expired:
+            del self.escalated_tools[tool_name]
+            return False
+        return True
     
     def add_message(self, role: str, content: str) -> None:
         """Add message to history."""
@@ -159,6 +173,15 @@ class SessionStore:
             if db_session:
                 messages = json.loads(db_session.messages_json)
                 session = SessionMemory(user_id, messages=messages, github_repo=db_session.github_repo)
+                session.pending_action = json.loads(db_session.pending_action_json) if db_session.pending_action_json else None
+                
+                raw_escalated = json.loads(db_session.escalated_tools_json) if db_session.escalated_tools_json else {}
+                # Legacy Migration: if it's a list (from Phase 32), convert to dict with default TTL
+                if isinstance(raw_escalated, list):
+                    session.escalated_tools = {tool: time.time() + 300 for tool in raw_escalated}
+                else:
+                    session.escalated_tools = raw_escalated
+                    
                 self._cache[user_id] = session
                 return session
             
@@ -184,6 +207,8 @@ class SessionStore:
                 
             db_session.messages_json = json.dumps(session._messages)
             db_session.github_repo = session.github_repo
+            db_session.pending_action_json = json.dumps(session.pending_action) if session.pending_action else None
+            db_session.escalated_tools_json = json.dumps(session.escalated_tools)
             db_session.last_active = datetime.utcnow()
             
             db.commit()

@@ -32,9 +32,8 @@ class ManifestInterceptor:
     def __init__(self, manifest: SkillManifest):
         self.manifest = manifest
 
-    def intercept(self, tool_name: str, tool_args: Dict[str, Any], escalated_tools: Set[str] = None, audit_log: List[Dict] = None) -> InterceptResult:
-        """Run all policy checks for a tool call."""
-        escalated_tools = escalated_tools or set()
+    def intercept(self, tool_name: str, tool_args: Dict[str, Any], audit_log: List[Dict] = None) -> InterceptResult:
+        """Run all policy checks for a tool call (Manifest presence + Arg Scans)."""
         # 1. Check tool tier
         tier = self.manifest.permissions.tools.tier_for(tool_name)
 
@@ -43,10 +42,9 @@ class ManifestInterceptor:
             self._audit(tool_name, tool_args, False, reason, tier, audit_log)
             return InterceptResult(allowed=False, reason=reason, tier=tier)
 
-        if tier == "admin" and tool_name not in escalated_tools:
-            reason = f"Tool '{tool_name}' requires admin escalation. Use 'gh: unlock admin tools' first."
-            self._audit(tool_name, tool_args, False, reason, tier, audit_log)
-            return InterceptResult(allowed=False, reason=reason, tier=tier)
+        if tier in ("admin", "critical"):
+            # We don't block here based on escalation; the agent's guards handle JIT approval.
+            pass
 
         # 2. Scan args for network URLs
         net_result = self._check_args_for_urls(tool_args)
