@@ -1,3 +1,4 @@
+import asyncio
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
@@ -26,10 +27,12 @@ class Executor(AgentExecutor):
         self.agent_class = agent_class
 
     async def shutdown(self):
-        """Shutdown all active agents."""
-        for agent in self.agents.values():
-            if hasattr(agent, 'shutdown'):
-                await agent.shutdown()
+        """Shutdown all active agents concurrently."""
+        shutdown_tasks = [
+            agent.shutdown() for agent in self.agents.values() if hasattr(agent, "shutdown")
+        ]
+        if shutdown_tasks:
+            await asyncio.gather(*shutdown_tasks)
         self.agents.clear()
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
