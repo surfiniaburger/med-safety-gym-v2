@@ -37,6 +37,9 @@ dependencies = [
     "PyGithub>=2.0.0",
     "edge-tts>=7.2.7",
     "aiofiles>=25.1.0",
+    "mcp>=1.0.0",
+    "fastmcp==3.0.0b2",
+    "python-telegram-bot>=21.0.0",
 ]
 
 [project.urls]
@@ -56,10 +59,7 @@ agent = [
     "a2a-sdk>=0.1.0",
     "litellm>=1.0.0",
 ]
-mcp = [
-    "mcp>=1.0.0",
-    "fastmcp==3.0.0b2",
-]
+mcp = []
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
@@ -73,9 +73,7 @@ visualization = [
     "pandas>=2.1.0",
     "reportlab>=4.0.0",
 ]
-telegram = [
-    "python-telegram-bot>=21.0.0",
-]
+telegram = []
 
 # This creates a command 'dipg-server' you can run from the terminal
 [project.scripts]

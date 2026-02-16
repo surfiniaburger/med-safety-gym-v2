@@ -71,7 +71,7 @@ class TelegramBridge:
         self.token = token
         self.agent = SafeClawAgent()
         self.sessions = SessionStore()  # Multi-user session memory
-        self.app = Application.builder().token(token).build()
+        self.app = Application.builder().token(token).post_stop(self.stop).build()
         
         # Register handlers
         self.app.add_handler(CommandHandler("start", self.start_command))
@@ -213,6 +213,11 @@ class TelegramBridge:
             session.pending_action = None
             
         self.sessions.save(session)
+
+    async def stop(self, application: Application):
+        """Cleanup agent resources on shutdown."""
+        logger.info("🛑 Shutting down SafeClaw Telegram Bridge...")
+        await self.agent.shutdown()
 
     async def send_voice_note(self, update: Update, text: str):
         """Generate and send a voice note to the user."""

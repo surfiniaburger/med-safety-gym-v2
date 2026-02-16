@@ -134,6 +134,10 @@ class SafeClawAgent:
             self._github_session = await self._github_client.__aenter__()
         return self._github_session
 
+    async def shutdown(self):
+        """Shutdown the agent and cleanup resources."""
+        await self._close_github_session()
+
     async def _close_github_session(self):
         """Cleanup GitHub session."""
         if self._github_client:
