@@ -71,7 +71,7 @@ class SafeClawAgent:
                 manifest = SkillManifest.from_dict(manifest_data)
                 self.interceptor = ManifestInterceptor(manifest)
                 logger.info(f"Successfully fetched central policy from Hub: {manifest.name}")
-        except Exception as e:
+        except (httpx.RequestError, httpx.HTTPStatusError, json.JSONDecodeError) as e:
             logger.error(f"Failed to fetch manifest from Hub: {e}. Falling back to LOCAL restricted policy.")
             self.interceptor = ManifestInterceptor(DEFAULT_MANIFEST)
 

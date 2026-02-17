@@ -1,5 +1,6 @@
 import asyncio
 import time
+import logging
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
@@ -21,6 +22,8 @@ TERMINAL_STATES = {
     TaskState.failed,
     TaskState.rejected
 }
+
+logger = logging.getLogger(__name__)
 
 class Executor(AgentExecutor):
     def __init__(self, agent_class, idle_ttl=300): # 5 minutes default
@@ -45,7 +48,7 @@ class Executor(AgentExecutor):
                 if now - last_seen > self.idle_ttl
             ]
             for ctx_id in to_reap:
-                print(f"Reaping idle agent: {ctx_id}")
+                logger.info(f"Reaping idle agent: {ctx_id}")
                 await self._shutdown_single_agent(ctx_id)
 
     async def shutdown(self):
@@ -87,7 +90,7 @@ class Executor(AgentExecutor):
         agent = self.agents.get(context_id)
         if not agent:
             # Cold Start
-            print(f"Cold Start: Spawning agent for {context_id}")
+            logger.info(f"Cold Start: Spawning agent for {context_id}")
             agent = self.agent_class()
             self.agents[context_id] = agent
 
@@ -99,7 +102,7 @@ class Executor(AgentExecutor):
             if not updater._terminal_state_reached:
                 await updater.complete()
         except Exception as e:
-            print(f"Task failed with agent error: {e}")
+            logger.error(f"Task failed with agent error: {e}")
             await updater.failed(new_agent_text_message(f"Agent error: {e}", context_id=context_id, task_id=task.id))
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:

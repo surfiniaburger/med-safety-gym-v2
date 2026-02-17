@@ -1,4 +1,5 @@
 import os
+import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Optional
@@ -28,7 +29,7 @@ MANIFEST_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "claw_m
 try:
     central_manifest = load_manifest(MANIFEST_PATH)
     logger.info(f"Governor initialized with manifest: {central_manifest.name}")
-except Exception as e:
+except (FileNotFoundError, json.JSONDecodeError) as e:
     logger.error(f"Failed to load central manifest: {e}")
     central_manifest = None
 
