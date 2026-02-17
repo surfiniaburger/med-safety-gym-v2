@@ -4,11 +4,12 @@ import os
 import re
 import json
 import asyncio
+import httpx
 from typing import Any, Callable, Optional, Union
 from a2a.types import Message, TaskState
 from a2a.utils import new_agent_text_message
 from .mcp_client_adapter import MCPClientAdapter
-from .skill_manifest import load_manifest, DEFAULT_MANIFEST
+from .skill_manifest import load_manifest, DEFAULT_MANIFEST, SkillManifest
 from .manifest_interceptor import ManifestInterceptor
 from .auth_guard import require_local_auth
 from .vision_audit import get_audit_summary
@@ -51,14 +52,27 @@ class SafeClawAgent:
         )
         self._github_client = None
         self._github_session = None
+        
+        # SafeClaw Governor Configuration
+        self.hub_url = os.environ.get("SAFECLAW_HUB_URL", "http://localhost:8000")
+        self.interceptor = None # Will be initialized on first run or boot
 
-        # Load manifest for permission enforcement
-        manifest_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "claw_manifest.json"
-        )
-        if os.path.exists(manifest_path):
-            self.interceptor = ManifestInterceptor(load_manifest(manifest_path))
-        else:
+    async def _ensure_governor_interceptor(self):
+        """Fetch the central manifest from the Governor (Hub) and initialize interceptor."""
+        if self.interceptor:
+            return
+
+        logger.info(f"Connecting to SafeClaw Governor: {self.hub_url}")
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"{self.hub_url}/manifest", timeout=10.0)
+                resp.raise_for_status()
+                manifest_data = resp.json()
+                manifest = SkillManifest.from_dict(manifest_data)
+                self.interceptor = ManifestInterceptor(manifest)
+                logger.info(f"Successfully fetched central policy from Hub: {manifest.name}")
+        except Exception as e:
+            logger.error(f"Failed to fetch manifest from Hub: {e}. Falling back to LOCAL restricted policy.")
             self.interceptor = ManifestInterceptor(DEFAULT_MANIFEST)
 
     async def run(self, message: Message, updater: Any, session: Any = None) -> None:
@@ -71,6 +85,9 @@ class SafeClawAgent:
             updater: Task status updater
             session: Optional SessionMemory for conversation context
         """
+        # 0. Ensure Governor Interceptor
+        await self._ensure_governor_interceptor()
+
         # Extract text from message
         if not message.parts:
             await updater.update_status(
@@ -241,6 +258,7 @@ class SafeClawAgent:
 
     async def execute_confirmed_tool(self, tool_name: str, tool_args: dict, updater: Any, session: Any = None) -> None:
         """Bypass guards and execute a tool that has been manually approved by the user."""
+        await self._ensure_governor_interceptor()
         
         # JIT Escalation: Escalate only the approved tool with a short-lived TTL (5 mins)
         if session:

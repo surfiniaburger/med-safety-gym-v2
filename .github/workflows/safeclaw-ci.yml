@@ -1,0 +1,54 @@
+name: SafeClaw CI/CD
+
+on:
+  push:
+    branches: [ main, v2.0-mcp-evolution ]
+  pull_request:
+    branches: [ main, v2.0-mcp-evolution ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          
+      - name: Install dependencies
+        run: uv sync --dev
+        
+      - name: Run Backend Tests (Safety Invariants)
+        run: uv run pytest tests/test_manifest_interceptor.py tests/test_admin_escalation.py tests/test_jit_escalation.py
+        
+      - name: Run Hub API Tests
+        run: uv run pytest tests/test_hub_manifest_api.py
+        
+      - name: Run Integration Tests (Agent/Hub Handshake)
+        run: uv run pytest tests/test_agent_hub_integration.py
+        
+      - name: Run Lifecycle Tests (Idle Reaper)
+        run: uv run pytest tests/test_idle_reaper.py
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Build Runner Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.a2a
+          push: false
+          tags: safeclaw-runner:latest

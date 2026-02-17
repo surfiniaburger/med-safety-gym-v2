@@ -15,6 +15,11 @@ async def test_agent_routes_to_github():
     
     agent = SafeClawAgent(client_factory=lambda: MagicMock(), github_client_factory=github_factory)
     
+    # Mock the interceptor to be permissive for this test
+    agent.interceptor = MagicMock()
+    agent.interceptor.intercept.return_value = MagicMock(allowed=True, tier="user")
+    agent._ensure_governor_interceptor = AsyncMock()
+    
     updater = AsyncMock()
     message = Message(
         messageId="test-id",
@@ -37,6 +42,11 @@ async def test_agent_configures_repo():
     github_client.call_tool = AsyncMock(return_value="Repo updated")
     
     agent = SafeClawAgent(github_client_factory=lambda: github_client)
+    
+    # Mock the interceptor to be permissive for this test
+    agent.interceptor = MagicMock()
+    agent.interceptor.intercept.return_value = MagicMock(allowed=True, tier="user")
+    agent._ensure_governor_interceptor = AsyncMock()
     
     updater = AsyncMock()
     message = Message(

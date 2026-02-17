@@ -21,6 +21,17 @@ logger = logging.getLogger("observability_hub")
 app = FastAPI(title="Med Safety Gym - Observability Hub")
 mcp = FastMCP("Observability-Hub")
 
+# --- SafeClaw Manifest & Policy (The Governor) ---
+from med_safety_gym.skill_manifest import load_manifest, SkillManifest
+
+MANIFEST_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "claw_manifest.json")
+try:
+    central_manifest = load_manifest(MANIFEST_PATH)
+    logger.info(f"Governor initialized with manifest: {central_manifest.name}")
+except Exception as e:
+    logger.error(f"Failed to load central manifest: {e}")
+    central_manifest = None
+
 # CORS for UI access
 origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
@@ -42,7 +53,25 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "message": "Med Safety Gym Observability Hub is running."}
+    return {"status": "ok", "message": "Med Safety Gym Observability Hub is running.", "governor_active": central_manifest is not None}
+
+@app.get("/manifest")
+async def get_manifest():
+    """Expose the central security manifest to agents."""
+    if not central_manifest:
+        return {"error": "Manifest not loaded"}, 500
+    # Convert to dict for JSON response
+    from dataclasses import asdict
+    return asdict(central_manifest)
+
+@app.get("/manifest/tier/{tool_name}")
+async def get_tool_tier(tool_name: str):
+    """Query the tier for a specific tool."""
+    if not central_manifest:
+        return {"error": "Manifest not loaded"}, 500
+    
+    tier = central_manifest.permissions.tools.tier_for(tool_name)
+    return {"tool": tool_name, "tier": tier}
 
 class ConnectionManager:
     def __init__(self):

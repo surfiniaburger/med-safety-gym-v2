@@ -20,6 +20,19 @@ async def test_github_routing_edge_cases():
     
     agent = SafeClawAgent(github_client_factory=mock_factory)
     
+    # Mock the interceptor to be permissive but tier-aware
+    agent.interceptor = MagicMock()
+    def mock_intercept(tool_name, tool_args, audit_log=None):
+        check = MagicMock()
+        check.allowed = True
+        if "delete" in tool_name: check.tier = "critical"
+        elif "unlock" in tool_name: check.tier = "admin"
+        else: check.tier = "user"
+        return check
+    
+    agent.interceptor.intercept.side_effect = mock_intercept
+    agent._ensure_governor_interceptor = AsyncMock()
+    
     test_cases = [
         ("gh: set repo surfiniaburger/softclaw", "configure_repo"),
         ("gh: list issues", "list_issues"),
