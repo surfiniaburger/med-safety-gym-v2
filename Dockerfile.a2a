@@ -1,8 +1,22 @@
-# Dockerfile for ADK Agent (A2A)
+# SafeClaw Runner - Ephemeral Agent Image
+# Based on Python 3.11-slim for minimal footprint
+
 FROM python:3.11-slim
 
-# Install uv
-RUN pip install --upgrade pip && pip install --no-cache-dir uv
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Set working directory
 WORKDIR /app
@@ -10,21 +24,16 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies
-RUN uv sync --frozen --no-install-project
+# Install dependencies (frozen for production stability)
+RUN uv sync --frozen --no-dev
 
-# Copy application code
-COPY med_safety_gym/ med_safety_gym/
-COPY med_safety_eval/ med_safety_eval/
-COPY tests/ tests/
-COPY README.md .
+# Copy the rest of the application code
+COPY . .
 
-# Install project
-RUN uv sync --frozen
-
-# Expose port
+# Expose port (Internal A2A/Governor communication)
 EXPOSE 10000
 
-# Run the agent
-# Requires MCP_SERVER_URL and LITELLM_MODEL env vars
-CMD ["sh", "-c", "uv run uvicorn med_safety_gym.dipg_agent:a2a_app --host 0.0.0.0 --port ${PORT:-10000}"]
+# Default command: Run the SafeClaw Governor-Runner Bridge
+# Note: SafeClaw users typically interact via Telegram.
+# To run as a raw A2A agent, override with: ["uv", "run", "python", "-m", "med_safety_gym.agent_server"]
+CMD ["uv", "run", "python", "-m", "med_safety_gym.telegram_bridge"]
