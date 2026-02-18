@@ -46,7 +46,7 @@ def _load_or_generate_keys():
     with open(PRIV_KEY_PATH, "wb") as f:
         f.write(priv.private_bytes(
             encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.OpenSSH,
+            format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         ))
     with open(PUB_KEY_PATH, "wb") as f:

@@ -1,3 +1,4 @@
+import pytest
 import os
 import asyncio
 import httpx
@@ -5,6 +6,7 @@ from med_safety_gym.claw_agent import SafeClawAgent
 from a2a.types import Message, TextPart, Part
 from unittest.mock import AsyncMock
 
+@pytest.mark.asyncio
 async def test_live_handshake():
     """
     Smoke test: Verify the local agent can fetch a manifest 
