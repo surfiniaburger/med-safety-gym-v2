@@ -24,8 +24,40 @@ mcp = FastMCP("Observability-Hub")
 
 # --- SafeClaw Manifest & Policy (The Governor) ---
 from med_safety_gym.skill_manifest import load_manifest, SkillManifest
+from med_safety_gym.crypto import generate_keys, sign_data
+from cryptography.hazmat.primitives import serialization
 
 MANIFEST_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "claw_manifest.json")
+KEY_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".safeclaw_keys")
+PRIV_KEY_PATH = os.path.join(KEY_DIR, "hub_ed25519.priv")
+PUB_KEY_PATH = os.path.join(KEY_DIR, "hub_ed25519.pub")
+
+def _load_or_generate_keys():
+    """Ensure the Hub has a persistent identity for signing policies."""
+    if os.path.exists(PRIV_KEY_PATH):
+        with open(PRIV_KEY_PATH, "rb") as f:
+            priv = serialization.load_pem_private_key(f.read(), password=None)
+        with open(PUB_KEY_PATH, "rb") as f:
+            pub = serialization.load_pem_public_key(f.read())
+        return priv, pub
+    
+    priv, pub = generate_keys()
+    os.makedirs(KEY_DIR, exist_ok=True)
+    with open(PRIV_KEY_PATH, "wb") as f:
+        f.write(priv.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.OpenSSH,
+            encryption_algorithm=serialization.NoEncryption()
+        ))
+    with open(PUB_KEY_PATH, "wb") as f:
+        f.write(pub.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ))
+    return priv, pub
+
+hub_private_key, hub_public_key = _load_or_generate_keys()
+
 try:
     central_manifest = load_manifest(MANIFEST_PATH)
     logger.info(f"Governor initialized with manifest: {central_manifest.name}")
@@ -58,12 +90,31 @@ async def root():
 
 @app.get("/manifest")
 async def get_manifest():
-    """Expose the central security manifest to agents."""
+    """Expose the central security manifest to agents, signed by the Governor."""
     if not central_manifest:
         return {"error": "Manifest not loaded"}, 500
+    
     # Convert to dict for JSON response
     from dataclasses import asdict
-    return asdict(central_manifest)
+    manifest_dict = asdict(central_manifest)
+    
+    # Canonicalize and sign
+    manifest_json = json.dumps(manifest_dict, sort_keys=True)
+    signature = sign_data(manifest_json.encode(), hub_private_key)
+    
+    return {
+        "manifest": manifest_dict,
+        "signature": signature.hex()
+    }
+
+@app.get("/manifest/pubkey")
+async def get_pubkey():
+    """Expose the Governor's public key for signature verification."""
+    pub_bytes = hub_public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    return {"pubkey": pub_bytes.decode()}
 
 @app.get("/manifest/tier/{tool_name}")
 async def get_tool_tier(tool_name: str):
