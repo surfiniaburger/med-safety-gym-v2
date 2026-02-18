@@ -84,8 +84,11 @@ sft_dread.md
 .keystore
 *.keystore
 *.jks
+.safeclaw_keys/
 Skill.md
 Skill2.md
 Skill3.md
--openclaw
+openclaw
 Acontext
+cognee
+codecrafters-claude-code-python

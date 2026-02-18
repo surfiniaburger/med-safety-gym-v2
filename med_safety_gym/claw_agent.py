@@ -62,18 +62,76 @@ class SafeClawAgent:
         if self.interceptor:
             return
 
-        logger.info(f"Connecting to SafeClaw Governor: {self.hub_url}")
+        manifest = await self._fetch_signed_manifest()
+        self.interceptor = ManifestInterceptor(manifest)
+        logger.info(f"SafeClaw Governor initialized with policy: {manifest.name}")
+
+    async def _fetch_signed_manifest(self) -> SkillManifest:
+        """Fetch pubkey and manifest from Hub, verify signature, and return valid manifest."""
         try:
             async with httpx.AsyncClient() as client:
-                resp = await client.get(f"{self.hub_url}/manifest", timeout=10.0)
-                resp.raise_for_status()
-                manifest_data = resp.json()
-                manifest = SkillManifest.from_dict(manifest_data)
-                self.interceptor = ManifestInterceptor(manifest)
-                logger.info(f"Successfully fetched central policy from Hub: {manifest.name}")
-        except (httpx.RequestError, httpx.HTTPStatusError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to fetch manifest from Hub: {e}. Falling back to LOCAL restricted policy.")
-            self.interceptor = ManifestInterceptor(DEFAULT_MANIFEST)
+                await self._ensure_hub_running(client)
+                
+                # Fetch Public Key for verification
+                pub_resp = await client.get(f"{self.hub_url}/manifest/pubkey", timeout=10.0)
+                pub_resp.raise_for_status()
+                pub_pem = pub_resp.json().get("pubkey")
+
+                # Fetch Signed Manifest
+                man_resp = await client.get(f"{self.hub_url}/manifest", timeout=10.0)
+                man_resp.raise_for_status()
+                data = man_resp.json()
+
+                return self._verify_and_parse_manifest(data, pub_pem)
+        except Exception as e:
+            logger.error(f"Failed to fetch secured manifest: {e}. Falling back to restricted policy.")
+            return DEFAULT_MANIFEST
+
+    def _verify_and_parse_manifest(self, data: dict, pub_pem: Optional[str]) -> SkillManifest:
+        """Check the Hub's digital signature against its public key."""
+        from .crypto import verify_signature
+        from cryptography.hazmat.primitives import serialization
+        
+        manifest_dict = data.get("manifest")
+        signature_hex = data.get("signature")
+        
+        if not all([manifest_dict, signature_hex, pub_pem]):
+            logger.warning("Security material missing from Hub response.")
+            return DEFAULT_MANIFEST
+
+        # Verification Invariant: Signature must match canonicalized JSON
+        manifest_json = json.dumps(manifest_dict, sort_keys=True)
+        pub_key = serialization.load_pem_public_key(pub_pem.encode())
+        
+        if verify_signature(manifest_json.encode(), bytes.fromhex(signature_hex), pub_key):
+            return SkillManifest.from_dict(manifest_dict)
+        
+        logger.error("SECURITY ALERT: Manifest signature verification failed!")
+        return DEFAULT_MANIFEST
+
+    async def _ensure_hub_running(self, client: httpx.AsyncClient):
+        """Heartbeat check; triggers local boot if Governor is missing."""
+        try:
+            # Short timeout for the presence check
+            await client.get(f"{self.hub_url}/health", timeout=2.0)
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.ProtocolError):
+            logger.info(f"Governor not found at {self.hub_url}. Attempting local boot...")
+            await self._start_local_hub()
+            await asyncio.sleep(3.0) # Grace period for boot
+
+    async def _start_local_hub(self):
+        """Spawn a local instance of the Observability Hub."""
+        import subprocess
+        import sys
+        from urllib.parse import urlparse
+        
+        parsed = urlparse(self.hub_url)
+        port = parsed.port or 8000
+        
+        # Launch Hub as background process
+        cmd = [sys.executable, "-m", "uvicorn", "med_safety_eval.observability_hub:app", "--port", str(port)]
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        logger.info(f"Local SafeClaw Hub spawned on port {port}.")
 
     async def run(self, message: Message, updater: Any, session: Any = None) -> None:
         """
