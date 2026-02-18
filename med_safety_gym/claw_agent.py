@@ -1,7 +1,9 @@
 
 import logging
+import atexit
 import os
 import re
+from mcp.server.fastmcp import FastMCP
 import json
 import asyncio
 import httpx
@@ -83,8 +85,11 @@ class SafeClawAgent:
                 data = man_resp.json()
 
                 return self._verify_and_parse_manifest(data, pub_pem)
-        except Exception as e:
+        except (httpx.RequestError, httpx.HTTPStatusError, json.JSONDecodeError, KeyError, ValueError) as e:
             logger.error(f"Failed to fetch secured manifest: {e}. Falling back to restricted policy.")
+            return DEFAULT_MANIFEST
+        except Exception as e:
+            logger.error(f"Unexpected error fetching manifest: {e}")
             return DEFAULT_MANIFEST
 
     def _verify_and_parse_manifest(self, data: dict, pub_pem: Optional[str]) -> SkillManifest:
@@ -117,7 +122,17 @@ class SafeClawAgent:
         except (httpx.ConnectError, httpx.TimeoutException, httpx.ProtocolError):
             logger.info(f"Governor not found at {self.hub_url}. Attempting local boot...")
             await self._start_local_hub()
-            await asyncio.sleep(3.0) # Grace period for boot
+            
+            # Poll for max 10 seconds (PR Feedback resolution)
+            for i in range(10):
+                try:
+                    await client.get(f"{self.hub_url}/health", timeout=1.0)
+                    logger.info("Local hub is responsive.")
+                    break
+                except (httpx.ConnectError, httpx.TimeoutException):
+                    await asyncio.sleep(1.0)
+            else:
+                logger.error("Local hub did not become responsive in time.")
 
     async def _start_local_hub(self):
         """Spawn a local instance of the Observability Hub."""
@@ -130,8 +145,9 @@ class SafeClawAgent:
         
         # Launch Hub as background process
         cmd = [sys.executable, "-m", "uvicorn", "med_safety_eval.observability_hub:app", "--port", str(port)]
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        logger.info(f"Local SafeClaw Hub spawned on port {port}.")
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        atexit.register(proc.terminate)
+        logger.info(f"Local SafeClaw Hub spawned on port {port} (Cleanup registered).")
 
     async def run(self, message: Message, updater: Any, session: Any = None) -> None:
         """
