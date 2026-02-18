@@ -1,6 +1,6 @@
 # Manifest Registration & Permission Tiers — As-Built Design
 
-How SafeClaw handles skill registration, permission escalation, and the relationship between **manifests**, **FastMCP scopes**, and **visibility tags**, as implemented in Phase 37.
+How SafeClaw handles skill registration, permission escalation, and the relationship between **manifests**, **FastMCP scopes**, and **visibility tags**, as implemented in Phase 39.
 
 ---
 
@@ -40,7 +40,7 @@ We use a 4-tier system to classify every tool in the `claw_manifest.json`:
 |---|---|---|---|
 | **User** | Implicit | Allowed immediately. | No auth required. |
 | **Write** | Verified | Allowed immediately. | `auth="write"` checked. |
-| **Admin** | Escallated | Requires **JIT Approval**. | `tags=["admin"]`. Hidden by default. |
+| **Admin** | Escalated | Requires **JIT Approval**. | `tags=["admin"]`. Hidden by default. |
 | **Critical** | Hardened | Requires **Biometrics + Vision Audit**. | `tags=["admin", "critical"]`. |
 
 ---
@@ -99,7 +99,7 @@ def generate_scope_config(self) -> Dict[str, ScopeConfig]:
 
 ---
 
-## 5. Deployment Reality (Phase 37)
+## 5. Deployment Reality (Phase 39)
 
 | Feature | Design Intent | Current Implementation (`med_safety_gym`) |
 |---|---|---|

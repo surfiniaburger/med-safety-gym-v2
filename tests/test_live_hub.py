@@ -13,30 +13,34 @@ async def test_live_handshake():
     from the production Render Hub.
     """
     hub_url = "https://med-safety-hub-zqx8.onrender.com"
-    print(f"🚀 Testing live handshake with Hub: {hub_url}")
     
+    # Skip if we can't reach the live hub quickly
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{hub_url}/health", timeout=2.0)
+            if resp.status_code != 200:
+                pytest.skip("Production Hub is currently unreachable.")
+    except Exception:
+        pytest.skip("Production Hub is offline or network restricted.")
+
     # Set the env var for the agent
     os.environ["SAFECLAW_HUB_URL"] = hub_url
     
     agent = SafeClawAgent()
     
     # 1. Trigger the boot handshake
-    print("📡 Fetching manifest...")
     await agent._ensure_governor_interceptor()
     
-    if agent.interceptor and agent.interceptor.manifest:
-        manifest = agent.interceptor.manifest
-        print(f"✅ SUCCESS: Connected to Governor!")
-        print(f"📦 Manifest Name: {manifest.name}")
-        print(f"🏷️ Version: {manifest.version}")
-        print(f"🛠️ Tools declared: {manifest.permissions.tools.all_tools}")
-        
-        # 2. Check a tool tier
-        tool = "delete_repo"
-        tier = manifest.permissions.tools.tier_for(tool)
-        print(f"🔒 Security Check: Tier for '{tool}' is '{tier}'")
-    else:
-        print("❌ FAILED: Could not initialize interceptor from remote Hub.")
+    assert agent.interceptor is not None, "Interceptor should be initialized"
+    assert agent.interceptor.manifest is not None, "Manifest should be loaded"
+    
+    manifest = agent.interceptor.manifest
+    assert manifest.name == "safeclaw-core"
+    
+    # 2. Check a tool tier
+    tool = "delete_repo"
+    tier = manifest.permissions.tools.tier_for(tool)
+    assert tier == "critical"
 
 if __name__ == "__main__":
     asyncio.run(test_live_handshake())
