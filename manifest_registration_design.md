@@ -1,201 +1,117 @@
-# Manifest Registration & Permission Tiers — Design Brainstorm
+# Manifest Registration & Permission Tiers — As-Built Design
 
-How SafeClaw handles skill registration, permission escalation, and the relationship between **manifests**, **FastMCP scopes**, and **visibility tags**.
-
----
-
-## 1. The Core Problem
-
-A user installs a "GitHub Skill" that exposes 6 tools:
-
-| Tool | Risk Level | Who should access it? |
-|---|---|---|
-| `configure_repo` | Low | Any user |
-| `list_issues` | Low | Any user |
-| `list_pull_requests` | Low | Any user |
-| `create_issue` | Medium | User with `write` scope |
-| `delete_issue_comment` | **High** | Admin only, hidden by default |
-| `unlock_admin_tools` | **High** | Explicit escalation trigger |
-
-**Question**: When this skill is registered, how does SafeClaw know which tools are "user-level" vs "admin-level"? And how does it prevent the agent from using `delete_issue_comment` unless the user explicitly opts in?
+How SafeClaw handles skill registration, permission escalation, and the relationship between **manifests**, **FastMCP scopes**, and **visibility tags**, as implemented in Phase 37.
 
 ---
 
-## 2. The Answer: Tiered Permission Model
+## 1. The Core Architecture: Governor & Runner
 
-We extend `claw_manifest.json` to declare **permission tiers** per tool:
+SafeClaw moves safety logic out of the agent's "head" (prompts) and into the architecture.
+
+- **The Governor (The Hub)**: A centralized FastAPI service (`observability_hub.py`) that serves the unique **Ground Truth Manifest**. All security policies originate here.
+- **The Runner (The Agent)**: An ephemeral agent (`SafeClawAgent`) that boots with zero permissions and must fetch its policy from the Governor via `/manifest`.
+
+---
+
+## 2. Tiered Permission Model
+
+We use a 4-tier system to classify every tool in the `claw_manifest.json`:
 
 ```json
 {
-  "name": "github-skill",
-  "version": "1.0.0",
+  "name": "safe-claw-core",
+  "version": "2.2.0",
   "permissions": {
-    "net": ["api.github.com"],
+    "net": ["api.github.com", "api.openai.com"],
     "fs": ["./workspace"],
     "tools": {
-      "user": ["configure_repo", "list_issues", "list_pull_requests"],
-      "write": ["create_issue"],
-      "admin": ["delete_issue_comment", "unlock_admin_tools"]
+      "user": ["list_issues", "list_pull_requests"],
+      "write": ["create_issue", "voice_mode"],
+      "admin": ["delete_issue_comment", "unlock_admin_tools"],
+      "critical": ["delete_repo", "purge_all_sessions"]
     }
   }
 }
 ```
 
-### How each tier works:
+### The Hierarchy of Friction:
 
-```mermaid
-graph LR
-    Manifest["claw_manifest.json"] -->|"tools.user"| Always["Always Available"]
-    Manifest -->|"tools.write"| Write["Available with Auth"]
-    Manifest -->|"tools.admin"| Hidden["Hidden by Default"]
-    
-    Hidden -->|"unlock_admin_tools"| Unlocked["Visible for Session"]
-```
-
-| Tier | Interceptor Behavior | FastMCP Server Behavior |
-|---|---|---|
-| `user` | Allowed immediately | No auth required, always visible |
-| `write` | Allowed immediately | `auth=require_scopes("write")` enforced |
-| `admin` | **Blocked** until escalated | `tags=["admin"]`, hidden via `mcp.disable()` |
+| Tier | Governance Level | User Experience | Implementation |
+|---|---|---|---|
+| **User** | Implicit | Allowed immediately. | No auth required. |
+| **Write** | Verified | Allowed immediately. | `auth="write"` checked. |
+| **Admin** | Escallated | Requires **JIT Approval**. | `tags=["admin"]`. Hidden by default. |
+| **Critical** | Hardened | Requires **Biometrics + Vision Audit**. | `tags=["admin", "critical"]`. |
 
 ---
 
-## 3. Registration Flow: What Happens When a Skill is Installed
+## 3. Just-In-Time (JIT) Escalation Flow
+
+We do not believe in "Admin Mode" that stays on forever. We implement **Just-In-Time (JIT)** escalation.
 
 ```mermaid
 sequenceDiagram
-    participant Dev as Skill Developer
-    participant Reg as Registration Engine
-    participant Int as ManifestInterceptor
-    participant MCP as FastMCP Server
+    participant User as User (Telegram)
+    participant Runner as Runner (SafeClawAgent)
+    participant Hub as Hub (Governor)
+    participant Auth as AuthGuard (TouchID)
 
-    Dev->>Reg: Submit claw_manifest.json + tools.py
-    Reg->>Reg: Validate manifest schema
-    Reg->>Reg: Classify tools into tiers
-    Reg->>Int: Register user + write tools as allowed
-    Reg->>Int: Register admin tools as BLOCKED
-    Reg->>MCP: Register tools with FastMCP
-    Reg->>MCP: Auto-apply auth=require_scopes("write") to write-tier tools
-    Reg->>MCP: Auto-apply tags=["admin"] to admin-tier tools
-    Reg->>MCP: mcp.disable(tags={"admin"})
+    User->>Runner: "delete repo: med-safety"
+    Runner->>Hub: GET /manifest/tier/delete_repo
+    Hub-->>Runner: tier: "critical"
+    
+    Runner->>User: 🚨 "Critical Action detected. Please confirm."
+    User->>Runner: Click [Confirm]
+    
+    Runner->>Auth: Trigger require_local_auth()
+    Auth-->>User: TouchID Prompt
+    User->>Auth: Successful Scan
+    
+    Runner->>Runner: Temporary TTL lease (60s)
+    Runner->>GitHub: Execute delete_repo
 ```
 
-### Key Decisions During Registration:
-
-1. **Schema validation** — Does the manifest have the required fields?
-2. **Tier classification** — Are tools placed in `user`, `write`, or `admin`?
-3. **Scope generation** — `write`-tier tools auto-get `require_scopes("write")`
-4. **Visibility** — `admin`-tier tools auto-get `tags=["admin"]` and start hidden
+### Key Security Invariants:
+1. **TTL-Based Leasing**: Admin tools are only "unlocked" in the `SessionMemory` for a short window (e.g., 5-10 minutes).
+2. **Biometric Gate**: `admin` and `critical` tiers trigger `auth_guard.py` which uses the host's native biometric (macOS TouchID) to verify the physical presence of the user.
+3. **Out-of-Band Policy**: The agent cannot modify its own manifest. The manifest is signed and served by the Hub.
 
 ---
 
-## 4. Escalation: How a User Unlocks Admin Tools
+## 4. Manifest-to-FastMCP Mapping
 
-The user types in Telegram:
-```
-gh: unlock admin tools
-```
-
-### What happens:
-
-1. **Interceptor layer**: Agent checks if `unlock_admin_tools` is in the manifest's `admin` tier
-2. **HITL confirmation**: Bot sends Telegram inline button: _"⚠️ Enable admin tools? This allows deleting comments."_ → `[Yes] [No]`
-3. **If approved**: 
-   - Interceptor temporarily adds admin tools to the session's allowed set
-   - FastMCP `ctx.enable_components(tags={"admin"})` makes them visible
-4. **Session-scoped**: Admin tools are only unlocked for THIS session. Next session starts fresh.
-
-```mermaid
-stateDiagram-v2
-    [*] --> UserTier: Bot starts
-    UserTier --> WriteTier: Auth scope verified
-    WriteTier --> AdminTier: HITL approval
-    AdminTier --> UserTier: Session ends
-```
-
----
-
-## 5. Auto-Generating Scopes from Manifest
-
-The bridge between manifest tiers and FastMCP scopes:
+The `SkillManifest` class auto-generates the `ScopeConfig` needed to bake safety into the tool registry:
 
 ```python
-def generate_scope_config(manifest: SkillManifest) -> dict:
-    """Derive FastMCP auth/visibility from manifest tiers."""
+def generate_scope_config(self) -> Dict[str, ScopeConfig]:
     config = {}
-    tools = manifest.permissions.tools
-    
-    for tool_name in tools.get("user", []):
-        config[tool_name] = {"auth": None, "tags": []}
-    
-    for tool_name in tools.get("write", []):
-        config[tool_name] = {"auth": "write", "tags": []}
-    
-    for tool_name in tools.get("admin", []):
-        config[tool_name] = {"auth": "admin", "tags": ["admin"]}
-    
+    for tool_name in self.permissions.tools.user:
+        config[tool_name] = ScopeConfig(auth="", tags=[])
+    for tool_name in self.permissions.tools.write:
+        config[tool_name] = ScopeConfig(auth="write", tags=[])
+    for tool_name in self.permissions.tools.admin:
+        config[tool_name] = ScopeConfig(auth="admin", tags=["admin"])
+    for tool_name in self.permissions.tools.critical:
+        # Critical tools are admin tools WITH extra vision auditing
+        config[tool_name] = ScopeConfig(auth="admin", tags=["admin", "critical"])
     return config
 ```
 
-This config is used at registration time to:
-- Apply `@mcp.tool(auth=require_scopes("write"))` decorators
-- Apply `@mcp.tool(tags=["admin"])` visibility tags
-- Call `mcp.disable(tags={"admin"})` to hide admin tools
-
 ---
 
-## 6. Nooks & Crannies
+## 5. Deployment Reality (Phase 37)
 
-### 6.1 What if a manifest declares a tool that doesn't exist on the server?
-→ **Registration fails.** The registration engine validates that every tool in the manifest exists in the MCP server's tool registry. This prevents typos and mismatch attacks.
-
-### 6.2 What if a tool has no tier in the manifest?
-→ **Denied by default.** Any tool not explicitly listed in any tier is treated as if it doesn't exist. The interceptor blocks it. *Principle of least privilege.*
-
-### 6.3 Can a skill escalate its own permissions?
-→ **No.** The manifest is read-only after registration. A tool cannot modify its own manifest. The `unlock_admin_tools` flow is handled by the **agent/bridge layer**, not by the skill itself.
-
-### 6.4 What about third-party skills with unknown tools?
-→ **Sandbox first.** When a user installs a third-party skill:
-1. Show the manifest's declared permissions (like Android install screen)
-2. Run the skill in a sandboxed MCP server (Docker/Wasm) 
-3. The sandbox enforces `claw_manifest.json` network/fs rules at the OS level
-4. Even if the code tries to bypass the manifest, the sandbox blocks it
-
-### 6.5 Can two skills have conflicting permissions?
-→ **Union with least privilege.** If Skill A allows `api.github.com` and Skill B allows `api.weather.gov`, the combined network allowlist is both. But tool allowlists are **per-skill** — Skill A can't call Skill B's tools.
-
-### 6.6 What about the audit trail?
-→ **Already built.** The `ManifestInterceptor._audit()` method logs every allowed/blocked call. For admin escalation, we add a `"escalation"` entry with the user's Telegram ID and timestamp.
-
-### 6.7 How does this work with the existing `SessionMemory`?
-→ **Session-scoped tiers.** The interceptor's `audit_entries` are per-session. Admin escalation is stored in the session memory so it survives within a conversation but resets on bot restart.
-
-### 6.8 Rate limiting for admin tools?
-→ **Future work.** Admin tools could have a rate limit (e.g., max 5 deletes per session) enforced by the interceptor before the call reaches FastMCP.
-
-### 6.9 How do we migrate the current flat `tools` list to tiers?
-→ **Backward compatible.** If `permissions.tools` is a flat list (current format), treat all tools as `user` tier. If it's a dict with `user`/`write`/`admin` keys, use the tiered model. The `SkillManifest.from_dict()` handles both.
-
----
-
-## 7. Implementation Phases
-
-| Phase | Work | Complexity |
+| Feature | Design Intent | Current Implementation (`med_safety_gym`) |
 |---|---|---|
-| **Now** | Auto-generate scopes from manifest + update `SkillManifest` for tiers | Medium |
-| **Next** | HITL approval buttons for admin escalation via Telegram | Medium |
-| **Later** | Skill registration engine + sandbox runtime | High |
-| **Future** | Marketplace UI + manifest signing + reputation system | High |
+| **Storage** | SQL Database | `claw_manifest.json` on disk (Hub serves it) |
+| **Escalation** | Manual Button | JIT Biometric (`auth_guard.py`) + Inline Buttons |
+| **Visibility** | Hidden Tools | `ManifestInterceptor` filters available tools in real-time |
+| **Auditing** | CSV/Log | `_audit()` method logs to Python `logging` + SessionMemory |
 
 ---
 
-## 8. Comparison: Before vs After
+## 6. Next Steps: Roadmap to Phase 40
 
-| Aspect | Before (Flat) | After (Tiered) |
-|---|---|---|
-| Tool access | All-or-nothing | `user` / `write` / `admin` |
-| Admin tools | Manually hidden | Auto-hidden from manifest |
-| Scope auth | Manually decorated | Auto-generated from tiers |
-| Escalation | No path available | HITL unlock per-session |
-| Audit | Basic logging | Tier-aware, user-attributed |
+1. **Vision Audit Integration**: Hook the `VisionAuditService` into the `critical` tier path to "see" the terminal state before high-stakes cleanup.
+2. **Multi-Tenant Hub**: Allow the Hub to serve different manifests to different Runners based on an `Agent-ID` token.
+3. **Registry Signature**: Sign the Hub's JSON response with a private key; the Runner verifies it with a public key to prevent "Ghost Gateway" Man-in-the-Middle attacks.

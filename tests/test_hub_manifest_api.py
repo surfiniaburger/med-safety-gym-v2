@@ -15,9 +15,13 @@ def test_get_manifest():
     response = client.get("/manifest")
     assert response.status_code == 200
     data = response.json()
-    assert data["name"] == "safeclaw-core"
-    assert "permissions" in data
-    assert "tools" in data["permissions"]
+    assert "manifest" in data
+    assert "signature" in data
+    
+    manifest = data["manifest"]
+    assert manifest["name"] == "safeclaw-core"
+    assert "permissions" in manifest
+    assert "tools" in manifest["permissions"]
 
 def test_get_tool_tier():
     # Test a user tool
