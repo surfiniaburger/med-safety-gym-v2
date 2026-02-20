@@ -159,17 +159,21 @@ const AppContent: React.FC = () => {
   };
 
   const handleIntervention = async (index: number) => {
+    const isNewNode = index !== activeStepIndex;
     setActiveStepIndex(index);
     setView('simulator');
-    if (!activeCreation && activeArtifact) {
+
+    if ((isNewNode || !activeCreation) && activeArtifact) {
       setIsGenerating(true);
+      if (isNewNode) setActiveCreation(null);
+
       try {
         const jsonStr = JSON.stringify(activeArtifact.content || {}, null, 2);
-        const html = await bringToLife(jsonStr, `Artifact: ${activeArtifact.name}`);
+        const html = await bringToLife(jsonStr, `Artifact: ${activeArtifact.name} (Simulating Step Index: ${index})`);
         if (html) {
           const newCreation: Creation = {
             id: crypto.randomUUID(),
-            name: `Simulation: ${activeArtifact.name.replace('.json', '')}`,
+            name: `Simulation: ${activeArtifact.name.replace('.json', '')} (Node ${index})`,
             html,
             timestamp: new Date(),
           };
@@ -315,6 +319,7 @@ const AppContent: React.FC = () => {
         onReset={handleReset}
         onSolveNode={() => {
           setSolvedNodes(prev => [...prev, activeStepIndex]);
+          setActiveCreation(null); // Clear simulation to allow refresh on next node
           setView('gauntlet');
         }}
         onUpdate={setActiveCreation}
