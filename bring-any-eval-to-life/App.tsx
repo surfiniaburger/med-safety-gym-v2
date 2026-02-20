@@ -35,6 +35,7 @@ const AppContent: React.FC = () => {
   const [isMissionComplete, setIsMissionComplete] = useState(false);
   const [evolutionTaskId, setEvolutionTaskId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const needsSimulation = useRef(false);
   const { showToast } = useToast();
 
   // Real-time Observability Stream
@@ -155,6 +156,7 @@ const AppContent: React.FC = () => {
     setActiveStepIndex(0);
     setSolvedNodes([]);
     setIsMissionComplete(false);
+    needsSimulation.current = true;
     setActiveCreation(null);
   };
 
@@ -163,7 +165,13 @@ const AppContent: React.FC = () => {
     setActiveStepIndex(index);
     setView('simulator');
 
-    if ((isNewNode || !activeCreation) && activeArtifact) {
+    // We trigger a new simulation generation if:
+    // 1. We are moving to a different node (isNewNode)
+    // 2. An explicit refresh was requested (needsSimulation flag)
+    // AND we are not already generating one (!isGenerating)
+    const shouldGenerate = (isNewNode || needsSimulation.current) && !isGenerating;
+
+    if (shouldGenerate && activeArtifact) {
       setIsGenerating(true);
       if (isNewNode) setActiveCreation(null);
 
@@ -184,6 +192,7 @@ const AppContent: React.FC = () => {
         showToast("Simulation failed.", "error");
       } finally {
         setIsGenerating(false);
+        needsSimulation.current = false;
       }
     }
   };
@@ -319,7 +328,8 @@ const AppContent: React.FC = () => {
         onReset={handleReset}
         onSolveNode={() => {
           setSolvedNodes(prev => [...prev, activeStepIndex]);
-          setActiveCreation(null); // Clear simulation to allow refresh on next node
+          needsSimulation.current = true;
+          setActiveCreation(null); // Clear simulation; needsSimulation flag ensures refresh on next node
           setView('gauntlet');
         }}
         onUpdate={setActiveCreation}
