@@ -9,6 +9,10 @@ import os
 import sys
 from unittest.mock import patch
 
+# Set default JWT secret for tests
+if "JWT_SECRET" not in os.environ:
+    os.environ["JWT_SECRET"] = "super_secret_test_key"
+
 @pytest.fixture(scope="session")
 def anyio_backend():
     """Force anyio to only use asyncio backend."""
