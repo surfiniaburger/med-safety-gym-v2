@@ -59,6 +59,23 @@ def _load_or_generate_keys():
 
 hub_private_key, hub_public_key = _load_or_generate_keys()
 
+# Dependency for key material
+def get_hub_keys():
+    """Dependency that provides the Hub's PEM keys."""
+    priv_pem = hub_private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    ).decode()
+    
+    pub_pem = hub_public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode()
+    
+    return {"private": priv_pem, "public": pub_pem}
+
+
 try:
     central_manifest = load_manifest(MANIFEST_PATH)
     logger.info(f"Governor initialized with manifest: {central_manifest.name}")
@@ -132,13 +149,9 @@ async def delegate_auth(req: DelegationRequest):
         "scope": scope
     }
     
-    # Sign the token with the hub's private key bytes (or a dedicated HMAC secret)
-    secret = os.environ.get("JWT_SECRET") 
-    if not secret:
-        logger.error("JWT_SECRET environment variable is not set!")
-        raise HTTPException(status_code=500, detail="Server configuration error: JWT_SECRET missing")
-    
-    token = issue_delegation_token(claims, 3600, secret)
+    # Sign the token with the hub's private key (EdDSA)
+    keys = get_hub_keys()
+    token = issue_delegation_token(claims, 3600, keys["private"])
     
     import time
     return {
@@ -156,13 +169,10 @@ async def get_scoped_manifest(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
         
     token = authorization.split(" ")[1]
-    secret = os.environ.get("JWT_SECRET")
-    if not secret:
-        logger.error("JWT_SECRET environment variable is not set!")
-        raise HTTPException(status_code=500, detail="Server configuration error: JWT_SECRET missing")
+    keys = get_hub_keys()
     
     try:
-        claims = verify_delegation_token(token, secret)
+        claims = verify_delegation_token(token, keys["public"])
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         

@@ -51,3 +51,46 @@ def test_token_generation_and_verification():
     assert decoded["sub"] == session_id
     assert decoded["scope"] == scope
     assert "exp" in decoded
+
+def test_asymmetric_token_generation_and_verification():
+    from med_safety_gym.identity.scoped_identity import issue_delegation_token, verify_delegation_token
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    from cryptography.hazmat.primitives import serialization
+    
+    # 1. Generate Ed25519 Keys
+    private_key = ed25519.Ed25519PrivateKey.generate()
+    public_key = private_key.public_key()
+    
+    # PEM format for abstraction boundary
+    priv_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    ).decode()
+    
+    pub_pem = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode()
+
+    # Arrange
+    claims = {"sub": "sess_asym", "scope": ["admin"]}
+    ttl = 300
+    
+    # Act
+    token = issue_delegation_token(claims, ttl, priv_pem)
+    
+    # Assert (Successful verification)
+    decoded = verify_delegation_token(token, pub_pem)
+    assert decoded["sub"] == "sess_asym"
+    
+    # Failure Case: Verify with wrong key
+    wrong_key = ed25519.Ed25519PrivateKey.generate().public_key()
+    wrong_pub_pem = wrong_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode()
+    
+    import jwt
+    with pytest.raises(jwt.InvalidTokenError):
+        verify_delegation_token(token, wrong_pub_pem)

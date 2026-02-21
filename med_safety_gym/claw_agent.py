@@ -61,6 +61,7 @@ class SafeClawAgent:
         self.hub_url = os.environ.get("SAFECLAW_HUB_URL", "http://localhost:8000")
         self.interceptor = None # Will be initialized on first run or boot
         self.auth_token = None
+        self.hub_pub_key = None # Governor's public key for identity verification
         self.session_id = "agent_session_" + os.urandom(4).hex()
 
     async def _ensure_governor_interceptor(self):
@@ -93,6 +94,7 @@ class SafeClawAgent:
                 pub_resp = await client.get(f"{self.hub_url}/manifest/pubkey", timeout=10.0)
                 pub_resp.raise_for_status()
                 pub_pem = pub_resp.json().get("pubkey")
+                self.hub_pub_key = pub_pem
 
                 # 3. Fetch Scoped Manifest
                 man_resp = await client.get(
@@ -382,17 +384,13 @@ class SafeClawAgent:
             )
             return None
             
-        secret = os.environ.get("JWT_SECRET")
-        if not secret:
-            logger.error("JWT_SECRET environment variable is missing!")
-            await updater.update_status(
-                TaskState.failed, 
-                new_agent_text_message("🚨 BLOCKED: Server component configuration error (Identity).")
-            )
-            return None
+        if not self.hub_pub_key:
+             # If we lost the key somehow, re-fetch or fail
+             await self._ensure_governor_interceptor()
 
         try:
-            verify_delegation_token(self.auth_token, secret)
+            # Verify using the Governor's public key (Asymmetric)
+            verify_delegation_token(self.auth_token, self.hub_pub_key)
         except jwt.ExpiredSignatureError:
             await updater.update_status(
                 TaskState.failed, 

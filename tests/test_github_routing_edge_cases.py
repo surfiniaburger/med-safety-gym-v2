@@ -20,6 +20,7 @@ async def test_github_routing_edge_cases():
     
     agent = SafeClawAgent(github_client_factory=mock_factory)
     agent.auth_token = "valid-token"
+    agent.hub_pub_key = "dummy-pub-key" # Avoid verify_delegation_token failing on None
     
     # Mock the interceptor to be permissive but tier-aware
     agent.interceptor = MagicMock()
