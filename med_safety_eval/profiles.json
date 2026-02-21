@@ -1,0 +1,26 @@
+{
+    "read_only": [
+        "list_issues",
+        "list_pull_requests",
+        "get_eval_tasks"
+    ],
+    "developer": [
+        "configure_repo",
+        "list_issues",
+        "list_pull_requests",
+        "get_eval_tasks",
+        "evaluate_responses",
+        "create_issue"
+    ],
+    "admin": [
+        "configure_repo",
+        "list_issues",
+        "list_pull_requests",
+        "get_eval_tasks",
+        "evaluate_responses",
+        "create_issue",
+        "delete_issue_comment",
+        "unlock_admin_tools",
+        "delete_repo"
+    ]
+}
