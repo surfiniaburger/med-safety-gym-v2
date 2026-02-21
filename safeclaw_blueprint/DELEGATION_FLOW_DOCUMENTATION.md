@@ -26,7 +26,7 @@ graph TD
 
     Auth -->|EdDSA Signed JWT| Runner
     ManifestAPI -->|Tiered Scoped Tools| Interceptor
-    Runner -->|Fetch| PubKey
+    Governor -->|Provides| PubKey
     LLM -->|Request Action| Interceptor
     Interceptor -->|Verify with PubKey| Executor
 ```
