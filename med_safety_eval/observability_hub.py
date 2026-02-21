@@ -59,21 +59,22 @@ def _load_or_generate_keys():
 
 hub_private_key, hub_public_key = _load_or_generate_keys()
 
+# Pre-calculate PEM strings once to avoid expensive re-encoding on every request
+_hub_priv_pem = hub_private_key.private_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PrivateFormat.PKCS8,
+    encryption_algorithm=serialization.NoEncryption()
+).decode()
+
+_hub_pub_pem = hub_public_key.public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo
+).decode()
+
 # Dependency for key material
 def get_hub_keys():
     """Dependency that provides the Hub's PEM keys."""
-    priv_pem = hub_private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption()
-    ).decode()
-    
-    pub_pem = hub_public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    ).decode()
-    
-    return {"private": priv_pem, "public": pub_pem}
+    return {"private": _hub_priv_pem, "public": _hub_pub_pem}
 
 
 try:

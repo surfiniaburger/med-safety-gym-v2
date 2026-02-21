@@ -34,5 +34,6 @@ def verify_delegation_token(token: str, verification_key: str) -> Dict[str, Any]
     """
     Verifies a delegation token and returns its decoded claims.
     """
-    algorithms = ["HS256", "EdDSA"]
-    return jwt.decode(token, verification_key, algorithms=algorithms)
+    # Determine algorithm based on key format to prevent key confusion attacks
+    algorithm = "EdDSA" if "-----BEGIN" in verification_key else "HS256"
+    return jwt.decode(token, verification_key, algorithms=[algorithm])

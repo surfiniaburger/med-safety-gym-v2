@@ -385,8 +385,8 @@ class SafeClawAgent:
             return None
             
         if not self.hub_pub_key:
-             # If we lost the key somehow, re-fetch or fail
-             await self._ensure_governor_interceptor()
+            # If we lost the key somehow, re-fetch or fail
+            await self._ensure_governor_interceptor()
 
         try:
             # Verify using the Governor's public key (Asymmetric)
