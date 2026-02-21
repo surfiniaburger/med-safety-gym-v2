@@ -3,6 +3,8 @@ import argparse
 import uvicorn
 import logging
 
+logger = logging.getLogger(__name__)
+
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore

@@ -28,7 +28,15 @@ def test_server_starts():
         
     finally:
         proc.terminate()
-        proc.wait(timeout=5)
+        stdout, stderr = proc.communicate(timeout=5)
+        
+        # Decode and log the output for debugging
+        stderr_str = stderr.decode()
+        
+        # Ensure no NameError or other exceptions occurred during shutdown
+        if "NameError" in stderr_str or "Exception" in stderr_str:
+            print("Server errors found:\n", stderr_str)
+            assert False, "Exceptions found in server stderr during shutdown"
 
 if __name__ == "__main__":
     test_server_starts()
