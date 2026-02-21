@@ -15,6 +15,8 @@ from .skill_manifest import load_manifest, DEFAULT_MANIFEST, SkillManifest
 from .manifest_interceptor import ManifestInterceptor
 from .auth_guard import require_local_auth
 from .vision_audit import get_audit_summary
+from .identity.scoped_identity import verify_delegation_token
+import jwt
 
 logger = logging.getLogger(__name__)
 
@@ -373,10 +375,6 @@ class SafeClawAgent:
 
     async def _verify_and_gate_tool_call(self, tool_name: str, tool_args: dict, updater: Any, session: Any) -> Any:
         """Verify the tool call against the scoped token and manifest policy."""
-        # Check token expiration
-        from med_safety_gym.identity.scoped_identity import verify_delegation_token
-        import jwt
-        
         if not self.auth_token:
             await updater.update_status(
                 TaskState.failed, 
@@ -384,9 +382,16 @@ class SafeClawAgent:
             )
             return None
             
+        secret = os.environ.get("JWT_SECRET")
+        if not secret:
+            logger.error("JWT_SECRET environment variable is missing!")
+            await updater.update_status(
+                TaskState.failed, 
+                new_agent_text_message("🚨 BLOCKED: Server component configuration error (Identity).")
+            )
+            return None
+
         try:
-            import os
-            secret = os.environ.get("JWT_SECRET", "super_secret_test_key")
             verify_delegation_token(self.auth_token, secret)
         except jwt.ExpiredSignatureError:
             await updater.update_status(

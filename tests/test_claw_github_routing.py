@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, ANY
+from unittest.mock import AsyncMock, MagicMock, ANY, patch
 from a2a.types import Message, TextPart, Part
 from med_safety_gym.claw_agent import SafeClawAgent
 
@@ -14,6 +14,7 @@ async def test_agent_routes_to_github():
     github_factory = lambda: github_client
     
     agent = SafeClawAgent(client_factory=lambda: MagicMock(), github_client_factory=github_factory)
+    agent.auth_token = "valid-mock-token"
     
     # Mock the interceptor to be permissive for this test
     agent.interceptor = MagicMock()
@@ -28,7 +29,8 @@ async def test_agent_routes_to_github():
     )
     
     # Run agent
-    await agent.run(message, updater)
+    with patch("med_safety_gym.claw_agent.verify_delegation_token"):
+        await agent.run(message, updater)
     
     # Assertions
     github_client.call_tool.assert_called_with("list_issues", {})
@@ -42,6 +44,7 @@ async def test_agent_configures_repo():
     github_client.call_tool = AsyncMock(return_value="Repo updated")
     
     agent = SafeClawAgent(github_client_factory=lambda: github_client)
+    agent.auth_token = "valid-mock-token"
     
     # Mock the interceptor to be permissive for this test
     agent.interceptor = MagicMock()
@@ -55,7 +58,8 @@ async def test_agent_configures_repo():
         parts=[Part(root=TextPart(text="gh: set repo my/repo"))]
     )
     
-    await agent.run(message, updater)
+    with patch("med_safety_gym.claw_agent.verify_delegation_token"):
+        await agent.run(message, updater)
     
     github_client.call_tool.assert_called_with("configure_repo", {"repo_name": "my/repo"})
 

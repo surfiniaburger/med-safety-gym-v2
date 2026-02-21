@@ -23,8 +23,9 @@ async def test_agent_verifies_valid_signature():
     
     # Mock Hub endpoints
     respx.get("http://localhost:8000/health").mock(return_value=Response(200, json={"status": "ok"}))
+    respx.post("http://localhost:8000/auth/delegate").mock(return_value=Response(200, json={"token": "mock-token", "scope": [], "expires_at": 9999999999}))
     respx.get("http://localhost:8000/manifest/pubkey").mock(return_value=Response(200, json={"pubkey": pub_pem}))
-    respx.get("http://localhost:8000/manifest").mock(return_value=Response(200, json={
+    respx.get("http://localhost:8000/manifest/scoped").mock(return_value=Response(200, json={
         "manifest": manifest_dict,
         "signature": signature
     }))
@@ -54,8 +55,9 @@ async def test_agent_rejects_invalid_signature():
     signature = sign_data(manifest_json.encode(), priv_fake).hex()
     
     respx.get("http://localhost:8000/health").mock(return_value=Response(200, json={"status": "ok"}))
+    respx.post("http://localhost:8000/auth/delegate").mock(return_value=Response(200, json={"token": "mock-token", "scope": [], "expires_at": 9999999999}))
     respx.get("http://localhost:8000/manifest/pubkey").mock(return_value=Response(200, json={"pubkey": pub_pem}))
-    respx.get("http://localhost:8000/manifest").mock(return_value=Response(200, json={
+    respx.get("http://localhost:8000/manifest/scoped").mock(return_value=Response(200, json={
         "manifest": manifest_dict,
         "signature": signature
     }))

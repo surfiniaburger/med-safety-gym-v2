@@ -29,70 +29,35 @@ async def test_agent_fetches_manifest_from_hub():
     }
 
     # 3. Use patch for more reliable mocking of httpx
-    with patch("httpx.AsyncClient.get") as mock_get:
-        # Mock responses for Health, Pubkey, and Manifest
-        async def mock_router(url, **kwargs):
-            m = MagicMock()
-            m.status_code = 200
-            m.raise_for_status = MagicMock()
-            if "/health" in str(url):
-                m.json.return_value = {"status": "ok"}
-            elif "/manifest/pubkey" in str(url):
-                # Return a valid-looking public key (PEM)
-                from med_safety_gym.crypto import generate_keys
-                from cryptography.hazmat.primitives import serialization
-                _, pub = generate_keys()
-                pub_pem = pub.public_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PublicFormat.SubjectPublicKeyInfo
-                ).decode()
-                m.json.return_value = {"pubkey": pub_pem}
-            elif "/manifest" in url:
-                # Return signed manifest
-                from med_safety_gym.crypto import generate_keys, sign_data
-                priv, _ = generate_keys()
-                manifest_json = json.dumps(mock_manifest, sort_keys=True)
-                signature = sign_data(manifest_json.encode(), priv).hex()
-                # Important: We need the test to pass, so we mock _verify_and_parse_manifest 
-                # OR we ensure the pubkey we returned above matches this priv key.
-                # Let's ensure they match for a real verification.
-                return m
-            return m
+    from med_safety_gym.crypto import generate_keys, sign_data
+    from cryptography.hazmat.primitives import serialization
+    import json
+    
+    priv, pub = generate_keys()
+    pub_pem = pub.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode()
+    
+    manifest_json = json.dumps(mock_manifest, sort_keys=True)
+    signature = sign_data(manifest_json.encode(), priv).hex()
 
-        # Simpler approach: Mock the high-level _fetch_signed_manifest or its components
-        # to avoid complex httpx routing mocks in this specific test.
-        # But let's try to keep it as an integration test.
-        
-        # Actually, the agent's _fetch_signed_manifest creates its OWN AsyncClient.
-        # So patching httpx.AsyncClient.get at the class level is better.
-        
-        from med_safety_gym.crypto import generate_keys, sign_data
-        from cryptography.hazmat.primitives import serialization
-        import json
-        
-        priv, pub = generate_keys()
-        pub_pem = pub.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        ).decode()
-        
-        manifest_json = json.dumps(mock_manifest, sort_keys=True)
-        signature = sign_data(manifest_json.encode(), priv).hex()
+    def side_effect(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status = MagicMock()
+        if "/health" in str(url):
+            resp.json.return_value = {"status": "ok"}
+        elif "/auth/delegate" in str(url):
+            resp.json.return_value = {"token": "mock-token", "scope": [], "expires_at": 9999999999}
+        elif "/manifest/pubkey" in str(url):
+            resp.json.return_value = {"pubkey": pub_pem}
+        elif "/manifest/scoped" in str(url):
+            resp.json.return_value = {"manifest": mock_manifest, "signature": signature}
+        return resp
 
-        def side_effect(url, **kwargs):
-            resp = MagicMock()
-            resp.status_code = 200
-            resp.raise_for_status = MagicMock()
-            if "/health" in str(url):
-                resp.json.return_value = {"status": "ok"}
-            elif "/manifest/pubkey" in str(url):
-                resp.json.return_value = {"pubkey": pub_pem}
-            elif "/manifest" in str(url):
-                resp.json.return_value = {"manifest": mock_manifest, "signature": signature}
-            return resp
-
-        mock_get.side_effect = side_effect
-
+    with patch("httpx.AsyncClient.get", side_effect=side_effect) as mock_get, \
+         patch("httpx.AsyncClient.post", side_effect=side_effect) as mock_post:
         # Trigger _ensure_governor_interceptor
         await agent._ensure_governor_interceptor()
 

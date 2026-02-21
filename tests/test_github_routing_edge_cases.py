@@ -19,6 +19,7 @@ async def test_github_routing_edge_cases():
     mock_factory = MagicMock(return_value=mock_client)
     
     agent = SafeClawAgent(github_client_factory=mock_factory)
+    agent.auth_token = "valid-token"
     
     # Mock the interceptor to be permissive but tier-aware
     agent.interceptor = MagicMock()
@@ -48,7 +49,8 @@ async def test_github_routing_edge_cases():
         mock_client.call_tool.reset_mock()
         mock_updater.update_status.reset_mock()
         
-        await agent.github_action(cmd, mock_updater)
+        with patch("med_safety_gym.claw_agent.verify_delegation_token"):
+            await agent.github_action(cmd, mock_updater)
         
         # Check calls
         calls = [call.args[0] for call in mock_client.call_tool.call_args_list]
