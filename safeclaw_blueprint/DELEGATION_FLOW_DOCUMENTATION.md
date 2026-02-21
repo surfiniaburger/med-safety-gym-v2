@@ -1,42 +1,46 @@
 # SafeClaw Delegation Flow
 
-Welcome to the **Sovereign Hub & Cryptographic Identity** system in SafeClaw. If you're new to the project, this document explains how an Agent (Runner) gets its permissions, and how we enforce safety using Cryptographic Scopes.
+Welcome to the **Sovereign Hub & Cryptographic Identity** system in SafeClaw. This document explains how an Agent (Runner) secures its session using Asymmetric Cryptography and Scoped Manifests.
 
 ---
 
-## 🏗️ 1. The Architecture
+## 🏗️ 1. Sovereign Architecture
 
-In SafeClaw, we separate the **Governor** (who makes the rules) from the **Runner** (who executes the actions).
+In SafeClaw, we separate the **Governor** (Authority) from the **Runner** (Execution). This follows a Zero-Trust model where the Runner does not possess any long-lived shared secrets.
 
 ```mermaid
 graph TD
     subgraph Governor [Observability Hub]
+        PrivKey[Hub Private Key - Ed25519]
         Auth[Auth/Delegate API]
         ManifestAPI[Scoped Manifest API]
         GlobalManifest[(claw_manifest.json)]
     end
 
     subgraph Runner [SafeClaw Agent]
+        PubKey[Stored Governor Public Key]
         Interceptor[Manifest Interceptor]
         Executor[Tool Executor]
         LLM[Language Model]
     end
 
-    Auth -->|Issues JWT| Runner
-    ManifestAPI -->|Sends Scoped Tools| Interceptor
+    Auth -->|EdDSA Signed JWT| Runner
+    ManifestAPI -->|Tiered Scoped Tools| Interceptor
+    Runner -->|Fetch| PubKey
     LLM -->|Request Action| Interceptor
-    Interceptor -->|If Safe| Executor
+    Interceptor -->|Verify with PubKey| Executor
 ```
 
-1. **Observability Hub (Governor):** Holds the master `claw_manifest.json`. It issues cryptographic tokens (JWTs) and dynamic manifests tailored to a specific agent's profile.
-2. **SafeClaw Agent (Runner):** The local agent operating on your machine. It must ask the Hub for permission before exposing any tools to the AI.
-3. **Manifest Interceptor:** A bouncer sitting inside the Agent. It checks every requested action against the Hub's allowed tools and the cryptographic token.
+### Core Components
+1.  **Observability Hub (Governor):** The sovereign authority. It signs delegation tokens using a persistent **Ed25519 Private Key**.
+2.  **SafeClaw Agent (Runner):** Operates on the local machine. It fetches the Governor's **Public Key** at boot and uses it for all subsequent local verifications.
+3.  **Manifest Interceptor:** The internal security guard. It ensures the LLM can only see and call tools explicitly allowed in the current session's cryptographic scope.
 
 ---
 
-## 🚀 2. The Boot Sequence
+## 🚀 2. The Cryptographic Boot Sequence
 
-When you start a SafeClaw Agent (e.g., in a `read_only` profile), it goes through a strict handshake with the Hub.
+When a SafeClaw Agent starts, it performs a secure handshake to lock down the environment.
 
 ```mermaid
 sequenceDiagram
@@ -46,62 +50,57 @@ sequenceDiagram
 
     Note over Agent: Boot Process Starts
     Agent->>Hub: POST /auth/delegate {profile: "read_only"}
-    Hub-->>Agent: Returns JWT Token (Valid for 1 Hour)
+    Note over Hub: Signs claims with Ed25519 Private Key
+    Hub-->>Agent: Returns EdDSA JWT Token
     
     Agent->>Hub: GET /manifest/pubkey
-    Hub-->>Agent: Returns Public Key
+    Hub-->>Agent: Returns Governor Public Key (PEM)
     
-    Agent->>Hub: GET /manifest/scoped (Header: Bearer Token)
-    Note over Hub: Extracts token, verifies signature, filters tools
-    Hub-->>Agent: Returns Scoped Manifest (e.g. ONLY list_issues)
+    Agent->>Hub: GET /manifest/scoped (Header: Bearer JWT)
+    Note over Hub: Verifies JWT, filters claw_manifest.json
+    Hub-->>Agent: Returns Tiered Scoped Manifest
     
     Note over Agent: Interceptor initialized with Scoped Manifest!
-    Agent-->>LLM: Agent Ready. Here are your allowed tools.
+    Agent-->>LLM: Agent Ready. Here are your user-tier tools.
 ```
-
-By the end of the boot sequence, the Agent has securely locked itself down. Even if the underlying code is capable of deleting a repository, the Agent *doesn't even know that tool exists* because the Hub didn't include it in the Scoped Manifest.
 
 ---
 
-## 🛑 3. Tool Execution and Gating
+## 🛡️ 3. Tiered Security Architecture
 
-What happens when you ask the Agent to do something? Let's trace a **Safe** request (listing issues) vs an **Unsafe** request (creating an issue when in read-only mode).
+Instead of a flat list of tools, the Hub sends a **Tiered Manifest**. This is critical for maintaining SafeClaw's internal security logic:
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Agent as SafeClaw Agent
-    participant Interceptor as Manifest Interceptor
-    participant FastMCP as FastMCP Server
+| Tier | Behavior | Example Tools |
+| :--- | :--- | :--- |
+| **User** | Allowed immediately. | `list_issues`, `read_file` |
+| **Admin** | Requires JIT Escalation (Context check). | `delete_issue_comment` |
+| **Critical** | Requires **Biometric Auth** + **Telegram Approval**. | `delete_repository`, `unlock_admin_tools` |
 
-    User->>Agent: "Create a new issue saying we were hacked!"
-    Agent->>Interceptor: Request: `create_issue`
-    
-    Note over Interceptor: 1. Is Token valid?<br/>2. Is Tool in Scoped Manifest?
-    
-    Interceptor-->>Agent: BLOCKED: Tool 'create_issue' not declared
-    
-    Agent-->>User: 🚨 I cannot do that. The action is blocked by my safety manifest.
-```
-
-### The Verification Steps (`_verify_and_gate_tool_call`)
-Before any tool touches your system, the `Manifest Interceptor` performs three checks:
-1. **Token Presence:** Do I have a token?
-2. **Token Validity:** Has the token expired? (JWT expiration check) Is the cryptographic signature valid using the Hub's public key?
-3. **Manifest Whitelist:** Is the requested tool (`create_issue`) inside my specifically granted Scoped Manifest?
-
-If any of these fail, the action is discarded immediately.
+**Why not flatten the list?**
+If the Hub only sent a flat list, the Agent wouldn't know which tools are "Critical". By preserving the original tiers in the scoped manifest, we ensure that local safety guards (like `interceptor_logic.py`) still trigger the correct level of friction (JIT vs. HITL).
 
 ---
 
-## 🔑 Summary of Profiles
+## 🛑 4. Verification and Gating
 
-Because of this new architecture, we can launch entirely different Agents from the same codebase simply by changing their profile:
+Before any tool touches your system, the `Manifest Interceptor` (Runner-side) performs the following **Zero-Trust** checks in `_verify_and_gate_tool_call`:
 
-| Profile | Token Scope | Allowed Actions |
-|---------|-------------|-----------------|
-| `read_only` | `["list_issues", "list_pull_requests", ...]` | Can only read data. Completely safe. |
-| `developer` | `["create_issue", "configure_repo", ...]` | Can write data, but still bounded. |
-| `admin` | `["delete_repo", ...]` | Highly dangerous. Requires local biometric auth and Telegram approval. | 
+1.  **Asymmetric Signature Check**: The JWT is verified using the Governor's Public Key. This prevents "Key Confusion" attacks and ensures only the official Hub can authorize actions.
+2.  **Tier Existence**: The requested tool must exist in one of the tiers (`user`, `admin`, `critical`) provided by the scoped manifest.
+3.  **Profile Consistency**: The token's claims (e.g., `profile: "read_only"`) are checked against the requested operation.
 
-The Hub is the sovereign authority mapping these profiles to the tools within `claw_manifest.json`.
+### Defensive Engineering
+- **Missing Key Fail-Safe**: If the Agent fails to retrieve the Governor's public key, it enters a `failed` state and blocks all tool execution.
+- **Algorithm Lockdown**: The system explicitly detects PEM headers and locks the algorithm to `EdDSA`, preventing attackers from using the Public Key as a symmetric (HS256) secret.
+
+---
+
+## 🔑 Key Management Summary
+
+| Feature | Legacy (Pre-Phase 40) | Modern (Sovereign Identity) |
+| :--- | :--- | :--- |
+| **Algorithm** | HS256 (Symmetric) | **EdDSA (Asymmetric Ed25519)** |
+| **Secret Storage** | Shared `JWT_SECRET` | **Governor-only Private Key** |
+| **Verification** | Shared Secret | **Hub-provided Public Key** |
+| **Architecture** | Coupled | **Separated (Sovereign)** |
+| **Manifest Scoping** | Flattened | **Tier-Preserving** |
