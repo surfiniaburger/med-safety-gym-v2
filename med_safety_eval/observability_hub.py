@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -138,26 +139,21 @@ async def delegate_auth(req: DelegationRequest):
     if not central_manifest:
         raise HTTPException(status_code=500, detail="Manifest not loaded")
         
-    # In a real system, we'd look up the profile definitions in a DB/config.
-    # Aligning with DELEGATION_FLOW_DOCUMENTATION.md:
-    scope = []
-    if req.profile == "read_only":
-        scope = ["list_issues", "list_pull_requests", "get_eval_tasks"]
-    elif req.profile == "developer":
-        # Can write data but still bounded
-        scope = [
-            "configure_repo", "list_issues", "list_pull_requests", 
-            "get_eval_tasks", "evaluate_responses", "create_issue"
-        ]
-    elif req.profile == "admin":
-        # Admin gets everything
-        scope = [
-            "configure_repo", "list_issues", "list_pull_requests", 
-            "get_eval_tasks", "evaluate_responses", "create_issue",
-            "delete_issue_comment", "unlock_admin_tools", "delete_repo"
-        ]
-    else:
-        logger.warning(f"Unknown profile requested: {req.profile}")
+    # Load profile mappings from external config
+    profiles_path = Path(__file__).parent / "profiles.json"
+    try:
+        with open(profiles_path, "r") as f:
+            profile_defs = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to load or parse profiles.json: {e}")
+        raise HTTPException(status_code=500, detail="Profile configuration error")
+    except Exception as e:
+        logger.error(f"Unexpected error loading profiles.json: {e}")
+        raise HTTPException(status_code=500, detail="Profile configuration error")
+
+    scope = profile_defs.get(req.profile, [])
+    if not scope:
+        logger.warning(f"Unknown profile or empty scope requested: {req.profile}")
     
     claims = {
         "sub": req.session_id,

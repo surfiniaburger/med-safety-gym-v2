@@ -166,7 +166,7 @@ sequenceDiagram
 
 ---
 
-## �️ 7. How the Interceptor Works (The Decision Tree)
+## 7. How the Interceptor Works (The Decision Tree)
 
 The `ManifestInterceptor` doesn't just check a list; it follows a cascading logic to determine the correct security friction.
 
