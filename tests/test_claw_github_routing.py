@@ -15,6 +15,7 @@ async def test_agent_routes_to_github():
     
     agent = SafeClawAgent(client_factory=lambda: MagicMock(), github_client_factory=github_factory)
     agent.auth_token = "valid-mock-token"
+    agent.hub_pub_key = "dummy-pub-key"
     
     # Mock the interceptor to be permissive for this test
     agent.interceptor = MagicMock()
@@ -45,6 +46,7 @@ async def test_agent_configures_repo():
     
     agent = SafeClawAgent(github_client_factory=lambda: github_client)
     agent.auth_token = "valid-mock-token"
+    agent.hub_pub_key = "dummy-pub-key"
     
     # Mock the interceptor to be permissive for this test
     agent.interceptor = MagicMock()

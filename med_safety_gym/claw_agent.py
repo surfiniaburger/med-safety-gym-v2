@@ -387,6 +387,12 @@ class SafeClawAgent:
         if not self.hub_pub_key:
             # If we lost the key somehow, re-fetch or fail
             await self._ensure_governor_interceptor()
+            if not self.hub_pub_key:
+                await updater.update_status(
+                    TaskState.failed, 
+                    new_agent_text_message("🚨 BLOCKED: Unable to retrieve Governor public key.")
+                )
+                return None
 
         try:
             # Verify using the Governor's public key (Asymmetric)

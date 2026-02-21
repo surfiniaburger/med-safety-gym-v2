@@ -25,6 +25,7 @@ async def test_admin_unlock_is_rejected_zero_trust():
     # Initialize agent
     agent = SafeClawAgent(github_client_factory=mock_client_factory)
     agent.auth_token = "valid-token"
+    agent.hub_pub_key = "dummy-pub-key"
     
     # Create session
     session = SessionMemory("test_user")
@@ -58,6 +59,7 @@ async def test_delete_comment_routing_and_blocking():
     
     agent = SafeClawAgent(github_client_factory=mock_client_factory)
     agent.auth_token = "valid-token"
+    agent.hub_pub_key = "dummy-pub-key"
     
     # Force a known manifest state with admin tools
     agent.interceptor = ManifestInterceptor(SkillManifest(
