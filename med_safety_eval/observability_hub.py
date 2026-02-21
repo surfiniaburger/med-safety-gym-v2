@@ -144,8 +144,11 @@ async def delegate_auth(req: DelegationRequest):
     try:
         with open(profiles_path, "r") as f:
             profile_defs = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to load or parse profiles.json: {e}")
+        raise HTTPException(status_code=500, detail="Profile configuration error")
     except Exception as e:
-        logger.error(f"Failed to load profiles.json: {e}")
+        logger.error(f"Unexpected error loading profiles.json: {e}")
         raise HTTPException(status_code=500, detail="Profile configuration error")
 
     scope = profile_defs.get(req.profile, [])
