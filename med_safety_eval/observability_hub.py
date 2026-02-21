@@ -1,6 +1,6 @@
 import os
 import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Optional
 import logging
@@ -25,6 +25,7 @@ mcp = FastMCP("Observability-Hub")
 # --- SafeClaw Manifest & Policy (The Governor) ---
 from med_safety_gym.skill_manifest import load_manifest, SkillManifest
 from med_safety_gym.crypto import generate_keys, sign_data
+from med_safety_gym.identity.scoped_identity import issue_delegation_token, verify_delegation_token, create_scoped_manifest
 from cryptography.hazmat.primitives import serialization
 
 MANIFEST_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "claw_manifest.json")
@@ -107,6 +108,103 @@ async def get_manifest():
         "signature": signature.hex()
     }
 
+from pydantic import BaseModel
+
+class DelegationRequest(BaseModel):
+    session_id: str
+    profile: str
+
+@app.post("/auth/delegate")
+async def delegate_auth(req: DelegationRequest):
+    """Issues a cryptographic token granting a specific scope to a session."""
+    if not central_manifest:
+        raise HTTPException(status_code=500, detail="Manifest not loaded")
+        
+    # In a real system, we'd look up the profile definitions in a DB/config.
+    # For now, hardcode "read_only" scope logic:
+    scope = []
+    if req.profile == "read_only":
+        scope = ["list_issues", "list_pull_requests", "get_eval_tasks"]
+    
+    claims = {
+        "sub": req.session_id,
+        "profile": req.profile,
+        "scope": scope
+    }
+    
+    # Sign the token with the hub's private key bytes (or a dedicated HMAC secret)
+    # Using a simple string secret for now, but should ideally use the PEM
+    import os
+    secret = os.environ.get("JWT_SECRET", "super_secret_test_key") 
+    
+    token = issue_delegation_token(claims, 3600, secret)
+    
+    import time
+    return {
+        "token": token,
+        "scope": scope,
+        "expires_at": int(time.time()) + 3600
+    }
+
+@app.get("/manifest/scoped")
+async def get_scoped_manifest(authorization: str = Header(None)):
+    """Returns a manifest filtered by the provided delegation token."""
+    if not central_manifest:
+        raise HTTPException(status_code=500, detail="Manifest not loaded")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+        
+    token = authorization.split(" ")[1]
+    import os
+    secret = os.environ.get("JWT_SECRET", "super_secret_test_key") 
+    
+    try:
+        claims = verify_delegation_token(token, secret)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+        
+    scope = claims.get("scope", [])
+    
+    # Filter the manifest
+    from dataclasses import asdict
+    full_manifest_dict = asdict(central_manifest)
+    
+    print(f"DEBUG: full_manifest_dict[permissions][tools] = {full_manifest_dict.get('permissions', {}).get('tools')}")
+    
+    # Extract all tools from tiers as a flat list
+    all_tools = []
+    
+    # When using asdict on SkillManifest, it produces:
+    # {"permissions": {"tools": {"user": ["a"], "write": ["b"], "admin": [], "critical": []}}}
+    tools_data = full_manifest_dict.get("permissions", {}).get("tools", {})
+    if isinstance(tools_data, dict):
+        for tier_name, tier_tools in tools_data.items():
+            if isinstance(tier_tools, list):
+                all_tools.extend(tier_tools)
+
+    # Convert all string tool names to pseudo-manifest objects for create_scoped_manifest
+    normalized_tools = [{"name": t} if isinstance(t, str) else t for t in all_tools]
+    
+    # Filter the list
+    scoped_tools = create_scoped_manifest(normalized_tools, scope)
+    
+    # Reconstruct the dict with only allowed tools
+    # The test looks for manifest.get("tools", []) directly
+    scoped_manifest_dict = {
+        "name": f"{full_manifest_dict['name']}-scoped",
+        "description": f"Scoped manifest for {claims.get('profile')}",
+        "version": full_manifest_dict.get("version", "1.0"),
+        "tools": scoped_tools
+    }
+    
+    manifest_json = json.dumps(scoped_manifest_dict, sort_keys=True)
+    signature = sign_data(manifest_json.encode(), hub_private_key)
+    
+    return {
+        "manifest": scoped_manifest_dict,
+        "signature": signature.hex()
+    }
+
 @app.get("/manifest/pubkey")
 async def get_pubkey():
     """Expose the Governor's public key for signature verification."""
@@ -123,6 +221,7 @@ async def get_tool_tier(tool_name: str):
         return {"error": "Manifest not loaded"}, 500
     
     tier = central_manifest.permissions.tools.tier_for(tool_name)
+    print(f"DEBUG tier_for({tool_name}): tier={tier}, critical={central_manifest.permissions.tools.critical}, type(critical)={type(central_manifest.permissions.tools.critical)}")
     return {"tool": tool_name, "tier": tier}
 
 class ConnectionManager:

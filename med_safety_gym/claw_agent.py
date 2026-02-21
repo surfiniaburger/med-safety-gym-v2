@@ -58,38 +58,55 @@ class SafeClawAgent:
         # SafeClaw Governor Configuration
         self.hub_url = os.environ.get("SAFECLAW_HUB_URL", "http://localhost:8000")
         self.interceptor = None # Will be initialized on first run or boot
+        self.auth_token = None
+        self.session_id = "agent_session_" + os.urandom(4).hex()
 
     async def _ensure_governor_interceptor(self):
         """Fetch the central manifest from the Governor (Hub) and initialize interceptor."""
         if self.interceptor:
             return
 
-        manifest = await self._fetch_signed_manifest()
+        manifest = await self._init_scoped_session()
         self.interceptor = ManifestInterceptor(manifest)
         logger.info(f"SafeClaw Governor initialized with policy: {manifest.name}")
 
-    async def _fetch_signed_manifest(self) -> SkillManifest:
-        """Fetch pubkey and manifest from Hub, verify signature, and return valid manifest."""
+    async def _init_scoped_session(self) -> SkillManifest:
+        """Fetch delegation token and scoped manifest from Hub."""
         try:
             async with httpx.AsyncClient() as client:
                 await self._ensure_hub_running(client)
                 
-                # Fetch Public Key for verification
+                # 1. Fetch Delegation Token
+                profile = os.environ.get("SAFECLAW_AGENT_PROFILE", "read_only")
+                auth_resp = await client.post(
+                    f"{self.hub_url}/auth/delegate", 
+                    json={"session_id": self.session_id, "profile": profile},
+                    timeout=10.0
+                )
+                auth_resp.raise_for_status()
+                auth_data = auth_resp.json()
+                self.auth_token = auth_data.get("token")
+                
+                # 2. Fetch Public Key for verification
                 pub_resp = await client.get(f"{self.hub_url}/manifest/pubkey", timeout=10.0)
                 pub_resp.raise_for_status()
                 pub_pem = pub_resp.json().get("pubkey")
 
-                # Fetch Signed Manifest
-                man_resp = await client.get(f"{self.hub_url}/manifest", timeout=10.0)
+                # 3. Fetch Scoped Manifest
+                man_resp = await client.get(
+                    f"{self.hub_url}/manifest/scoped", 
+                    headers={"Authorization": f"Bearer {self.auth_token}"},
+                    timeout=10.0
+                )
                 man_resp.raise_for_status()
                 data = man_resp.json()
 
                 return self._verify_and_parse_manifest(data, pub_pem)
         except (httpx.RequestError, httpx.HTTPStatusError, json.JSONDecodeError, KeyError, ValueError) as e:
-            logger.error(f"Failed to fetch secured manifest: {e}. Falling back to restricted policy.")
+            logger.error(f"Failed to initialize scoped session: {e}. Falling back to restricted policy.")
             return DEFAULT_MANIFEST
         except Exception as e:
-            logger.error(f"Unexpected error fetching manifest: {e}")
+            logger.error(f"Unexpected error initializing session: {e}")
             return DEFAULT_MANIFEST
 
     def _verify_and_parse_manifest(self, data: dict, pub_pem: Optional[str]) -> SkillManifest:
@@ -321,8 +338,8 @@ class SafeClawAgent:
         session: Any = None
     ) -> Optional[Any]:
         """Orchestrate tool execution with manifest checks and security guards."""
-        check = await self._check_manifest_interception(tool_name, tool_args, updater, session)
-        if not check.allowed:
+        check = await self._verify_and_gate_tool_call(tool_name, tool_args, updater, session)
+        if not check or not check.allowed:
             return None
 
         if not await self._apply_security_guards(check, tool_name, tool_args, updater, session=session):
@@ -354,8 +371,37 @@ class SafeClawAgent:
             except Exception as e:
                 await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Execution error: {e}"))
 
-    async def _check_manifest_interception(self, tool_name: str, tool_args: dict, updater: Any, session: Any) -> Any:
-        """Verify the tool call against the manifest policy."""
+    async def _verify_and_gate_tool_call(self, tool_name: str, tool_args: dict, updater: Any, session: Any) -> Any:
+        """Verify the tool call against the scoped token and manifest policy."""
+        # Check token expiration
+        from med_safety_gym.identity.scoped_identity import verify_delegation_token
+        import jwt
+        
+        if not self.auth_token:
+            await updater.update_status(
+                TaskState.failed, 
+                new_agent_text_message("🚨 BLOCKED: No delegation token present in session.")
+            )
+            return None
+            
+        try:
+            import os
+            secret = os.environ.get("JWT_SECRET", "super_secret_test_key")
+            verify_delegation_token(self.auth_token, secret)
+        except jwt.ExpiredSignatureError:
+            await updater.update_status(
+                TaskState.failed, 
+                new_agent_text_message("🚨 BLOCKED: Delegation token has expired.")
+            )
+            return None
+        except jwt.InvalidTokenError as e:
+            await updater.update_status(
+                TaskState.failed, 
+                new_agent_text_message(f"🚨 BLOCKED: Invalid delegation token. {e}")
+            )
+            return None
+
+        # Check against manifest interceptor rules
         audit_log = getattr(session, "audit_log", []) if session else []
         check = self.interceptor.intercept(tool_name, tool_args, audit_log)
         
