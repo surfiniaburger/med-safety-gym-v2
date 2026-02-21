@@ -22,6 +22,7 @@ async def test_critical_tool_requires_local_auth():
     # Initialize agent with custom manifest
     agent = SafeClawAgent(github_client_factory=mock_client_factory)
     agent.auth_token = "valid-token"
+    agent.hub_pub_key = "dummy-pub-key"
     agent.interceptor = ManifestInterceptor(SkillManifest(
         name="test-manifest",
         permissions=PermissionSet(
@@ -69,6 +70,7 @@ async def test_critical_tool_disallowed_if_auth_fails():
     
     agent = SafeClawAgent(github_client_factory=mock_client_factory)
     agent.auth_token = "valid-token"
+    agent.hub_pub_key = "dummy-pub-key"
     agent.interceptor = ManifestInterceptor(SkillManifest(
         name="test-manifest",
         permissions=PermissionSet(tools=ToolTiers(critical=["dangerous_action"]))
