@@ -139,10 +139,25 @@ async def delegate_auth(req: DelegationRequest):
         raise HTTPException(status_code=500, detail="Manifest not loaded")
         
     # In a real system, we'd look up the profile definitions in a DB/config.
-    # For now, hardcode "read_only" scope logic:
+    # Aligning with DELEGATION_FLOW_DOCUMENTATION.md:
     scope = []
     if req.profile == "read_only":
         scope = ["list_issues", "list_pull_requests", "get_eval_tasks"]
+    elif req.profile == "developer":
+        # Can write data but still bounded
+        scope = [
+            "configure_repo", "list_issues", "list_pull_requests", 
+            "get_eval_tasks", "evaluate_responses", "create_issue"
+        ]
+    elif req.profile == "admin":
+        # Admin gets everything
+        scope = [
+            "configure_repo", "list_issues", "list_pull_requests", 
+            "get_eval_tasks", "evaluate_responses", "create_issue",
+            "delete_issue_comment", "unlock_admin_tools", "delete_repo"
+        ]
+    else:
+        logger.warning(f"Unknown profile requested: {req.profile}")
     
     claims = {
         "sub": req.session_id,
