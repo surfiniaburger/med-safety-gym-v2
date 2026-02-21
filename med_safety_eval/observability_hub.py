@@ -133,9 +133,10 @@ async def delegate_auth(req: DelegationRequest):
     }
     
     # Sign the token with the hub's private key bytes (or a dedicated HMAC secret)
-    # Using a simple string secret for now, but should ideally use the PEM
-    import os
-    secret = os.environ.get("JWT_SECRET", "super_secret_test_key") 
+    secret = os.environ.get("JWT_SECRET") 
+    if not secret:
+        logger.error("JWT_SECRET environment variable is not set!")
+        raise HTTPException(status_code=500, detail="Server configuration error: JWT_SECRET missing")
     
     token = issue_delegation_token(claims, 3600, secret)
     
@@ -155,8 +156,10 @@ async def get_scoped_manifest(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
         
     token = authorization.split(" ")[1]
-    import os
-    secret = os.environ.get("JWT_SECRET", "super_secret_test_key") 
+    secret = os.environ.get("JWT_SECRET")
+    if not secret:
+        logger.error("JWT_SECRET environment variable is not set!")
+        raise HTTPException(status_code=500, detail="Server configuration error: JWT_SECRET missing")
     
     try:
         claims = verify_delegation_token(token, secret)
@@ -165,36 +168,27 @@ async def get_scoped_manifest(authorization: str = Header(None)):
         
     scope = claims.get("scope", [])
     
-    # Filter the manifest
+    # Filter the manifest by tier
     from dataclasses import asdict
     full_manifest_dict = asdict(central_manifest)
     
-    print(f"DEBUG: full_manifest_dict[permissions][tools] = {full_manifest_dict.get('permissions', {}).get('tools')}")
-    
-    # Extract all tools from tiers as a flat list
-    all_tools = []
-    
-    # When using asdict on SkillManifest, it produces:
-    # {"permissions": {"tools": {"user": ["a"], "write": ["b"], "admin": [], "critical": []}}}
     tools_data = full_manifest_dict.get("permissions", {}).get("tools", {})
-    if isinstance(tools_data, dict):
-        for tier_name, tier_tools in tools_data.items():
-            if isinstance(tier_tools, list):
-                all_tools.extend(tier_tools)
+    if not isinstance(tools_data, dict):
+        logger.error("Manifest permissions.tools is not a dictionary!")
+        raise HTTPException(status_code=500, detail="Malformed manifest structure")
 
-    # Convert all string tool names to pseudo-manifest objects for create_scoped_manifest
-    normalized_tools = [{"name": t} if isinstance(t, str) else t for t in all_tools]
+    # Filter each tier while maintaining structure
+    scoped_tools = create_scoped_manifest(tools_data, scope)
     
-    # Filter the list
-    scoped_tools = create_scoped_manifest(normalized_tools, scope)
-    
-    # Reconstruct the dict with only allowed tools
-    # The test looks for manifest.get("tools", []) directly
+    # Reconstruct the dict with tiered tools
     scoped_manifest_dict = {
         "name": f"{full_manifest_dict['name']}-scoped",
         "description": f"Scoped manifest for {claims.get('profile')}",
         "version": full_manifest_dict.get("version", "1.0"),
-        "tools": scoped_tools
+        "permissions": {
+            **full_manifest_dict.get("permissions", {}),
+            "tools": scoped_tools
+        }
     }
     
     manifest_json = json.dumps(scoped_manifest_dict, sort_keys=True)
@@ -221,7 +215,7 @@ async def get_tool_tier(tool_name: str):
         return {"error": "Manifest not loaded"}, 500
     
     tier = central_manifest.permissions.tools.tier_for(tool_name)
-    print(f"DEBUG tier_for({tool_name}): tier={tier}, critical={central_manifest.permissions.tools.critical}, type(critical)={type(central_manifest.permissions.tools.critical)}")
+    logger.debug(f"tier_for({tool_name}): tier={tier}")
     return {"tool": tool_name, "tier": tier}
 
 class ConnectionManager:

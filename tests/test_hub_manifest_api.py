@@ -72,8 +72,16 @@ def test_manifest_scoped():
     
     # Read only profile shouldn't have dangerous tools
     manifest = data["manifest"]
-    # We expect tools property to be a list in the filtered dict
-    tool_names = [t["name"] for t in manifest.get("tools", [])]
-    assert "list_issues" in tool_names or len(tool_names) > 0 # At least some read tool
-    assert "delete_repo" not in tool_names
+    # We expect manifest.permissions.tools to contain the tiers
+    tools_dict = manifest.get("permissions", {}).get("tools", {})
+    
+    # Extract all tool names from all tiers
+    all_tool_names = []
+    for tools in tools_dict.values():
+        if isinstance(tools, list):
+            # tools might be list of dicts or list of strings
+            all_tool_names.extend([t["name"] if isinstance(t, dict) else t for t in tools])
+            
+    assert "list_issues" in all_tool_names or len(all_tool_names) > 0
+    assert "delete_repo" not in all_tool_names
 

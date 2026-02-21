@@ -21,6 +21,7 @@ async def test_critical_tool_requires_local_auth():
     
     # Initialize agent with custom manifest
     agent = SafeClawAgent(github_client_factory=mock_client_factory)
+    agent.auth_token = "valid-token"
     agent.interceptor = ManifestInterceptor(SkillManifest(
         name="test-manifest",
         permissions=PermissionSet(
@@ -35,7 +36,8 @@ async def test_critical_tool_requires_local_auth():
 
     # Mock the auth guard and vision audit
     with patch("med_safety_gym.claw_agent.require_local_auth", return_value=True) as mock_auth, \
-         patch("med_safety_gym.claw_agent.get_audit_summary", return_value="Summary") as mock_audit:
+         patch("med_safety_gym.claw_agent.get_audit_summary", return_value="Summary") as mock_audit, \
+         patch("med_safety_gym.claw_agent.verify_delegation_token"):
         
         await agent._call_tool_with_interception(
             "dangerous_action", 
@@ -66,6 +68,7 @@ async def test_critical_tool_disallowed_if_auth_fails():
     mock_client.__aexit__ = AsyncMock(return_value=None)
     
     agent = SafeClawAgent(github_client_factory=mock_client_factory)
+    agent.auth_token = "valid-token"
     agent.interceptor = ManifestInterceptor(SkillManifest(
         name="test-manifest",
         permissions=PermissionSet(tools=ToolTiers(critical=["dangerous_action"]))
@@ -75,7 +78,8 @@ async def test_critical_tool_disallowed_if_auth_fails():
     # Do NOT pre-escalate
 
     # Mock the auth guard to return False (Denied)
-    with patch("med_safety_gym.claw_agent.require_local_auth", return_value=False) as mock_auth:
+    with patch("med_safety_gym.claw_agent.require_local_auth", return_value=False) as mock_auth, \
+         patch("med_safety_gym.claw_agent.verify_delegation_token"):
         result = await agent._call_tool_with_interception(
             "dangerous_action", 
             {}, 

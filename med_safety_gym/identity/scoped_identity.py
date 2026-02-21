@@ -2,11 +2,18 @@ from typing import List, Dict, Any
 import jwt
 import time
 
-def create_scoped_manifest(global_manifest: List[Dict[str, Any]], allowed_tools: List[str]) -> List[Dict[str, Any]]:
+def create_scoped_manifest(global_manifest: Dict[str, List[Any]], allowed_tools: List[str]) -> Dict[str, List[Any]]:
     """
-    Filters a global manifest to only include tools present in the allowed_tools list.
+    Filters a tiered manifest dictionary to only include tools present in the allowed_tools list.
+    Preserves the tier keys (user, write, admin, critical).
     """
-    return [tool for tool in global_manifest if tool.get("name") in allowed_tools]
+    scoped = {}
+    for tier, tools in global_manifest.items():
+        if isinstance(tools, list):
+            scoped[tier] = [t for t in tools if (t.get("name") if isinstance(t, dict) else t) in allowed_tools]
+        else:
+            scoped[tier] = tools
+    return scoped
 
 def issue_delegation_token(claims: Dict[str, Any], ttl_seconds: int, secret_key: str) -> str:
     """

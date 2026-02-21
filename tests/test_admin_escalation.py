@@ -24,12 +24,14 @@ async def test_admin_unlock_is_rejected_zero_trust():
     
     # Initialize agent
     agent = SafeClawAgent(github_client_factory=mock_client_factory)
+    agent.auth_token = "valid-token"
     
     # Create session
     session = SessionMemory("test_user")
 
-    # Execute command (which used to work, but now should be rejected)
-    await agent.github_action("gh: unlock admin tools", mock_updater, session=session)
+    from unittest.mock import patch
+    with patch("med_safety_gym.claw_agent.verify_delegation_token"):
+        await agent.github_action("gh: unlock admin tools", mock_updater, session=session)
     
     # Verify Session NOT escalated
     assert len(session.escalated_tools) == 0
@@ -55,6 +57,7 @@ async def test_delete_comment_routing_and_blocking():
     mock_client.__aexit__ = AsyncMock(return_value=None)
     
     agent = SafeClawAgent(github_client_factory=mock_client_factory)
+    agent.auth_token = "valid-token"
     
     # Force a known manifest state with admin tools
     agent.interceptor = ManifestInterceptor(SkillManifest(
@@ -71,7 +74,9 @@ async def test_delete_comment_routing_and_blocking():
     session = SessionMemory("test_user")
 
     # 1. Attempt delete without escalation -> INTERVENTION REQUIRED (JIT)
-    await agent.github_action("gh: delete comment 123 on issue 1", mock_updater, session=session)
+    from unittest.mock import patch
+    with patch("med_safety_gym.claw_agent.verify_delegation_token"):
+        await agent.github_action("gh: delete comment 123 on issue 1", mock_updater, session=session)
     
     # Check it triggered intervention
     args, _ = mock_updater.update_status.call_args
@@ -87,7 +92,8 @@ async def test_delete_comment_routing_and_blocking():
     assert session.is_tool_escalated("delete_issue_comment")
     
     # 3. Attempt delete again -> ALLOWED
-    await agent.github_action("gh: delete comment 123 on issue 1", mock_updater, session=session)
+    with patch("med_safety_gym.claw_agent.verify_delegation_token"):
+        await agent.github_action("gh: delete comment 123 on issue 1", mock_updater, session=session)
     
     # Check server called
     mock_client.call_tool.assert_called_with(
