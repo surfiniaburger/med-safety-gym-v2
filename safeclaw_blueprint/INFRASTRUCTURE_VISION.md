@@ -1,12 +1,12 @@
 # SafeClaw: Agent-as-Infrastructure Vision
 
-> "The goal of SafeClaw is not just to provide a safe AI agent, but to build the **security infrastructure** for the next generation of autonomous systems."
+> "The goal of SafeClaw is to build the **Sovereign Security Infrastructure** for autonomous agents—bringing the 'Your machine, your rules' philosophy into a safe, deterministic reality."
 
 ---
 
-## 🏗️ The Sovereign Architecture
+## 🏗️ 1. The Sovereign Architecture
 
-SafeClaw is built on a **Local-First, Governor-Mediated** architecture. This separates the "Intelligence" and "Permission" layers from the "Interface" and "Execution" layers.
+Inspired by the rapid ascent of projects like **OpenClaw**, SafeClaw aims to provide that same agentic power (managing mail, shell, and messages) but through a **Zero-Trust Governor** model. We separate the "Intelligence" and "Permission" layers from the "Interface" and "Execution" layers.
 
 ### 1. The Infrastructure Model
 SafeClaw acts as a **middleware** (a "Runner") that can be plugged into any frontend or backend.
