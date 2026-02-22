@@ -159,8 +159,8 @@ WEIGHT_DECAY = 0.1
 MAX_GRAD_NORM = 0.1
 
 # GRPO Config
-MAX_PROMPT_LENGTH = 2048
-TOTAL_GENERATION_STEPS = 384  # Reduced from 512 for 4B memory footprint
+MAX_PROMPT_LENGTH = 1024
+TOTAL_GENERATION_STEPS = 256  # Reduced from 512 for 4B memory footprint
 NUM_GENERATIONS = 2  # Reduced from 4 for 4B memory footprint (G=2 per GRPO paper default)
 NUM_ITERATIONS = 1 
 BETA = 0.08 
@@ -172,7 +172,7 @@ os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 SAVE_INTERVAL_STEPS = 100
 
 # LoRA
-LORA_RANK = 64
+LORA_RANK = 32
 LORA_ALPHA = 64
 
 # Eval Server Config
@@ -527,7 +527,8 @@ def main():
     logger.info("🧠 Creating Model Config & loading weights...")
     model_config = gemma_lib.ModelConfig.gemma3_4b()
     # MedGemma-4B uses a slightly larger vocab (262208) than standard Gemma-3 (262144)
-    model_config = dataclasses.replace(model_config, num_embed=262208)
+    # V9: Enable activation rematerialization (BLOCK) to fit 4B in TPU memory
+    model_config = dataclasses.replace(model_config, num_embed=262208, remat_config=gemma_lib.RematConfig.BLOCK)
     
     logger.info("   Loading Reference Model (Structure)...")
     # Base params first
@@ -618,7 +619,7 @@ def main():
         rollout_config=base_rollout.RolloutConfig(
             max_tokens_to_generate=TOTAL_GENERATION_STEPS,
             max_prompt_length=MAX_PROMPT_LENGTH,
-            kv_cache_size=2048, # Reduced for MedGemma-4B memory footprint during rollout
+            kv_cache_size=1024, # Reduced for MedGemma-4B memory footprint during rollout
             temperature=1.0, 
             top_p=1.0,
             top_k=50,
