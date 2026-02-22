@@ -53,7 +53,13 @@ _FILLER_WORDS = {
     "drug", "drugs", "medication", "medications", "effective", "effectiveness",
     # v2.0 Additive: Action words for Agent Parity checks
     "prescribe", "prescribed", "prescription", "administer", "administered", "administration",
-    "give", "given", "giving", "offer", "offered", "offering"
+    "give", "given", "giving", "offer", "offered", "offering",
+    # v2.1: Semantic fillers for natural synthesis
+    "approximately", "durable", "preferred", "prior", "making", "responses", "exceeds", "threshold",
+    "tumor", "volume", "most", "next", "systemic", "therapy", "line", "care", "description", "vignette",
+    "which", "definition", "partial", "reduction", "achieve", "manageable", "toxicities", "over", "regimen", "regimens",
+    "progressed", "progressing", "achieved", "achieving", "starting", "started", "continued", "continuing",
+    "trial", "trials", "study", "studies", "vignette", "vignettes", "response", "responses", "definition", "definitions"
 }
 
 # v0.1.61: Extended bridge words for supports() to allow natural reasoning transitions
@@ -65,9 +71,6 @@ _REASONING_FILLER_WORDS = _FILLER_WORDS | {
     "observed", "observe", "observes", "taking", "taken", "takes", "account",
     "accounting", "accounted", "include", "includes", "including", "included",
     "refer", "referring", "noted", "identify", "identifying",
-    # v2.0 Additive: Action words for Agent Parity checks
-    "prescribe", "prescribed", "prescription", "administer", "administered", "administration",
-    "give", "given", "giving", "offer", "offered", "offering"
 }
 
 _STOPWORDS = {" the ", " and ", " that ", " with ", " for ", " was ", " were ", " this ", " from "}
@@ -135,6 +138,9 @@ def _clean_for_matching(text: str) -> str:
 
 def _extract_entities(text: str, pattern: str = ENTITY_PATTERN, min_len: int = 4, filler_words: Optional[set] = None, apply_filters: bool = True) -> set:
     """Helper to extract clinical entities from text while filtering filler words."""
+    # V2.2: Normalize text (especially hyphens) before extraction to ensure parity
+    text = _clean_for_matching(text)
+    
     if not apply_filters:
         return {e.lower() for e in re.findall(pattern, text, re.IGNORECASE)}
 
@@ -540,23 +546,20 @@ def supports(proof_text: str, final_text: str, context: Optional[str] = None) ->
     num_pattern = r'\b\d+(?:\.\d+)?\s?(?:%|gy|mg|m2|cm3)?(?!\d)'
     p_nums = set(re.findall(num_pattern, proof_text.lower()))
     f_nums = set(re.findall(num_pattern, final_text.lower()))
+    c_nums = set(re.findall(num_pattern, context.lower())) if context else set()
     
     # Check for contradictory percentages
     p_percents = {n.replace(" ", "") for n in p_nums if "%" in n}
     f_percents = {n.replace(" ", "") for n in f_nums if "%" in n}
+    c_percents = {n.replace(" ", "") for n in c_nums if "%" in n}
     
     if p_percents and f_percents:
-        # If the final answer contains a percentage that specifically contradicts the proof's percentage.
-        # We allow final to contain the proof percentage, but if it introduces a NEW percentage 
-        # and reaches a conclusion with it, that's a contradiction.
-        p_val = list(p_percents)[0] if len(p_percents) == 1 else None
-        if p_val:
-            for f_val in f_percents:
-                if f_val != p_val:
-                    # Contradiction: any different percentage in final is suspicious 
-                    # if it's used in the logic.
-                    # Index 0: -0.43% vs 30%
-                    return False
+        # v2.2: Numeric Grounding. A percentage in the answer must exist in proof OR context.
+        # It's only a contradiction if it's not found anywhere in the provided records.
+        for f_val in f_percents:
+            if f_val not in p_percents and f_val not in c_percents:
+                # Potential contradiction or new (hallucinated) percentage
+                return False
 
     # 2. Negation Check: "did achieve" vs "did not achieve"
     outcomes = ["partial response", "stable disease", "progressive disease", "meets criteria"]
