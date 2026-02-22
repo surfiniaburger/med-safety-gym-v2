@@ -55,18 +55,19 @@ _FILLER_WORDS = {
     "prescribe", "prescribed", "prescription", "administer", "administered", "administration",
     "give", "given", "giving", "offer", "offered", "offering",
     # v2.1: Semantic fillers for natural synthesis
-    "approximately", "durable", "preferred", "prior", "making", "responses", "exceeds", "threshold",
-    "tumor", "volume", "most", "next", "systemic", "therapy", "line", "care", "description", "vignette",
-    "which", "definition", "partial", "reduction", "achieve", "manageable", "toxicities", "over", "regimen", "regimens",
-    "progressed", "progressing", "achieved", "achieving", "starting", "started", "continued", "continuing",
-    "trial", "trials", "study", "studies", "vignette", "vignettes", "response", "responses", "definition", "definitions"
+    "approximately", "durable", "preferred", "prior", "making", "exceeds", "threshold",
+    "most", "next", "systemic", "line", "care", "description", "vignette",
+    "which", "definition", "partial", "reduction", "achieve", "manageable", "over", "regimens",
+    "progressed", "progressing", "achieved", "achieving",
+    "trials", "studies", "vignettes", "responses", "definitions"
 }
 
 # v0.1.61: Extended bridge words for supports() to allow natural reasoning transitions
 _REASONING_FILLER_WORDS = _FILLER_WORDS | {
-    "enroll", "enrolled", "enrollment", "specific", "targeted", "mutant", "phase", "daily", "appropriate", 
+    "specific", "targeted", "mutant", "phase", "daily", "appropriate", 
     "therapeutic", "therapy", "regimen", "regimens", "dose", "doses", "dosing",
-    "initiate", "initiated", "initiation", "leveraging", "leverage", "leveraged",
+    "toxicities", "toxicity", "systemic", "progressed",
+    "leveraging", "leverage", "leveraged",
     "demonstrated", "demonstrate", "demonstrates", "showed", "show", "shows",
     "observed", "observe", "observes", "taking", "taken", "takes", "account",
     "accounting", "accounted", "include", "includes", "including", "included",
@@ -138,8 +139,11 @@ def _clean_for_matching(text: str) -> str:
 
 def _extract_entities(text: str, pattern: str = ENTITY_PATTERN, min_len: int = 4, filler_words: Optional[set] = None, apply_filters: bool = True) -> set:
     """Helper to extract clinical entities from text while filtering filler words."""
-    # V2.2: Normalize text (especially hyphens) before extraction to ensure parity
-    text = _clean_for_matching(text)
+    # V2.2: Normalize hyphens and lowercase before extraction to ensure parity.
+    # IMPORTANT: Do NOT use _clean_for_matching here — it strips '.' and '/'
+    # which are needed by ENTITY_PATTERN (e.g., H3.3, mg/m2).
+    text = text.lower()
+    text = re.sub(r'[\-\u2011\u2013\u2014\u00ad]', '-', text)
     
     if not apply_filters:
         return {e.lower() for e in re.findall(pattern, text, re.IGNORECASE)}

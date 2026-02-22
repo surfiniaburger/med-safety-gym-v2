@@ -1,5 +1,6 @@
 import os
 import re
+import dataclasses
 import gc
 import json
 import logging
@@ -97,6 +98,32 @@ except ImportError as e:
     logger.error("Please ensure all dependencies (tunix, grain, flax, etc.) are installed.")
     sys.exit(1)
 
+# --- Ghost Buster Key Mapper (V9) ---
+# MedGemma uses 'language_model.model' naming and is multimodal.
+# V9 patches the mapper DIRECTLY in the loader for compatibility with Tunix.
+from tunix.models import safetensors_loader
+
+def ghost_buster_key_mapper(mapping, source_key):
+    if "vision" in source_key.lower():
+        return f"unused.vision.{source_key}", None
+    norm_key = source_key
+    if source_key.startswith("language_model.model."):
+        norm_key = source_key.replace("language_model.model.", "model.")
+    elif source_key.startswith("language_model."):
+        norm_key = source_key.replace("language_model.", "model.")
+    try:
+        subs = [
+            (re.sub(pat, repl, norm_key), reshape)
+            for pat, (repl, reshape) in mapping.items()
+            if re.match(pat, norm_key) or re.match(pat, source_key)
+        ]
+        if len(subs) == 1: return subs[0]
+    except Exception: pass
+    return f"unused.unknown.{source_key}", None
+
+safetensors_loader.torch_key_to_jax_key = ghost_buster_key_mapper
+logger.info("✅ Ghost Buster (V9) active: MedGemma key mapping enabled.")
+
 # Med Safety Gym Imports
 try:
     from med_safety_gym.dipg_environment import DIPGEnvironment
@@ -114,7 +141,7 @@ except ImportError:
 # --- 3. Configuration ---
 logger.info("⚙️  Loading Configuration...")
 # Model
-KAGGLE_MODEL_HANDLE = "google/gemma-3/transformers/gemma-3-1b-it" 
+KAGGLE_MODEL_HANDLE = "google/medgemma/jax/4b-it/1"
 MESH_SHAPE = (8, 1) 
 MESH = jax.make_mesh((8, 1), ('fsdp', 'tp')) 
 
@@ -133,8 +160,8 @@ MAX_GRAD_NORM = 0.1
 
 # GRPO Config
 MAX_PROMPT_LENGTH = 2048
-TOTAL_GENERATION_STEPS = 512 
-NUM_GENERATIONS = 4 # Increased to 4 for stable advantage calculation (G=2 was too noisy)
+TOTAL_GENERATION_STEPS = 384  # Reduced from 512 for 4B memory footprint
+NUM_GENERATIONS = 2  # Reduced from 4 for 4B memory footprint (G=2 per GRPO paper default)
 NUM_ITERATIONS = 1 
 BETA = 0.08 
 EPSILON = 0.2 
@@ -498,7 +525,9 @@ def main():
 
     # 2. Load Models
     logger.info("🧠 Creating Model Config & loading weights...")
-    model_config = gemma_lib.ModelConfig.gemma3_1b()
+    model_config = gemma_lib.ModelConfig.gemma3_4b()
+    # MedGemma-4B uses a slightly larger vocab (262208) than standard Gemma-3 (262144)
+    model_config = dataclasses.replace(model_config, num_embed=262208)
     
     logger.info("   Loading Reference Model (Structure)...")
     # Base params first
@@ -522,9 +551,9 @@ def main():
 
     # --- Checkpoint Search & Loading ---
     # 1. First choice: Previous GRPO manual save (Sequential training)
-    GRPO_CHECKPOINT = "/kaggle/working/outputs_grpo/checkpoints/manual_final"
+    GRPO_CHECKPOINT = "/kaggle/working/outputs_grpo_medgemma/checkpoints/manual_final"
     # 2. Second choice: SFT manual save (Initial run)
-    SFT_CHECKPOINT = "/kaggle/working/outputs_sft_full/checkpoints/manual_final_step_50"
+    SFT_CHECKPOINT = "/kaggle/working/outputs_sft_medgemma/checkpoints/manual_final"
     
     RESUME_PATH = None
     if os.path.exists(GRPO_CHECKPOINT):
@@ -589,7 +618,7 @@ def main():
         rollout_config=base_rollout.RolloutConfig(
             max_tokens_to_generate=TOTAL_GENERATION_STEPS,
             max_prompt_length=MAX_PROMPT_LENGTH,
-            kv_cache_size=4096, # Reduced to 2048 to allow NUM_GENERATIONS=4 without OOM
+            kv_cache_size=2048, # Reduced for MedGemma-4B memory footprint during rollout
             temperature=1.0, 
             top_p=1.0,
             top_k=50,
@@ -615,7 +644,7 @@ def main():
     grpo_trainer = GRPOLearner(
         rl_cluster=rl_cluster,
         reward_fns=[dipg_reward_fn], 
-        grpo_config=grpo_config,
+        algo_config=grpo_config,
     )
 
     # 4. Train
@@ -720,7 +749,7 @@ def main():
         abstract_state = nnx.eval_shape(lambda: nnx.state(policy_model))
         state = nnx.state(policy_model)
         
-        save_dir = os.path.join(CHECKPOINT_DIR, "manual_final")
+        save_dir = os.path.join(CHECKPOINT_DIR, "manual_final_medgemma")
         if os.path.exists(save_dir):
             import shutil
             shutil.rmtree(save_dir) # Overwrite if exists

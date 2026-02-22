@@ -1,4 +1,5 @@
 import os
+import dataclasses
 import jax
 import flax.nnx as nnx
 import kagglehub
@@ -50,12 +51,12 @@ print("✅ Ghost Buster (V9) active: Mapping redirection enabled.")
 # --- 2. Configuration ---
 LORA_RANK = 64
 LORA_ALPHA = 64
-MESH = jax.make_mesh((8, 1), ('fsdp', 'tp')) 
+MESH = jax.make_mesh((jax.device_count(), 1), ('fsdp', 'tp')) 
 
 # --- 2. Paths Setup ---
 print("📥 Loading Official MedGemma from Kaggle...")
 # Using the official Google handle - NO DOWNLOAD/UPLOAD NEEDED!
-KAGGLE_MODEL_HANDLE = "google/medgemma/jax/27b-text-it/1"
+KAGGLE_MODEL_HANDLE = "google/medgemma/jax/4b-it/1"
 BASE_MODEL_PATH = kagglehub.model_download(KAGGLE_MODEL_HANDLE)
 
 # --- 3. Load Tokenizer ---
@@ -76,14 +77,17 @@ except AttributeError:
     print("⚠️  tunix.models.gemma3.ModelConfig.gemma3_4b not found. Manual config required.")
     # Generic 4B config placeholder - adjust based on exact architecture if needed
     model_config = gemma_lib.ModelConfig(
-        num_layers=24,
+        num_layers=34,
+        num_embed=262208,
+        embed_dim=2560,
+        hidden_dim=10240,
         num_heads=32,
         num_kv_heads=8,
         head_dim=128,
-        vocab_size=256000,
-        hidden_size=3072,
-        intermediate_size=9216,
     )
+    
+# MedGemma-4B uses a slightly larger vocab (262208) than standard Gemma-3 (262144)
+model_config = dataclasses.replace(model_config, num_embed=262208)
 
 with MESH:
     model = params_safetensors_lib.create_model_from_safe_tensors(
@@ -147,6 +151,6 @@ def run_query(context, question):
 test_context = "A phase II trial reported that the HDAC inhibitor panobinostat achieved an objective response rate of 18% in patients with H3K27M‑mutant DIPG."
 test_question = "What was the response rate for panobinostat?"
 
-print(f"\n🚀 Running MedGemma Inference on 27B model...\n")
+print(f"\n🚀 Running MedGemma Inference on 4B model...\n")
 response = run_query(test_context, test_question)
 print(response)
