@@ -7,9 +7,7 @@ from med_safety_gym.identity.secret_store import InMemorySecretStore
 @pytest.mark.asyncio
 async def test_agent_saves_secrets_to_store():
     store = InMemorySecretStore()
-    agent = SafeClawAgent()
-    # Injected store for testing
-    agent.secret_store = store
+    agent = SafeClawAgent(secret_store=store)
     
     hub_url = "http://localhost:8000"
     
@@ -47,8 +45,7 @@ async def test_agent_loads_public_key_from_store_during_boot():
     store = InMemorySecretStore()
     store.set_secret("hub_pub_key", "existing-pub-key")
     
-    agent = SafeClawAgent()
-    agent.secret_store = store
+    agent = SafeClawAgent(secret_store=store)
     
     # Check if agent loads it
     await agent._load_secrets_from_store()

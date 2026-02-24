@@ -8,6 +8,8 @@ logger = logging.getLogger(__name__)
 class SecretStore(ABC):
     """Abstract interface for storing agent secrets."""
     
+    KNOWN_KEYS = ["auth_token", "hub_pub_key"]
+
     @abstractmethod
     def get_secret(self, key: str) -> Optional[str]:
         pass
@@ -41,7 +43,7 @@ class KeyringSecretStore(SecretStore):
     def clear_secrets(self) -> None:
         # Note: keyring doesn't have a built-in 'clear all for service' 
         # so we rely on known keys for now or manual cleanup.
-        for key in ["auth_token", "hub_pub_key"]:
+        for key in self.KNOWN_KEYS:
             try:
                 keyring.delete_password(self.SERVICE_NAME, key)
             except (keyring.errors.PasswordDeleteError, keyring.errors.NoKeyringError):
