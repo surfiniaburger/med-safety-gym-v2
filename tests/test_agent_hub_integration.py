@@ -4,13 +4,14 @@ import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 from med_safety_eval.observability_hub import app
 from med_safety_gym.claw_agent import SafeClawAgent
+from med_safety_gym.identity.secret_store import InMemorySecretStore
 from a2a.types import Message, TextPart, Part
 from a2a.types import TaskState
 
 @pytest.mark.asyncio
 async def test_agent_fetches_manifest_from_hub():
-    # 1. Setup Agent
-    agent = SafeClawAgent()
+    # 1. Setup Agent with in-memory store for tests
+    agent = SafeClawAgent(secret_store=InMemorySecretStore())
     agent.hub_url = "http://localhost:8000"
 
     # 2. Mock manifest data
@@ -68,7 +69,7 @@ async def test_agent_fetches_manifest_from_hub():
 
 @pytest.mark.asyncio
 async def test_agent_run_triggers_governor_fetch():
-    agent = SafeClawAgent()
+    agent = SafeClawAgent(secret_store=InMemorySecretStore())
     agent.hub_url = "http://localhost:8000"
     
     # Mock _ensure_governor_interceptor

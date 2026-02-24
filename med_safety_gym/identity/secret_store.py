@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 import keyring
+import logging
+
+logger = logging.getLogger(__name__)
 
 class SecretStore(ABC):
     """Abstract interface for storing agent secrets."""
@@ -23,19 +26,25 @@ class KeyringSecretStore(SecretStore):
     SERVICE_NAME = "safeclaw"
 
     def get_secret(self, key: str) -> Optional[str]:
-        return keyring.get_password(self.SERVICE_NAME, key)
+        try:
+            return keyring.get_password(self.SERVICE_NAME, key)
+        except keyring.errors.NoKeyringError:
+            logger.warning(f"No keyring backend found. Secret '{key}' could not be retrieved.")
+            return None
 
     def set_secret(self, key: str, value: str) -> None:
-        keyring.set_password(self.SERVICE_NAME, key, value)
+        try:
+            keyring.set_password(self.SERVICE_NAME, key, value)
+        except keyring.errors.NoKeyringError:
+            logger.warning(f"No keyring backend found. Secret '{key}' could not be saved.")
 
     def clear_secrets(self) -> None:
         # Note: keyring doesn't have a built-in 'clear all for service' 
         # so we rely on known keys for now or manual cleanup.
-        # In a real impl, we might track keys in a nested structure.
         for key in ["auth_token", "hub_pub_key"]:
             try:
                 keyring.delete_password(self.SERVICE_NAME, key)
-            except keyring.errors.PasswordDeleteError:
+            except (keyring.errors.PasswordDeleteError, keyring.errors.NoKeyringError):
                 pass
 
 class InMemorySecretStore(SecretStore):
