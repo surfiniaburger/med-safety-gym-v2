@@ -113,8 +113,10 @@ class SafeClawAgent:
                                 logger.info("Session resumed successfully.")
                                 return manifest
                         logger.warning("Stored token invalid or expired. Proceeding with full handshake.")
-                    except Exception as e:
+                    except (httpx.HTTPError, json.JSONDecodeError, jwt.PyJWTError) as e:
                         logger.warning(f"Session resumption failed: {e}. Handshaking...")
+                    except Exception as e:
+                        logger.error(f"Unexpected error during session resumption: {e}")
 
                 # 2. Full Handshake: Fetch Delegation Token
                 profile = os.environ.get("SAFECLAW_AGENT_PROFILE", "read_only")
@@ -126,14 +128,16 @@ class SafeClawAgent:
                 auth_resp.raise_for_status()
                 auth_data = auth_resp.json()
                 self.auth_token = auth_data.get("token")
-                self.secret_store.set_secret("auth_token", self.auth_token)
+                if self.auth_token:
+                    self.secret_store.set_secret("auth_token", self.auth_token)
                 
                 # 3. Fetch Public Key for verification
                 pub_resp = await client.get(f"{self.hub_url}/manifest/pubkey", timeout=10.0)
                 pub_resp.raise_for_status()
                 pub_pem = pub_resp.json().get("pubkey")
                 self.hub_pub_key = pub_pem
-                self.secret_store.set_secret("hub_pub_key", pub_pem)
+                if self.hub_pub_key:
+                    self.secret_store.set_secret("hub_pub_key", pub_pem)
 
                 # 4. Fetch Scoped Manifest
                 man_resp = await client.get(
