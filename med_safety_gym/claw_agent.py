@@ -16,6 +16,7 @@ from .manifest_interceptor import ManifestInterceptor
 from .auth_guard import require_local_auth
 from .vision_audit import get_audit_summary
 from .identity.scoped_identity import verify_delegation_token
+from .identity.secret_store import SecretStore, KeyringSecretStore
 import jwt
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,8 @@ class SafeClawAgent:
     def __init__(
         self, 
         client_factory: Optional[Callable[[], Any]] = None,
-        github_client_factory: Optional[Callable[[], Any]] = None
+        github_client_factory: Optional[Callable[[], Any]] = None,
+        secret_store: Optional[SecretStore] = None
     ):
         # Default safety factory
         self.client_factory = client_factory or (
@@ -62,6 +64,7 @@ class SafeClawAgent:
         self.interceptor = None # Will be initialized on first run or boot
         self.auth_token = None
         self.hub_pub_key = None # Governor's public key for identity verification
+        self.secret_store = secret_store or KeyringSecretStore()
         self.session_id = "agent_session_" + os.urandom(4).hex()
 
     async def _ensure_governor_interceptor(self):
@@ -69,9 +72,24 @@ class SafeClawAgent:
         if self.interceptor:
             return
 
+        # Attempt to load existing secrets from store before fetching
+        await self._load_secrets_from_store()
+
         manifest = await self._init_scoped_session()
         self.interceptor = ManifestInterceptor(manifest)
         logger.info(f"SafeClaw Governor initialized with policy: {manifest.name}")
+
+    async def _load_secrets_from_store(self):
+        """Pre-load session secrets from persistent storage."""
+        if not self.auth_token:
+            self.auth_token = self.secret_store.get_secret("auth_token")
+            if self.auth_token:
+                logger.info("Loaded delegation token from secret store.")
+        
+        if not self.hub_pub_key:
+            self.hub_pub_key = self.secret_store.get_secret("hub_pub_key")
+            if self.hub_pub_key:
+                logger.info("Loaded Governor public key from secret store.")
 
     async def _init_scoped_session(self) -> SkillManifest:
         """Fetch delegation token and scoped manifest from Hub."""
@@ -79,7 +97,26 @@ class SafeClawAgent:
             async with httpx.AsyncClient() as client:
                 await self._ensure_hub_running(client)
                 
-                # 1. Fetch Delegation Token
+                # 1. Attempt session resumption if token and pubkey are already loaded
+                if self.auth_token and self.hub_pub_key:
+                    try:
+                        logger.info("Attempting to resume session with stored credentials...")
+                        man_resp = await client.get(
+                            f"{self.hub_url}/manifest/scoped", 
+                            headers={"Authorization": f"Bearer {self.auth_token}"},
+                            timeout=5.0
+                        )
+                        if man_resp.status_code == 200:
+                            data = man_resp.json()
+                            manifest = self._verify_and_parse_manifest(data, self.hub_pub_key)
+                            if manifest != DEFAULT_MANIFEST:
+                                logger.info("Session resumed successfully.")
+                                return manifest
+                        logger.warning("Stored token invalid or expired. Proceeding with full handshake.")
+                    except Exception as e:
+                        logger.warning(f"Session resumption failed: {e}. Handshaking...")
+
+                # 2. Full Handshake: Fetch Delegation Token
                 profile = os.environ.get("SAFECLAW_AGENT_PROFILE", "read_only")
                 auth_resp = await client.post(
                     f"{self.hub_url}/auth/delegate", 
@@ -89,14 +126,16 @@ class SafeClawAgent:
                 auth_resp.raise_for_status()
                 auth_data = auth_resp.json()
                 self.auth_token = auth_data.get("token")
+                self.secret_store.set_secret("auth_token", self.auth_token)
                 
-                # 2. Fetch Public Key for verification
+                # 3. Fetch Public Key for verification
                 pub_resp = await client.get(f"{self.hub_url}/manifest/pubkey", timeout=10.0)
                 pub_resp.raise_for_status()
                 pub_pem = pub_resp.json().get("pubkey")
                 self.hub_pub_key = pub_pem
+                self.secret_store.set_secret("hub_pub_key", pub_pem)
 
-                # 3. Fetch Scoped Manifest
+                # 4. Fetch Scoped Manifest
                 man_resp = await client.get(
                     f"{self.hub_url}/manifest/scoped", 
                     headers={"Authorization": f"Bearer {self.auth_token}"},
