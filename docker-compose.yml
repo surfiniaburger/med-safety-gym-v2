@@ -7,6 +7,12 @@ services:
       - "8080:8080"
     environment:
       - NEBIUS_API_KEY=${NEBIUS_API_KEY}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - safeclaw-net
 
@@ -20,7 +26,7 @@ services:
       - SAFECLAW_HUB_URL=http://safeclaw-hub:8080
     depends_on:
       safeclaw-hub:
-        condition: service_started
+        condition: service_healthy
     networks:
       - safeclaw-net
 
@@ -34,7 +40,7 @@ services:
       - SAFECLAW_HUB_URL=http://safeclaw-hub:8080
     depends_on:
       safeclaw-hub:
-        condition: service_started
+        condition: service_healthy
     networks:
       - safeclaw-net
 

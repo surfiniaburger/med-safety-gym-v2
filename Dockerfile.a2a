@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast dependency management
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir uv==0.7.2
 
 # Set working directory
 WORKDIR /app
