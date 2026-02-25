@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast dependency management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+RUN pip install --no-cache-dir uv
 
 # Set working directory
 WORKDIR /app
@@ -25,7 +25,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
 # Install dependencies (frozen for production stability)
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --extra agent --extra mcp --extra telegram
 
 # Copy the rest of the application code
 COPY . .

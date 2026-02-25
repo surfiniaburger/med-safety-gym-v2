@@ -48,7 +48,6 @@ class Executor(AgentExecutor):
                 if now - last_seen > self.idle_ttl
             ]
             for ctx_id in to_reap:
-                logger.info(f"Reaping idle agent: {ctx_id}")
                 await self._shutdown_single_agent(ctx_id)
 
     async def shutdown(self):
@@ -68,8 +67,10 @@ class Executor(AgentExecutor):
         """Gracefully shutdown a single agent."""
         agent = self.agents.pop(context_id, None)
         self.last_activity.pop(context_id, None)
-        if agent and hasattr(agent, "shutdown"):
-            await agent.shutdown()
+        if agent:
+            logger.info(f"Reaping idle agent: {context_id}")
+            if hasattr(agent, "shutdown"):
+                await agent.shutdown()
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         msg = context.message

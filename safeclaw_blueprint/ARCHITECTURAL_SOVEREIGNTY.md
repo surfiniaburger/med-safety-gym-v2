@@ -13,6 +13,7 @@ SafeClaw is bifurcated into two distinct sovereign domains:
 - **Responsibilities**:
     - **Manifest Authority**: Holds the single source of truth for tool tiers (`user`, `write`, `admin`).
     - **Identity Verification**: Manage user sessions, biometric auth tokens (`TouchID`), and Telegram pairing.
+    - **Secret Management (Keyring)**: Securely stores delegation tokens and Hub public keys via OS-level native keychain mechanisms (e.g., macOS Keychain) using `med_safety_gym.identity.secret_store.SecretStore`, ensuring credentials are never exposed in plaintext configurations or environment variables used by the Runner.
     - **Audit Log Integrity**: Immutable record of all requested vs. executed actions.
     - **Invariant Enforcement**: Verifies that an action matches the required rubric *before* execution.
 - **Trust Level**: **Sovereign**. This is the highest trust zone.

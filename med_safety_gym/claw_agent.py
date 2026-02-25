@@ -113,6 +113,8 @@ class SafeClawAgent:
                                 logger.info("Session resumed successfully.")
                                 return manifest
                         logger.warning("Stored token invalid or expired. Proceeding with full handshake.")
+                    except jwt.ExpiredSignatureError:
+                        logger.warning("Delegation token has expired (TTL exceeded). Performing full handshake.")
                     except (httpx.HTTPError, json.JSONDecodeError, jwt.PyJWTError) as e:
                         logger.warning(f"Session resumption failed: {e}. Handshaking...")
                     except Exception as e:
@@ -291,6 +293,7 @@ class SafeClawAgent:
 
     async def shutdown(self):
         """Shutdown the agent and cleanup resources."""
+        logger.info("SafeClaw Agent shutting down...")
         await self._close_github_session()
 
     async def _close_github_session(self):
