@@ -89,3 +89,8 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["med_safety_gym*", "med_safety_eval*", "tests*"]
+
+[dependency-groups]
+dev = [
+    "pyyaml>=6.0.3",
+]

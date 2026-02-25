@@ -3111,6 +3111,11 @@ visualization = [
     { name = "seaborn" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pyyaml" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "a2a-sdk", marker = "extra == 'agent'", specifier = ">=0.1.0" },
@@ -3150,6 +3155,9 @@ requires-dist = [
     { name = "wsproto", specifier = "==1.0.0" },
 ]
 provides-extras = ["agent", "mcp", "dev", "visualization", "telegram"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pyyaml", specifier = ">=6.0.3" }]
 
 [[package]]
 name = "opentelemetry-api"

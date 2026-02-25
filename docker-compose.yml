@@ -1,53 +1,49 @@
-# Auto-generated from scenario.toml (Manually Fixed)
-
 services:
-  green-agent:
-    image: ghcr.io/surfiniaburger/med-safety-gym-green-agent:edge
-    pull_policy: never
-    container_name: green-agent
-    command: [ "--host", "0.0.0.0", "--port", "10001", "--card-url", "http://localhost:10001/" ]
+  safeclaw-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.hub
     ports:
-      - "10001:10001"
-    env_file:
-      - .env
+      - "8080:8080"
     environment:
-      PYTHONUNBUFFERED: "1"
-      DIPG_DATASET_PATH: "surfiniaburger/med-safety-gym-eval"
-      MED_SAFETY_LLM_MODELS: "{\"nebius/Qwen/Qwen3-235B-A22B-Thinking-2507\": {\"input_cost_per_token\": 0.0000001, \"output_cost_per_token\": 0.0000003}}"
-      CARD_URL: "http://localhost:10001/"
+      - NEBIUS_API_KEY=${NEBIUS_API_KEY}
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:10001/.well-known/agent-card.json" ]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
       start_period: 30s
+    networks:
+      - safeclaw-net
+
+  safeclaw-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.a2a
+    command: [ "uv", "run", "python", "-m", "med_safety_gym.claw_server" ]
+    environment:
+      - NEBIUS_API_KEY=${NEBIUS_API_KEY}
+      - SAFECLAW_HUB_URL=http://safeclaw-hub:8080
     depends_on:
-      purple-agent:
+      safeclaw-hub:
         condition: service_healthy
     networks:
-      - agent-network
+      - safeclaw-net
 
-  purple-agent:
-    image: ghcr.io/surfiniaburger/med-safety-gym-purple-agent:edge
-    pull_policy: never
-    container_name: purple-agent
-    command: [ "--host", "0.0.0.0", "--port", "9009", "--card-url", "http://purple-agent:9009/" ]
-    ports:
-      - "9009:9009"
+  safeclaw-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.a2a
+    command: [ "uv", "run", "python", "-m", "med_safety_gym.telegram_bridge" ]
     environment:
-      PYTHONUNBUFFERED: "1"
-      USER_LLM_MODEL: "nebius/Qwen/Qwen3-235B-A22B-Thinking-2507"
-      NEBIUS_API_KEY: "${NEBIUS_API_KEY}"
-      CARD_URL: "http://purple-agent:9009/"
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9009/.well-known/agent-card.json" ]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 30s
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - SAFECLAW_HUB_URL=http://safeclaw-hub:8080
+    depends_on:
+      safeclaw-hub:
+        condition: service_healthy
     networks:
-      - agent-network
+      - safeclaw-net
 
 networks:
-  agent-network:
+  safeclaw-net:
     driver: bridge

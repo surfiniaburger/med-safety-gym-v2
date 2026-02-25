@@ -60,6 +60,7 @@ While we currently prioritize **Telegram** as the primary interface for Manager 
 
 ## 🛰️ 4. The Path to Sovereign Identity
 
-Phase 40 (Sovereign Hub) and Phase 41 (Keyring Integration) are the foundation of this vision. By moving to **Keyring-based storage**, we ensure that even the Agent's credentials are encrypted at rest by the Operating System (macOS Keychain, etc.).
+Phase 40 (Sovereign Hub) and Phase 41 (Keyring Integration) are the foundation of this vision. By moving to **Keyring-based storage** using the `med_safety_gym.identity.secret_store.SecretStore` abstraction, we ensure that the Agent's credentials (like the delegation token and Hub public key) are never stored in plaintext text files or unsafe environment variables. Instead, they are encrypted at rest by the native Operating System (e.g., macOS Keychain).
 
+SafeClaw isn't just an app; it's the **Operating System for Safe Agency**.
 SafeClaw isn't just an app; it's the **Operating System for Safe Agency**.
