@@ -34,6 +34,7 @@ jobs:
         working-directory: bring-any-eval-to-life
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_ELEVENLABS_AGENT_ID: ${{ secrets.VITE_ELEVENLABS_AGENT_ID }}
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
