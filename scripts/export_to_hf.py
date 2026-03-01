@@ -62,6 +62,8 @@ def parse_args():
                         help="If set, push the model to HuggingFace Hub")
     parser.add_argument("--lora-rank", type=int, default=64)
     parser.add_argument("--lora-alpha", type=int, default=64)
+    parser.add_argument("--training-steps", type=int, default=100,
+                        help="Number of training steps (for model card metadata)")
     return parser.parse_args()
 
 
@@ -302,17 +304,12 @@ def main():
     # ===========================================================
     # FIX 1: Clear GPU-specific XLA_FLAGS that may have been set
     # by train_grpo_tpu.py in the same Kaggle kernel session.
-    # The flags --xla_gpu_* are invalid on a TPU runtime and
-    # cause a fatal crash. We keep only TPU-safe flags.
+    # Any flag starting with --xla_gpu_ is invalid on a TPU
+    # runtime and causes a fatal crash.
     # ===========================================================
-    gpu_flags = [
-        "--xla_gpu_enable_triton_softmax_fusion=true",
-        "--xla_gpu_triton_gemm_any=True",
-        "--xla_gpu_enable_async_collectives=true",
-    ]
     current_xla_flags = os.environ.get("XLA_FLAGS", "")
     cleaned_flags = " ".join(
-        f for f in current_xla_flags.split() if f not in gpu_flags
+        f for f in current_xla_flags.split() if not f.startswith("--xla_gpu_")
     )
     if cleaned_flags != current_xla_flags:
         print(f"⚠️  Removed GPU-specific XLA_FLAGS from environment.")
@@ -472,7 +469,7 @@ Fine-tuned [MedGemma 4B](https://huggingface.co/google/medgemma-4b-it) using
 ## Training Details
 - **Base Model**: MedGemma 4B IT
 - **Method**: GRPO with LoRA (rank={args.lora_rank}, alpha={args.lora_alpha})
-- **Training Steps**: 100
+- **Training Steps**: {args.training_steps}
 - **Focus**: Medical safety — hallucination reduction, evidence-grounded responses
 
 ## Usage
