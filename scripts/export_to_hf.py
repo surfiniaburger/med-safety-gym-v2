@@ -24,10 +24,24 @@ import os
 import re
 import json
 import argparse
+import dataclasses
 import shutil
 from pathlib import Path
 
 import numpy as np
+import torch
+from safetensors.torch import save_file
+from huggingface_hub import HfApi
+
+# Heavy JAX / TPU dependencies — only available in the Kaggle/Colab TPU environment
+import jax
+import flax.nnx as nnx
+import kagglehub
+from orbax import checkpoint as ocp
+from tunix.models.gemma3 import model as gemma_lib
+from tunix.models.gemma3 import params_safetensors as params_safetensors_lib
+from tunix.models import safetensors_loader
+from tunix.cli.utils.model import apply_lora_to_model
 
 # ==============================================================================
 # STEP 0: Parse Arguments
@@ -179,8 +193,7 @@ def convert_jax_to_hf_state_dict(flat_jax_state: dict, num_layers: int, num_kv_h
     """
     Convert flattened JAX state dict to HuggingFace-compatible state dict.
     """
-    import torch
-    
+
     mapping = build_jax_to_hf_mapping(num_layers)
     hf_state = {}
     unmapped = []
@@ -285,16 +298,7 @@ def main():
     print("=" * 60)
     print("PHASE 1: Loading JAX Model from Orbax")
     print("=" * 60)
-    
-    import jax
-    import dataclasses
-    import flax.nnx as nnx
-    import kagglehub
-    from tunix.models.gemma3 import model as gemma_lib
-    from tunix.models.gemma3 import params_safetensors as params_safetensors_lib
-    from tunix.cli.utils.model import apply_lora_to_model
-    from orbax import checkpoint as ocp
-    
+
     # Apply NNX compatibility patch
     _orig_set_metadata = nnx.Variable.set_metadata
     def _compat_set_metadata(self, *a, **kw):
@@ -305,7 +309,6 @@ def main():
     nnx.Variable.set_metadata = _compat_set_metadata
     
     # Apply Ghost Buster mapper
-    from tunix.models import safetensors_loader
     def ghost_buster_key_mapper(mapping, source_key):
         if "vision" in source_key.lower():
             return f"unused.vision.{source_key}", None
@@ -386,7 +389,6 @@ def main():
     print("=" * 60)
     
     # Save safetensors
-    from safetensors.torch import save_file
     safetensors_path = output_dir / "model.safetensors"
     print(f"💾 Saving safetensors to {safetensors_path}...")
     save_file(hf_state_dict, str(safetensors_path))
@@ -461,7 +463,6 @@ Part of the [DIPG Safety Gym](https://github.com/surfiniaburger/med-safety-gym-v
         print(f"PHASE 4: Pushing to HuggingFace Hub → {args.hf_repo}")
         print("=" * 60)
         
-        from huggingface_hub import HfApi
         api = HfApi()
         api.create_repo(args.hf_repo, exist_ok=True)
         api.upload_folder(

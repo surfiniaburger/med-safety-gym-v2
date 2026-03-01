@@ -48,10 +48,11 @@ _load_key "google_api_key"     "GOOGLE_API_KEY"
 # Non-secret config still sourced from .env
 if [ -f .env ]; then
     # Only pull non-secret vars (lines NOT matching key patterns)
-    while IFS='=' read -r key _ ; do
+    while IFS='=' read -r key value ; do
         case "$key" in
             SAFECLAW_HUB_URL|SAFECLAW_HUB_PORT)
-                val=$(grep "^${key}=" .env | cut -d'=' -f2- | tr -d '"')
+                # Value already extracted — strip both single and double quotes consistently
+                val=$(echo "$value" | tr -d '"' | tr -d "'")
                 export "$key"="$val"
                 ;;
         esac
