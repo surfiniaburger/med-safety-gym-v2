@@ -1,16 +1,27 @@
 #!/bin/bash
+# Start SafeClaw Ecosystem (Hub, Agent, Bot) via Docker Compose
+# Phase 43: Secrets loaded from macOS Keychain — never from a file on disk
+
 set -e
 
-# Load environment variables
-if [ -f .env ]; then
-  source .env
-else
-  echo "⚠️  .env file not found! Docker Compose might miss NEBIUS_API_KEY or TELEGRAM_BOT_TOKEN."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/load_secrets.sh"
+
+# Validate required secrets are present
+if [ -z "$NEBIUS_API_KEY" ]; then
+    echo "❌ NEBIUS_API_KEY not found in keychain. Run: bash scripts/store_secrets.sh"
+    exit 1
+fi
+if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+    echo "❌ TELEGRAM_BOT_TOKEN not found in keychain. Run: bash scripts/store_secrets.sh"
+    exit 1
 fi
 
 echo "🚀 Starting SafeClaw Ecosystem (Hub, Agent, Bot) via Docker Compose..."
 
-# Build and start in detached mode
+# Inject secrets from keychain at runtime — they are NEVER written to disk
+NEBIUS_API_KEY="$NEBIUS_API_KEY" \
+TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
 docker-compose up -d --build
 
 echo "✅ All core services started."

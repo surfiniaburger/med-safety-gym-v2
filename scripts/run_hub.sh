@@ -1,9 +1,9 @@
 #!/bin/bash
 # Start SafeClaw Observability Hub (Governor)
+# Phase 43: Secrets loaded from macOS Keychain via load_secrets.sh
 
-set -a
-source .env
-set +a
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/load_secrets.sh"
 
 PORT=${SAFECLAW_HUB_PORT:-8000}
 
