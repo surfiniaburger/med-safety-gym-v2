@@ -1,12 +1,12 @@
 #!/bin/bash
-# Quick fix: Run Telegram bot directly without tests
+# Start SafeClaw Telegram Bot
+# Phase 43: Secrets loaded from macOS Keychain via load_secrets.sh
 
-set -a
-source .env
-set +a
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/load_secrets.sh"
 
 if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
-    echo "❌ TELEGRAM_BOT_TOKEN not found in .env"
+    echo "❌ TELEGRAM_BOT_TOKEN not found in keychain or .env"
     exit 1
 fi
 

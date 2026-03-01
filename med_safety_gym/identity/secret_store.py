@@ -8,7 +8,14 @@ logger = logging.getLogger(__name__)
 class SecretStore(ABC):
     """Abstract interface for storing agent secrets."""
     
-    KNOWN_KEYS = ("auth_token", "hub_pub_key")
+    KNOWN_KEYS = (
+        "auth_token",
+        "hub_pub_key",
+        "nebius_api_key",
+        "telegram_bot_token",
+        "github_token",
+        "google_api_key",
+    )
 
     @abstractmethod
     def get_secret(self, key: str) -> Optional[str]:
