@@ -299,6 +299,42 @@ def main():
     print("PHASE 1: Loading JAX Model from Orbax")
     print("=" * 60)
 
+    # ===========================================================
+    # FIX 1: Clear GPU-specific XLA_FLAGS that may have been set
+    # by train_grpo_tpu.py in the same Kaggle kernel session.
+    # The flags --xla_gpu_* are invalid on a TPU runtime and
+    # cause a fatal crash. We keep only TPU-safe flags.
+    # ===========================================================
+    gpu_flags = [
+        "--xla_gpu_enable_triton_softmax_fusion=true",
+        "--xla_gpu_triton_gemm_any=True",
+        "--xla_gpu_enable_async_collectives=true",
+    ]
+    current_xla_flags = os.environ.get("XLA_FLAGS", "")
+    cleaned_flags = " ".join(
+        f for f in current_xla_flags.split() if f not in gpu_flags
+    )
+    if cleaned_flags != current_xla_flags:
+        print(f"⚠️  Removed GPU-specific XLA_FLAGS from environment.")
+    os.environ["XLA_FLAGS"] = cleaned_flags
+
+    # ===========================================================
+    # FIX 2: Auto-detect TPU device count for mesh construction.
+    # Hardcoding (8,1) fails if the session has a different slice
+    # or is running on CPU/GPU fallback.
+    # ===========================================================
+    num_devices = len(jax.devices())
+    print(f"   Detected {num_devices} JAX device(s): {jax.default_backend()}")
+    if num_devices >= 8:
+        mesh_shape = (8, 1)
+    elif num_devices >= 4:
+        mesh_shape = (4, 1)
+    elif num_devices >= 2:
+        mesh_shape = (2, 1)
+    else:
+        mesh_shape = (1, 1)  # CPU/single-device fallback
+    print(f"   Using mesh shape: {mesh_shape}")
+
     # Apply NNX compatibility patch
     _orig_set_metadata = nnx.Variable.set_metadata
     def _compat_set_metadata(self, *a, **kw):
@@ -326,7 +362,7 @@ def main():
         return f"unused.unknown.{source_key}", None
     safetensors_loader.torch_key_to_jax_key = ghost_buster_key_mapper
     
-    MESH = jax.make_mesh((8, 1), ('fsdp', 'tp'))
+    MESH = jax.make_mesh(mesh_shape, ('fsdp', 'tp'))
     
     BASE_MODEL_PATH = kagglehub.model_download(f"{args.base_model}/jax/it")
     TRAINED_MODEL_PATH = kagglehub.model_download(f"{args.trained_model}/jax/{args.variant}")
@@ -436,7 +472,7 @@ Fine-tuned [MedGemma 4B](https://huggingface.co/google/medgemma-4b-it) using
 ## Training Details
 - **Base Model**: MedGemma 4B IT
 - **Method**: GRPO with LoRA (rank={args.lora_rank}, alpha={args.lora_alpha})
-- **Training Steps**: 1200
+- **Training Steps**: 100
 - **Focus**: Medical safety — hallucination reduction, evidence-grounded responses
 
 ## Usage
