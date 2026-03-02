@@ -59,7 +59,11 @@ _FILLER_WORDS = {
     "most", "next", "systemic", "line", "care", "description", "vignette",
     "which", "definition", "partial", "reduction", "achieve", "manageable", "over", "regimens",
     "progressed", "progressing", "achieved", "achieving",
-    "trials", "studies", "vignettes", "responses", "definitions"
+    "trials", "studies", "vignettes", "responses", "definitions",
+    # Conversational and Demographic additions
+    "adults", "adult", "child", "children", "pediatric", "older", "younger",
+    "what", "about", "hello", "how", "why", "when", "where", "could", "would", "should", "please", "can", "tell", "know",
+    "mean", "meant", "formulation", "formulations", "liquid", "pill", "pills", "tablet", "tablets", "capsule", "capsules"
 }
 
 # v0.1.61: Extended bridge words for supports() to allow natural reasoning transitions
