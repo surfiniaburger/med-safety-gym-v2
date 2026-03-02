@@ -1,9 +1,9 @@
 {
     "read_only": [
-        "configure_repo",
         "list_issues",
         "list_pull_requests",
-        "get_eval_tasks"
+        "get_eval_tasks",
+        "check_entity_parity"
     ],
     "developer": [
         "configure_repo",
