@@ -18,7 +18,7 @@ from .vision_audit import get_audit_summary
 from .identity.scoped_identity import verify_delegation_token
 from .identity.secret_store import SecretStore, KeyringSecretStore
 import jwt
-from .intent_classifier import IntentClassifier, IntentCategory
+from .intent_classifier import IntentClassifier, IntentCategory, IntentResult
 
 logger = logging.getLogger(__name__)
 
@@ -515,7 +515,7 @@ class SafeClawAgent:
 
         return True
 
-    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any, intent: Any = None) -> None:
+    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any, intent: Optional[IntentResult] = None) -> None:
         """
         Executes an action using the LLM. 
         Note: The Entity Parity check has been removed here because it was blocking 

@@ -11,7 +11,7 @@ This guide documents the exact procedure for starting the SafeClaw ecosystem (Se
 ### 1. Clear Existing Processes
 Ensure port `8003` is free and stop any running bot instances:
 ```bash
-lsof -i :8003 -t | xargs kill -9 || true
+lsof -i :${SAFECLAW_PORT:-8003} -t | xargs kill -9 || true
 pkill -f "med_safety_gym.telegram_bridge" || true
 ```
 
