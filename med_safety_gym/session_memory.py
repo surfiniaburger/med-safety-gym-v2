@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Any
 from .utils import normalize_text
-from .database import SessionLocal, ConversationSession, init_db
+from .database import SessionLocal, ConversationSession, ContrastivePair, init_db
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +27,10 @@ class SessionMemory:
     Extracts medical entities to build safety context.
     """
     
-    def __init__(self, user_id: str, messages: Optional[List[Dict[str, str]]] = None, github_repo: Optional[str] = None):
+    def __init__(self, user_id: str, messages: Optional[List[Dict[str, str]]] = None, github_repo: Optional[str] = None, scope: str = "base"):
         """Create session for user."""
         self.user_id = user_id
+        self.scope = scope
         self._messages: List[Dict[str, str]] = messages or []
         self.github_repo = github_repo
         self.escalated_tools: Dict[str, float] = {}  # tool_name -> expiration_timestamp
@@ -163,18 +164,22 @@ class SessionStore:
         # We still keep an in-memory cache for performance
         self._cache: Dict[str, SessionMemory] = {}
     
-    def get_or_create(self, user_id: str) -> SessionMemory:
+    def _get_cache_key(self, user_id: str, scope: str) -> str:
+        return f"{user_id}:{scope}"
+
+    def get_or_create(self, user_id: str, scope: str = "base") -> SessionMemory:
         """Get existing session from cache/DB or create new one."""
-        if user_id in self._cache:
-            return self._cache[user_id]
+        cache_key = self._get_cache_key(user_id, scope)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
             
         db = SessionLocal()
         try:
             # Try to load from DB
-            db_session = db.query(ConversationSession).filter(ConversationSession.id == user_id).first()
+            db_session = db.query(ConversationSession).filter(ConversationSession.id == cache_key).first()
             if db_session:
                 messages = json.loads(db_session.messages_json)
-                session = SessionMemory(user_id, messages=messages, github_repo=db_session.github_repo)
+                session = SessionMemory(user_id, messages=messages, github_repo=db_session.github_repo, scope=scope)
                 session.pending_action = json.loads(db_session.pending_action_json) if db_session.pending_action_json else None
                 
                 raw_escalated = json.loads(db_session.escalated_tools_json) if db_session.escalated_tools_json else {}
@@ -184,16 +189,16 @@ class SessionStore:
                 else:
                     session.escalated_tools = raw_escalated
                     
-                self._cache[user_id] = session
+                self._cache[cache_key] = session
                 return session
             
             # Create new if not exists
-            new_db_session = ConversationSession(id=user_id, messages_json="[]")
+            new_db_session = ConversationSession(id=cache_key, messages_json="[]")
             db.add(new_db_session)
             db.commit()
             
-            session = SessionMemory(user_id)
-            self._cache[user_id] = session
+            session = SessionMemory(user_id, scope=scope)
+            self._cache[cache_key] = session
             return session
         finally:
             db.close()
@@ -202,9 +207,10 @@ class SessionStore:
         """Persist session state to SQLite."""
         db = SessionLocal()
         try:
-            db_session = db.query(ConversationSession).filter(ConversationSession.id == session.user_id).first()
+            cache_key = self._get_cache_key(session.user_id, session.scope)
+            db_session = db.query(ConversationSession).filter(ConversationSession.id == cache_key).first()
             if not db_session:
-                db_session = ConversationSession(id=session.user_id)
+                db_session = ConversationSession(id=cache_key)
                 db.add(db_session)
                 
             db_session.messages_json = json.dumps(session._messages)
@@ -215,22 +221,47 @@ class SessionStore:
             
             db.commit()
             # Update cache
-            self._cache[session.user_id] = session
+            self._cache[cache_key] = session
         finally:
             db.close()
 
-    def get(self, user_id: str) -> Optional[SessionMemory]:
+    def get(self, user_id: str, scope: str = "base") -> Optional[SessionMemory]:
         """Get session if exists."""
-        return self.get_or_create(user_id)
+        return self.get_or_create(user_id, scope=scope)
     
     def clear(self, user_id: str) -> None:
-        """Remove a session from the store and DB."""
-        if user_id in self._cache:
-            del self._cache[user_id]
+        """Remove a session from the store and DB (defaults to base scope)."""
+        self.clear_scope(user_id, scope="base")
+
+    def clear_scope(self, user_id: str, scope: str) -> None:
+        """Remove a specific scope for a user."""
+        cache_key = self._get_cache_key(user_id, scope)
+        if cache_key in self._cache:
+            del self._cache[cache_key]
             
         db = SessionLocal()
         try:
-            db.query(ConversationSession).filter(ConversationSession.id == user_id).delete()
+            db.query(ConversationSession).filter(ConversationSession.id == cache_key).delete()
             db.commit()
+        finally:
+            db.close()
+
+    def log_contrastive_pair(self, session: SessionMemory, is_success: bool) -> int:
+        """
+        Log the current trajectory of the session into the ContrastivePair table.
+        Returns the ID of the inserted pair.
+        """
+        db = SessionLocal()
+        try:
+            messages_json = json.dumps(session.get_messages())
+            pair = ContrastivePair(
+                user_id=session.user_id,
+                trajectory_json=messages_json,
+                is_success=1 if is_success else 0
+            )
+            db.add(pair)
+            db.commit()
+            db.refresh(pair)
+            return pair.id
         finally:
             db.close()

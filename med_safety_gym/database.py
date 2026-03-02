@@ -25,6 +25,16 @@ class ConversationSession(Base):
     escalated_tools_json = Column(Text, default="[]") # Persisted escalation
     last_active = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class ContrastivePair(Base):
+    """Stores successful (D+) or failed (D-) interaction trajectories for the Experience Refiner."""
+    __tablename__ = 'contrastive_pairs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String) # For linking to a user's habits
+    trajectory_json = Column(Text) # The conversation turns leading to the outcome
+    is_success = Column(Integer) # 1 for D+ (success), 0 for D- (failure)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class TrajectoryStep(Base):
     __tablename__ = 'trajectory_steps'
     

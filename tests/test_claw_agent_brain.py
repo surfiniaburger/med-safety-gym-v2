@@ -9,6 +9,32 @@ from med_safety_gym.claw_agent import SafeClawAgent
 from a2a.types import Message, TextPart, Part
 
 @pytest.mark.anyio
+async def test_agent_uses_intent_classifier():
+    """
+    Scenario: User sends a multi-turn refinement message.
+    The agent's run() method should classify it and format the action using the Mediator template.
+    """
+    agent = SafeClawAgent(client_factory=lambda: AsyncMock())
+    agent.context_aware_action = AsyncMock()
+    agent._ensure_governor_interceptor = AsyncMock()
+    
+    updater = AsyncMock()
+    message = Message(
+        role="user",
+        messageId="test-msg-2",
+        parts=[Part(root=TextPart(kind="text", text="No, what about for adults?"))]
+    )
+    
+    await agent.run(message, updater)
+    
+    agent.context_aware_action.assert_called_once()
+    action_passed = agent.context_aware_action.call_args.kwargs.get('action') or agent.context_aware_action.call_args.args[0]
+    
+    # We expect the Mediator intent wrapper
+    assert "EXPANSION" in action_passed.upper()
+    assert "Correction: True" in action_passed
+
+@pytest.mark.anyio
 async def test_agent_respects_safety_violation():
     """
     Scenario: Agent attempts an unsafe action (blocked by MCP).
