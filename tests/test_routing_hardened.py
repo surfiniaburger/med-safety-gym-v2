@@ -15,7 +15,7 @@ from med_safety_gym.claw_agent import SafeClawAgent
     ("admin", False),
     ("gh: admin", True)
 ])
-@patch("litellm.acompletion", new_callable=AsyncMock)
+@patch("med_safety_gym.claw_agent.acompletion", new_callable=AsyncMock)
 async def test_routing_isolation(mock_acompletion, action, should_be_github):
     """Verify that medical and github actions are correctly isolated."""
     # Setup mocks

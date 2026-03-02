@@ -18,11 +18,22 @@ def test_server_starts():
     )
     
     try:
-        # Wait for server to start
-        time.sleep(3)
+        # Wait for server to start (polling)
+        max_retries = 10
+        response = None
+        for i in range(max_retries):
+            try:
+                response = requests.get("http://localhost:8888/", timeout=1)
+                break
+            except requests.exceptions.ConnectionError:
+                time.sleep(1)
         
-        # Check if it's responding
-        response = requests.get("http://localhost:8888/")
+        if response is None:
+            stdout, stderr = proc.communicate(timeout=1)
+            print("Server stdout:", stdout.decode())
+            print("Server stderr:", stderr.decode())
+            assert False, "Server failed to start within timeout"
+
         # Accept 405 as A2A servers might only allow POST
         assert response.status_code in [200, 405]
         

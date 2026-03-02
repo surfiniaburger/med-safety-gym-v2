@@ -72,5 +72,5 @@ def mock_litellm():
     mock_response.choices = [MagicMock()]
     mock_response.choices[0].message.content = "SafeClaw: Action approved by LLM mock."
     
-    with patch("litellm.acompletion", AsyncMock(return_value=mock_response)):
+    with patch("med_safety_gym.claw_agent.acompletion", AsyncMock(return_value=mock_response)):
         yield
