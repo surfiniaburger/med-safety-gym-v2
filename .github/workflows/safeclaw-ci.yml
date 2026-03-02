@@ -23,8 +23,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
         
-      - name: Run Backend Tests (Safety Invariants)
-        run: uv run pytest tests/test_manifest_interceptor.py tests/test_admin_escalation.py tests/test_jit_escalation.py
+      - name: Run All Tests (Brain, Routing, Safety, MCP)
+        run: uv run pytest tests
         
       - name: Run Hub API Tests
         run: uv run pytest tests/test_hub_manifest_api.py
