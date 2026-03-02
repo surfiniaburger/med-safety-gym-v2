@@ -7,7 +7,7 @@ import pytest
 
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from med_safety_gym.identity.secret_store import InMemorySecretStore
 
 # Set default JWT secret for tests
@@ -35,10 +35,27 @@ def mock_biometric_auth():
         yield
 
 @pytest.fixture(autouse=True)
-def mock_keyring_store():
+def mock_keyring():
     """
-    Globally mock KeyringSecretStore with InMemorySecretStore to prevent
-    tests from triggering macOS Keychain password prompts.
+    Globally mock the 'keyring' library to prevent ANY test from triggering
+    macOS Keychain password prompts. This covers all SecretStore implementations.
+    """
+    mock_kr = MagicMock()
+    # Mock common keyring methods to return None (miss) by default
+    mock_kr.get_password.return_value = None
+    mock_kr.set_password.return_value = None
+    mock_kr.delete_password.return_value = None
+    
+    with patch("keyring.get_password", mock_kr.get_password), \
+         patch("keyring.set_password", mock_kr.set_password), \
+         patch("keyring.delete_password", mock_kr.delete_password), \
+         patch("keyring.get_keyring", return_value=mock_kr):
+        yield
+
+@pytest.fixture(autouse=True)
+def force_in_memory_store():
+    """
+    Ensure SafeClawAgent uses InMemorySecretStore by default during tests.
     """
     with patch("med_safety_gym.claw_agent.KeyringSecretStore", return_value=InMemorySecretStore()):
         yield
