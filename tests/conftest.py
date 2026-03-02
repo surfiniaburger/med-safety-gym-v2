@@ -8,6 +8,7 @@ import pytest
 import os
 import sys
 from unittest.mock import patch
+from med_safety_gym.identity.secret_store import InMemorySecretStore
 
 # Set default JWT secret for tests
 if "JWT_SECRET" not in os.environ:
@@ -31,4 +32,13 @@ def mock_biometric_auth():
         with patch("med_safety_gym.auth_guard.require_local_auth", return_value=True):
             yield
     else:
+        yield
+
+@pytest.fixture(autouse=True)
+def mock_keyring_store():
+    """
+    Globally mock KeyringSecretStore with InMemorySecretStore to prevent
+    tests from triggering macOS Keychain password prompts.
+    """
+    with patch("med_safety_gym.claw_agent.KeyringSecretStore", return_value=InMemorySecretStore()):
         yield
