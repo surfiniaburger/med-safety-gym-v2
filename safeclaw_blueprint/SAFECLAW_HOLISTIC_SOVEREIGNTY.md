@@ -73,7 +73,48 @@ sequenceDiagram
 
 ---
 
-## 3. Sovereign Policy & Profile Enforcement
+## 3. Data & Evaluation Lifecycle: The "Sovereignty Pulse"
+
+SafeClaw isn't just a static agent; it's a dynamic system that learns from its own execution history and undergoes rigorous multi-turn stress testing.
+
+### The Observability & RAG Flow
+This diagram shows how live execution data is streamed to the Governor for real-time monitoring and later distilled into RAG context for future safety alignment.
+
+```mermaid
+graph LR
+    Agent["🤖 SafeClaw Agent"] --> |"Stream Snapshots (WS)"| Hub["🏰 Hub/Governor"]
+    Hub --> |"Persist"| DB[(Evolution DB)]
+    DB --> |"Scan & Pair"| Refiner["🧪 Experience Refiner"]
+    Refiner --> |"Distill"| Guidelines["📝 Pragmatic Guidelines"]
+    Guidelines --> |"Inject"| Mediator["🧠 Intent Mediator"]
+    DB --> |"Semantic Search"| RAG["🔍 RAG Service"]
+    RAG --> |"Safety Context"| Agent
+```
+
+### The Agentic Evaluation Loop
+SafeClaw is tested using the **A2A (Agent-to-Agent)** protocol, where specialized probers attempt to trigger safety failures.
+
+```mermaid
+sequenceDiagram
+    participant B as 🚀 Benchmark Server
+    participant P as 🧐 Prober (MT-Eval/MediQ)
+    participant A as 🤖 SafeClaw Agent
+    participant G as ⚖️ HealthBench Grader
+
+    B->>P: Load Scenario
+    P->>A: Turn 1: Specific Query (A2A)
+    A-->>P: Response 1
+    P->>A: Turn N: Adversarial Follow-up (Context Pressure)
+    A-->>P: Response N
+    P->>B: Final Transcript (Full session)
+    B->>G: Grade Protocol
+    G->>G: Verify Entity Parity & Abstention
+    G-->>B: Final Logic Score (R/P)
+```
+
+---
+
+## 4. Sovereign Policy & Profile Enforcement
 
 The Governor (Hub) dictates the capabilities of the Agent based on a **Profile-to-Tool** mapping. This ensures that a "Read-Only" agent cannot perform destructive "Admin" actions, even if the LLM is compromised.
 
@@ -108,6 +149,66 @@ Agentic Evaluation is not just a "unit test" for models; it is a **Continuous Se
 - **Pragmatic Drift Detection**: Using the `BenchmarkServer` to detect if the `IntentClassifier` loses accuracy during extremely long multi-turn sessions (over 50+ turns).
 - **Adversarial Red-Teaming**: The probers will evolve to intentionally use **"Pragmatic Ellipsis"** (vague directives) to try and trick the Agent into violating Entity Parity.
 - **Automated Refinement**: In the future, the `HBG` (Grader) scores will be used to automatically tune the `Mediator` prompts, creating a self-healing safety loop.
+
+---
+
+## 5. Subtle Logic Flows
+
+SafeClaw performs non-trivial logic for data retrieval and multi-turn state management to ensure accuracy and safety.
+
+### Hybrid Search & Comparison
+The `DataAgent` uses a layered approach to find interesting failures and compare model versions.
+
+```mermaid
+flowchart TD
+    Q[Query] --> Typo{Typo Correction}
+    Typo --> SQL[SQL Keyword Search]
+    Typo --> SEM[Semantic Search /pgvector]
+    SQL --> Rank[Unified Ranking]
+    SEM --> Rank
+    Rank --> Delta[Calculate Reward Delta]
+    Delta --> UI[Gauntlet Dashboard]
+```
+
+### MT-Eval Recollection State Machine
+Specialized probers use a state-driven approach to pressure the Agent's memory.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Turn1: Initial Query (DIPG)
+    Turn1 --> Turn2: Correction (Formulation)
+    Turn2 --> Turn3: Expansion (Side Effects)
+    Turn3 --> Turn4: Recollection (Base Case)
+    Turn4 --> [*]: Grade Transcript
+```
+
+---
+
+## 6. Testing & Reliability Invariants
+
+The SafeClaw test suite is designed for **"Zero-Friction" CI/CD**, ensuring that security never prevents rapid iteration.
+
+### Mocking & Privacy Boundaries
+Mocks are strictly enforced to prevent keychain popups and external API leaks.
+
+```mermaid
+graph TD
+    subgraph "SafeClaw Test Suite"
+        Tests[Pytest]
+    end
+
+    subgraph "Mocked Boundaries"
+        Bio["🛡️ Biometric Auth<br/>(Always Return True)"]
+        KR["🔑 Keyring/Keychain<br/>(Always Return None)"]
+        SS["📂 Secret Store<br/>(InMemory Only)"]
+        LLM["🗣️ LiteLLM<br/>(AsyncMock Completion)"]
+    end
+
+    Tests --> Bio
+    Tests --> KR
+    Tests --> SS
+    Tests --> LLM
+```
 
 ---
 > [!IMPORTANT]
