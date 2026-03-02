@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 from datetime import datetime
 import os
@@ -32,7 +32,7 @@ class ContrastivePair(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String) # For linking to a user's habits
     trajectory_json = Column(Text) # The conversation turns leading to the outcome
-    is_success = Column(Integer) # 1 for D+ (success), 0 for D- (failure)
+    is_success = Column(Boolean) # D+ (success) or D- (failure)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class TrajectoryStep(Base):

@@ -18,6 +18,8 @@ from .vision_audit import get_audit_summary
 from .identity.scoped_identity import verify_delegation_token
 from .identity.secret_store import SecretStore, KeyringSecretStore
 import jwt
+from litellm import acompletion
+from .intent_classifier import IntentClassifier, IntentCategory
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,10 @@ class SafeClawAgent:
         self.hub_pub_key = None # Governor's public key for identity verification
         self.secret_store = secret_store or KeyringSecretStore()
         self.session_id = "agent_session_" + os.urandom(4).hex()
+        
+        # PR Feedback: Initialize once
+        self.intent_classifier = IntentClassifier()
+        self.model = os.environ.get("LITELLM_MODEL") or os.environ.get("USER_LLM_MODEL") or "gemini/gemini-2.5-flash"
 
     async def _ensure_governor_interceptor(self):
         """Fetch the central manifest from the Governor (Hub) and initialize interceptor."""
@@ -246,11 +252,8 @@ class SafeClawAgent:
             )
             return
         
-        from .intent_classifier import IntentClassifier, IntentCategory
-        
         # 1. Classify Intent
-        classifier = IntentClassifier()
-        intent = classifier.classify(text_content)
+        intent = self.intent_classifier.classify(text_content)
         
         # 2. Apply Mediator Pattern (Structural enrichment for context injection)
         if intent.category != IntentCategory.NEW_TOPIC or intent.is_correction:
@@ -291,7 +294,7 @@ class SafeClawAgent:
         # Merge with base knowledge for a robust safety context
         context = f"{BASE_MEDICAL_KNOWLEDGE}\n\nCONVERSATION CONTEXT:\n{session_context}"
         
-        await self.context_aware_action(action, text_content, context, updater)
+        await self.context_aware_action(action, context, updater)
 
     async def _get_github_session(self):
         """Persistent GitHub session helper."""
@@ -513,7 +516,7 @@ class SafeClawAgent:
 
         return True
 
-    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any) -> None:
+    async def context_aware_action(self, action: str, context: str, updater: Any) -> None:
         """
         Executes an action using the LLM. 
         Note: The Entity Parity check has been removed here because it was blocking 
@@ -524,11 +527,8 @@ class SafeClawAgent:
         logger.info(f"Action Executed (Generating LLM response): {action}")
 
         try:
-            from litellm import acompletion
-            import os
             
-            # Use environment variable or fallback to a default Gemini model
-            model = os.environ.get("LITELLM_MODEL") or os.environ.get("USER_LLM_MODEL") or "gemini/gemini-2.5-flash"
+            model = self.model
             
             prompt = (
                 f"You are SafeClaw, a strict but helpful medical AI assistant. "

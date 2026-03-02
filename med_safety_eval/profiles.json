@@ -1,6 +1,5 @@
 {
     "read_only": [
-        "configure_repo",
         "list_issues",
         "list_pull_requests",
         "get_eval_tasks"

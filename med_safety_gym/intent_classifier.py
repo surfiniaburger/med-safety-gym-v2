@@ -28,7 +28,7 @@ class IntentClassifier:
         category = IntentCategory.NEW_TOPIC
         is_correction = False
         
-        if any(kw in message_lower for kw in self.correction_keywords) or message_lower.startswith("no "):
+        if any(kw in message_lower for kw in self.correction_keywords) or message_lower.lstrip().startswith("no"):
             is_correction = True
 
         if any(kw in message_lower for kw in self.refinement_keywords):
