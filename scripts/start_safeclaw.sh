@@ -24,7 +24,11 @@ EOF
 fi
 
 # Load environment
-export $(cat .env | grep -v '^#' | xargs)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/load_secrets.sh"
+
+# Note: non-secret config like SAFECLAW_PORT still comes from .env via load_secrets
+export $(cat .env | grep -v '^#' | grep -v 'NEBIUS_API_KEY' | xargs)
 
 # Check API key
 if [ "$NEBIUS_API_KEY" = "your-nebius-api-key-here" ]; then

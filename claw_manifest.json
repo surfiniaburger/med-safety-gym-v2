@@ -10,6 +10,7 @@
         ],
         "tools": {
             "user": [
+                "check_entity_parity",
                 "configure_repo",
                 "list_issues",
                 "list_pull_requests",

@@ -12,10 +12,11 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Load environment variables properly (handle quotes)
-set -a
-source .env
-set +a
+# Load environment variables properly (handle quotes and keychain)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/load_secrets.sh"
+
+export $(cat .env | grep -v '^#' | grep -v 'TELEGRAM_BOT_TOKEN' | xargs)
 
 # Check for Telegram token
 if [ -z "$TELEGRAM_BOT_TOKEN" ]; then

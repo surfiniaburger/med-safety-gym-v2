@@ -17,6 +17,7 @@ async def test_agent_uses_intent_classifier():
     agent = SafeClawAgent(client_factory=lambda: AsyncMock())
     agent.context_aware_action = AsyncMock()
     agent._ensure_governor_interceptor = AsyncMock()
+    agent._call_tool_with_interception = AsyncMock(return_value={"is_safe": True})
     
     updater = AsyncMock()
     message = Message(
