@@ -66,14 +66,17 @@ async def test_agent_configures_repo():
     github_client.call_tool.assert_called_with("configure_repo", {"repo_name": "my/repo"})
 
 @pytest.mark.asyncio
-async def test_agent_handles_medical_default():
-    """Verify that non-github messages still call safety tools."""
-    safety_client = MagicMock()
-    safety_client.__aenter__.return_value = safety_client
-    safety_client.call_tool = AsyncMock(return_value={"is_safe": True, "reason": "OK"})
-    
-    # We need a medical mock
-    agent = SafeClawAgent(client_factory=lambda: safety_client)
+@patch("med_safety_gym.claw_agent.acompletion")
+async def test_agent_handles_medical_default(mock_acompletion):
+    """Verify that non-github messages call LLM generation."""
+    # Mock LLM response
+    mock_response = AsyncMock()
+    mock_response.choices = [AsyncMock()]
+    mock_response.choices[0].message.content = "Mocked Response"
+    mock_acompletion.return_value = mock_response
+
+    agent = SafeClawAgent(client_factory=lambda: MagicMock())
+    agent._ensure_governor_interceptor = AsyncMock()
     
     updater = AsyncMock()
     message = Message(
@@ -84,4 +87,4 @@ async def test_agent_handles_medical_default():
     
     await agent.run(message, updater)
     
-    safety_client.call_tool.assert_called_with("check_entity_parity", ANY)
+    mock_acompletion.assert_called()

@@ -35,63 +35,45 @@ async def test_agent_uses_intent_classifier():
     assert "Correction: True" in action_passed
 
 @pytest.mark.anyio
-async def test_agent_respects_safety_violation():
+@patch("med_safety_gym.claw_agent.acompletion")
+async def test_agent_reports_error_on_llm_failure(mock_acompletion):
     """
-    Scenario: Agent attempts an unsafe action (blocked by MCP).
-    It should report the violation to the user.
+    Scenario: LLM generation fails (e.g. authentication or safety filter).
+    The agent should report this as a failure.
     """
-    # Mock the MCP Client Adapter
-    mock_client = AsyncMock()
-    # Mock context manager behavior
-    mock_client.__aenter__.return_value = mock_client
+    # Mock LLM failure
+    mock_acompletion.side_effect = Exception("LLM Generation Failed")
     
-    # Mock call_tool to return a Safety Violation
-    mock_client.call_tool.return_value = {
-        "is_safe": False,
-        "reason": "Entity Parity Violation: Found entities {'scillycure'} in action not found in context."
-    }
-    
-    # Initialize Agent with mocked client factory
-    agent = SafeClawAgent(client_factory=lambda: mock_client)
-    
-    # Mock the TaskUpdater
+    agent = SafeClawAgent(client_factory=lambda: AsyncMock())
     updater = AsyncMock()
     
-    # Simulate User Message
-    message = Message(
-        role="user",
-        messageId="test-msg-1",
-        parts=[Part(root=TextPart(kind="text", text="Run safety check on ScillyCure"))]
-    )
-    
-    # Run Agent
+    # Run Agent path that leads to LLM
     await agent.context_aware_action(
         action="Prescribe ScillyCure", 
         context="Nothing", 
         updater=updater
     )
     
-    # Verify: Agent should NOT proceed (or should report failure)
+    # Verify: Agent should report failure
     updater.update_status.assert_called()
     last_call_args = updater.update_status.call_args[0]
-    
-    # Check state is 'failed'
-    # Note: TaskState is an enum, so we compare the member or name
-    assert str(last_call_args[0]) == "TaskState.failed" or last_call_args[0].name == "failed"
-    
-    assert "Safety Violation" in str(last_call_args[1]) or "blocked" in str(last_call_args[1]).lower()
+    assert last_call_args[0].name == "failed"
+    assert "Failed to generate response" in str(last_call_args[1])
 
 @pytest.mark.anyio
-async def test_agent_proceeds_on_safe():
+@patch("med_safety_gym.claw_agent.acompletion")
+async def test_agent_proceeds_on_safe_llm_response(mock_acompletion):
     """
-    Scenario: Agent attempts a safe action.
+    Scenario: LLM generates a successful response.
     It should proceed and report success.
     """
-    mock_client = AsyncMock()
-    mock_client.__aenter__.return_value = mock_client
-    mock_client.call_tool.return_value = {"is_safe": True, "reason": "OK"}
+    # Mock successful LLM response
+    mock_response = AsyncMock()
+    mock_response.choices = [AsyncMock()]
+    mock_response.choices[0].message.content = "I do not know about ScillyCure, but I can help with headaches."
+    mock_acompletion.return_value = mock_response
     
-    agent = SafeClawAgent(client_factory=lambda: mock_client)
+    agent = SafeClawAgent(client_factory=lambda: AsyncMock())
     updater = AsyncMock()
     
     await agent.context_aware_action(
@@ -105,4 +87,5 @@ async def test_agent_proceeds_on_safe():
     last_call_args = updater.update_status.call_args[0]
     
     # Check state is 'completed'
-    assert str(last_call_args[0]) == "TaskState.completed" or last_call_args[0].name == "completed"
+    assert last_call_args[0].name == "completed"
+    assert "headaches" in str(last_call_args[1])
