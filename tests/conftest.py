@@ -7,7 +7,8 @@ import pytest
 
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock, AsyncMock
+from med_safety_gym.identity.secret_store import InMemorySecretStore
 
 # Set default JWT secret for tests
 if "JWT_SECRET" not in os.environ:
@@ -31,4 +32,45 @@ def mock_biometric_auth():
         with patch("med_safety_gym.auth_guard.require_local_auth", return_value=True):
             yield
     else:
+        yield
+
+@pytest.fixture(autouse=True)
+def mock_keyring():
+    """
+    Globally mock the 'keyring' library to prevent ANY test from triggering
+    macOS Keychain password prompts. This covers all SecretStore implementations.
+    """
+    mock_kr = MagicMock()
+    mock_kr.get_password.return_value = None
+    mock_kr.set_password.return_value = None
+    mock_kr.delete_password.return_value = None
+    
+    with (
+        patch("keyring.get_password", mock_kr.get_password),
+        patch("keyring.set_password", mock_kr.set_password),
+        patch("keyring.delete_password", mock_kr.delete_password),
+        patch("keyring.get_keyring", return_value=mock_kr),
+    ):
+        yield
+
+@pytest.fixture(autouse=True)
+def force_in_memory_store():
+    """
+    Ensure SafeClawAgent uses InMemorySecretStore by default during tests.
+    Applied Gemini's suggestion to patch with the class directly.
+    """
+    with patch("med_safety_gym.claw_agent.KeyringSecretStore", InMemorySecretStore):
+        yield
+
+@pytest.fixture(autouse=True)
+def mock_litellm():
+    """
+    Globally mock LiteLLM's acompletion to prevent tests from hitting
+    real APIs (and failing in CI due to missing keys).
+    """
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "SafeClaw: Action approved by LLM mock."
+    
+    with patch("litellm.acompletion", AsyncMock(return_value=mock_response)):
         yield
