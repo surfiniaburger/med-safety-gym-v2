@@ -18,6 +18,7 @@ from .vision_audit import get_audit_summary
 from .identity.scoped_identity import verify_delegation_token
 from .identity.secret_store import SecretStore, KeyringSecretStore
 import jwt
+from .intent_classifier import IntentClassifier, IntentCategory
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +254,7 @@ class SafeClawAgent:
         intent = classifier.classify(text_content)
         
         # 2. Apply Mediator Pattern (Structural enrichment for context injection)
+        # We also pass the intent to context_aware_action to help with safety gating
         if intent.category != IntentCategory.NEW_TOPIC or intent.is_correction:
             action = f"[{intent.category.name} | Correction: {intent.is_correction}] {text_content}"
         else:
@@ -291,7 +293,7 @@ class SafeClawAgent:
         # Merge with base knowledge for a robust safety context
         context = f"{BASE_MEDICAL_KNOWLEDGE}\n\nCONVERSATION CONTEXT:\n{session_context}"
         
-        await self.context_aware_action(action, text_content, context, updater)
+        await self.context_aware_action(action, text_content, context, updater, intent=intent)
 
     async def _get_github_session(self):
         """Persistent GitHub session helper."""
@@ -513,13 +515,22 @@ class SafeClawAgent:
 
         return True
 
-    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any) -> None:
+    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any, intent: Any = None) -> None:
         """
         Executes an action using the LLM. 
         Note: The Entity Parity check has been removed here because it was blocking 
         valid conversational user inputs (like asking "What are the side effects?").
-        Safety is instead enforced by the strict system prompt bound to the verified context.
+        Safety is instead enforced by a combination of the 'check_entity_parity' safety gate 
+        (for new medical actions) and the strict system prompt bound to the verified context.
         """
+        # Safety Gate: Only run entity parity for new topics or explicit actions
+        # This prevents blocking conversational follow-ups while maintaining safety for new intents.
+        if intent is None or intent.category == IntentCategory.NEW_TOPIC:
+            is_safe, failure_reason = await self._apply_safety_gate(action, context, updater)
+            if not is_safe:
+                await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Safety Violation: {failure_reason}"))
+                return
+
         await updater.update_status(TaskState.working, new_agent_text_message(f"✅ Input received. Generating response..."))
         logger.info(f"Action Executed (Generating LLM response): {action}")
 
@@ -557,3 +568,23 @@ class SafeClawAgent:
         except Exception as e:
             logger.error(f"LLM Generation Failed: {e}", exc_info=True)
             await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Failed to generate response: {e}"))
+
+    async def _apply_safety_gate(self, action: str, context: str, updater: Any) -> tuple[bool, str]:
+        """
+        Dedicated safety gate logic (Dave Farley Habit: Small, focused function).
+        Verifies entity parity before allowing an action to proceed.
+        """
+        await updater.update_status(TaskState.working, new_agent_text_message(f"🛡️ Running safety verification: {action}..."))
+        
+        async with self.client_factory() as safety_client:
+            safety_check = await safety_client.call_tool("check_entity_parity", {
+                "action": action,
+                "context": context
+            })
+            
+            if not safety_check.get("is_safe", False):
+                reason = safety_check.get("reason", "Unknown safety violation.")
+                logger.warning(f"Safety Gate Blocked Action: {reason}")
+                return False, reason
+                
+        return True, ""

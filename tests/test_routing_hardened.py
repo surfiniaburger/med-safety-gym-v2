@@ -59,6 +59,6 @@ async def test_routing_isolation(mock_acompletion, action, should_be_github):
             github_client.call_tool.assert_called()
         mock_acompletion.assert_not_called()
     else:
-        # Check if it hit the LLM (Guardian check now removed from this path)
+        # Check if it hit the LLM and the Guardian safety gate (re-integrated per blueprint)
         mock_acompletion.assert_called()
-        safety_client.call_tool.assert_not_called()
+        safety_client.call_tool.assert_called()
