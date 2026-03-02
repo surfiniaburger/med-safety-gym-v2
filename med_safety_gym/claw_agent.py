@@ -246,8 +246,17 @@ class SafeClawAgent:
             )
             return
         
-        # For now, use the message text as the "action"
-        action = text_content
+        from .intent_classifier import IntentClassifier, IntentCategory
+        
+        # 1. Classify Intent
+        classifier = IntentClassifier()
+        intent = classifier.classify(text_content)
+        
+        # 2. Apply Mediator Pattern (Structural enrichment for context injection)
+        if intent.category != IntentCategory.NEW_TOPIC or intent.is_correction:
+            action = f"[{intent.category.name} | Correction: {intent.is_correction}] {text_content}"
+        else:
+            action = text_content
         
         # ROUTING LOGIC:
         # We classify if this is a GitHub operation or a Clinical action.
@@ -282,7 +291,7 @@ class SafeClawAgent:
         # Merge with base knowledge for a robust safety context
         context = f"{BASE_MEDICAL_KNOWLEDGE}\n\nCONVERSATION CONTEXT:\n{session_context}"
         
-        await self.context_aware_action(action, context, updater)
+        await self.context_aware_action(action, text_content, context, updater)
 
     async def _get_github_session(self):
         """Persistent GitHub session helper."""
@@ -331,7 +340,8 @@ class SafeClawAgent:
             (r'\bissues?\b', self._handle_issue_ops),
             (r'\b(pulls?|prs?|requests)\b', self._handle_pr_ops),
             (r'\b(check|info)\b', self._handle_info_ops),
-            (r'\b(say|voice|!v)\b', self._handle_voice_ops)
+            (r'\b(say|voice|!v)\b', self._handle_voice_ops),
+            (r'\b(repos?|repositories)\b', self._handle_repo_list_fallback)
         ]
         
         for pattern, handler in handlers:
@@ -368,6 +378,9 @@ class SafeClawAgent:
         t = re.search(r'title="([^"]+)"', action)
         b = re.search(r'body="([^"]+)"', action)
         return {"title": t.group(1) if t else "Untitled", "body": b.group(1) if b else ""}
+
+    async def _handle_repo_list_fallback(self, match, cmd, action, client, updater, session):
+        return "I can manage your current repository, issues, and PRs, but I don't have a direct tool to list all repositories. You can configure a specific repository via `gh: set repo <repo_name>`."
 
     async def _handle_pr_ops(self, match, cmd, action, client, updater, session):
         return await self._call_tool_with_interception("list_pull_requests", {}, client, updater, session)
@@ -500,67 +513,47 @@ class SafeClawAgent:
 
         return True
 
-    async def context_aware_action(self, action: str, context: str, updater: Any) -> None:
+    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any) -> None:
         """
-        Executes an action if it passes the Entity Parity check.
+        Executes an action using the LLM. 
+        Note: The Entity Parity check has been removed here because it was blocking 
+        valid conversational user inputs (like asking "What are the side effects?").
+        Safety is instead enforced by the strict system prompt bound to the verified context.
         """
-        await updater.update_status(
-            TaskState.working, 
-            new_agent_text_message(f"Verifying safety of action: {action}...")
-        )
-        
-        # 1. Check Safety via MCP integration
-        client = self.client_factory()
-        
-        is_safe = False
-        reason = "Unknown error"
-        
+        await updater.update_status(TaskState.working, new_agent_text_message(f"✅ Input received. Generating response..."))
+        logger.info(f"Action Executed (Generating LLM response): {action}")
+
         try:
-            # Handle both Context Manager (Adapter) and Mock (Function/Object)
-            if hasattr(client, '__aenter__'):
-                async with client as session:
-                    result = await session.call_tool("check_entity_parity", {
-                        "action": action, 
-                        "context": context
-                    })
-            else:
-                # Assuming valid client interface (mock)
-                result = await client.call_tool("check_entity_parity", {
-                    "action": action, 
-                    "context": context
-                })
-
-            # Parse result
-            if isinstance(result, dict):
-                is_safe = result.get("is_safe", False)
-                reason = result.get("reason", "No reason provided")
-            elif isinstance(result, str):
-                # Fallback if string returned
-                try:
-                    data = json.loads(result)
-                    is_safe = data.get("is_safe", False)
-                    reason = data.get("reason", "No reason provided")
-                except json.JSONDecodeError:
-                    reason = f"Invalid response format: {result}"
+            from litellm import acompletion
+            import os
             
-        except Exception as e:
-            logger.error(f"MCP Check Failed: {e}", exc_info=True)
-            await updater.update_status(
-                TaskState.failed, 
-                new_agent_text_message(f"❌ Safety Verification Error: {e}")
+            # Use environment variable or fallback to a default Gemini model
+            model = os.environ.get("LITELLM_MODEL") or os.environ.get("USER_LLM_MODEL") or "gemini/gemini-2.5-flash"
+            
+            prompt = (
+                f"You are SafeClaw, a strict but helpful medical AI assistant. "
+                f"Use the following verified context to answer the user.\n"
+                f"If the user asks a question not covered by the context, you MUST state that you do not know.\n\n"
+                f"Context:\n{context}\n\n"
+                f"User: {action}\n\n"
+                f"SafeClaw:"
             )
-            return
-
-        # 2. Result Handling
-        if not is_safe:
-            # BLOCKED
-            msg = f"🚫 Action BLOCKED by Guardian.\nReason: {reason}"
-            # Use 'failed' to signal clearly.
-            await updater.update_status(TaskState.failed, new_agent_text_message(msg))
-            logger.warning(f"Safety Violation: {reason}")
-            return
-
-        # 3. Execution (Simulated for now)
-        msg = f"✅ Safety Check Passed. Executing: {action}"
-        await updater.update_status(TaskState.completed, new_agent_text_message(msg))
-        logger.info(f"Action Executed: {action}")
+            
+            response = await acompletion(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=2048
+            )
+            
+            # Handle both object and dict responses for robustness
+            message_obj = response.choices[0].message
+            if hasattr(message_obj, "content"):
+                response_text = message_obj.content
+            else:
+                response_text = message_obj.get("content") if isinstance(message_obj, dict) else str(message_obj)
+                
+            await updater.update_status(TaskState.completed, new_agent_text_message(str(response_text)))
+        except Exception as e:
+            logger.error(f"LLM Generation Failed: {e}", exc_info=True)
+            await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Failed to generate response: {e}"))

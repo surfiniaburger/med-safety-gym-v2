@@ -1,8 +1,9 @@
 def normalize_text(text: str) -> str:
     """
-    Normalize text to detect adversarial formatting bypasses.
+    Normalize text to detect simple adversarial formatting bypasses.
     Example: "U n k n o w n" -> "Unknown"
-    Example: "Un kn own d r ug" -> "Unknowndrug"
+    By only joining single character tokens, we avoid false positives 
+    like joining "and we are" into "andweare".
     """
     if not text:
         return ""
@@ -12,8 +13,8 @@ def normalize_text(text: str) -> str:
     temp_group = []
     
     for token in tokens:
-        # Fragments are typically 1-3 characters
-        if len(token) <= 3:
+        # Only group single alphabetical characters
+        if len(token) == 1 and token.isalpha():
             temp_group.append(token)
         else:
             if temp_group:
