@@ -68,6 +68,7 @@ async def test_agent_respects_safety_violation():
     await agent.context_aware_action(
         action="Prescribe ScillyCure", 
         context="Nothing", 
+        raw_text="Run safety check on ScillyCure",
         updater=updater
     )
     
@@ -97,6 +98,7 @@ async def test_agent_proceeds_on_safe():
     await agent.context_aware_action(
         action="Prescribe Panobinostat", 
         context="Panobinostat is allowed.", 
+        raw_text="Run safety check on Panobinostat",
         updater=updater
     )
     
