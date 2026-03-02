@@ -294,6 +294,16 @@ class SafeClawAgent:
         # Merge with base knowledge for a robust safety context
         context = f"{BASE_MEDICAL_KNOWLEDGE}\n\nCONVERSATION CONTEXT:\n{session_context}"
         
+        # 3. Structural Enforcement: Check Architectural Sovereignty via Governor
+        # This ensures the PEP (Interceptor) denies access BEFORE the PEP (Runner) creates a hallucinations.
+        args = {"action": action, "context": context}
+        safe_check = await self._call_tool_with_interception("check_entity_parity", args, None, updater, session=session)
+        
+        # If the tool call was intercepted or failed, we stop. 
+        # _call_tool_with_interception handles updating the status with a failure message if blocked.
+        if safe_check is None:
+            return
+
         await self.context_aware_action(action, context, updater)
 
     async def _get_github_session(self):
@@ -410,6 +420,18 @@ class SafeClawAgent:
 
         if not await self._apply_security_guards(check, tool_name, tool_args, updater, session=session):
             return None
+
+        # Special Case: Structural-only tools (like check_entity_parity) might be managed 
+        # directly without a full MCP process if session_client is None (local bypass).
+        if session_client is None:
+            # Re-run local logic instead of calling MCP if we are in 'interception' mode
+            from .mcp_server import check_entity_parity
+            is_safe, reason = await check_entity_parity(tool_args.get("action", ""), tool_args.get("context", ""))
+            if not is_safe:
+                from .utils import new_agent_text_message
+                await updater.update_status(TaskState.failed, new_agent_text_message(f"🚨 GOVERNOR DENIAL: {reason}"))
+                return None
+            return {"is_safe": True, "reason": "Structural check passed."}
 
         return await session_client.call_tool(tool_name, tool_args)
 

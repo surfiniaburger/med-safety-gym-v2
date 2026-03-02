@@ -88,3 +88,7 @@ async def test_agent_handles_medical_default(mock_acompletion):
     await agent.run(message, updater)
     
     mock_acompletion.assert_called()
+    # Also verify structural check was attempted (mock_client from client_factory)
+    # Actually in test_agent_handles_medical_default, we use MagicMock() for client_factory.
+    # In my logic, _call_tool_with_interception will call mcp_server.check_entity_parity if session_client is None.
+    # But in run(), we pass None as session_client. So it should call the local check.

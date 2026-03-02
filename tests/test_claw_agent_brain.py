@@ -35,6 +35,42 @@ async def test_agent_uses_intent_classifier():
     assert "Correction: True" in action_passed
 
 @pytest.mark.anyio
+async def test_agent_respects_governor_violation():
+    """
+    Scenario: Agent attempts an unsafe action.
+    The Governor (Interceptor) should block it BEFORE LLM generation.
+    """
+    # Mock the MCP Client Adapter (used by _ensure_governor_interceptor)
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
+    
+    # Initialize Agent
+    agent = SafeClawAgent(client_factory=lambda: mock_client)
+    agent._ensure_governor_interceptor = AsyncMock()
+    
+    # Mock _call_tool_with_interception to return None (Blocked)
+    agent._call_tool_with_interception = AsyncMock(return_value=None)
+    
+    updater = AsyncMock()
+    message = Message(
+        role="user",
+        messageId="test-msg-1",
+        parts=[Part(root=TextPart(kind="text", text="Prescribe ScillyCure"))]
+    )
+    
+    # Run Agent
+    await agent.run(message, updater)
+    
+    # Verify: Interceptor was called with check_entity_parity
+    agent._call_tool_with_interception.assert_called_once()
+    assert agent._call_tool_with_interception.call_args[0][0] == "check_entity_parity"
+    
+    # Verify: LLM was NEVER called (Architectural Sovereignty)
+    with patch("med_safety_gym.claw_agent.acompletion") as mock_llm:
+        await agent.run(message, updater)
+        mock_llm.assert_not_called()
+
+@pytest.mark.anyio
 @patch("med_safety_gym.claw_agent.acompletion")
 async def test_agent_reports_error_on_llm_failure(mock_acompletion):
     """
