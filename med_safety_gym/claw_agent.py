@@ -18,6 +18,7 @@ from .vision_audit import get_audit_summary
 from .identity.scoped_identity import verify_delegation_token
 from .identity.secret_store import SecretStore, KeyringSecretStore
 import jwt
+from litellm import acompletion
 from .intent_classifier import IntentClassifier, IntentCategory, IntentResult
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,10 @@ class SafeClawAgent:
         self.hub_pub_key = None # Governor's public key for identity verification
         self.secret_store = secret_store or KeyringSecretStore()
         self.session_id = "agent_session_" + os.urandom(4).hex()
+        
+        # Architectural Improvements: Initialize common components
+        self.intent_classifier = IntentClassifier()
+        self.model = os.environ.get("LITELLM_MODEL") or os.environ.get("USER_LLM_MODEL") or "gemini/gemini-2.5-flash"
 
     async def _ensure_governor_interceptor(self):
         """Fetch the central manifest from the Governor (Hub) and initialize interceptor."""
@@ -247,11 +252,8 @@ class SafeClawAgent:
             )
             return
         
-        from .intent_classifier import IntentClassifier, IntentCategory
-        
         # 1. Classify Intent
-        classifier = IntentClassifier()
-        intent = classifier.classify(text_content)
+        intent = self.intent_classifier.classify(text_content)
         
         # 2. Apply Mediator Pattern (Structural enrichment for context injection)
         # We also pass the intent to context_aware_action to help with safety gating
@@ -535,11 +537,7 @@ class SafeClawAgent:
         logger.info(f"Action Executed (Generating LLM response): {action}")
 
         try:
-            from litellm import acompletion
-            import os
-            
-            # Use environment variable or fallback to a default Gemini model
-            model = os.environ.get("LITELLM_MODEL") or os.environ.get("USER_LLM_MODEL") or "gemini/gemini-2.5-flash"
+            model = self.model
             
             prompt = (
                 f"You are SafeClaw, a strict but helpful medical AI assistant. "
