@@ -5,7 +5,7 @@ Exposes prober capabilities over the A2A protocol.
 
 import logging
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, HttpUrl
 
 from a2a.server.tasks import TaskUpdater
@@ -27,8 +27,25 @@ logger = logging.getLogger(__name__)
 class BenchmarkRequest(BaseModel):
     """Request format for starting a benchmark round."""
     target_agent_url: HttpUrl
-    scenario: str = "recollection" # recollection, mediq, amie
+    scenario: Literal["recollection", "mediq", "amie"] = "recollection"
     num_turns: int = 4
+
+class StubInvocationContext:
+    """
+    Lightweight stub for InvocationContext to avoid using unittest.mock in production.
+    Bridges ADK probers to the A2A protocol.
+    """
+    def __init__(self):
+        class SessionStub:
+            def __init__(self):
+                self.state = {}
+        self.session = SessionStub()
+        
+        class PluginManagerStub:
+            async def run_before_agent_callback(self, *args, **kwargs): pass
+            async def run_after_agent_callback(self, *args, **kwargs): pass
+            async def run_on_agent_event_callback(self, *args, **kwargs): pass
+        self.plugin_manager = PluginManagerStub()
 
 class BenchmarkAgent:
     """
@@ -63,20 +80,9 @@ class BenchmarkAgent:
             await updater.failed(new_agent_text_message(f"Unknown scenario: {request.scenario}"))
             return
 
-        # 2. Setup Orchestrator (Mocking InvocationContext for now as we are bridging ADK -> A2A)
-        # In a full ADK-native server this would be simpler.
+        # 2. Setup Orchestrator (Using StubInvocationContext for A2A bridging)
         orchestrator = EvaluationOrchestrator(prober=prober)
-        
-        from unittest.mock import MagicMock, AsyncMock
-        ctx = MagicMock(spec=InvocationContext)
-        ctx.session = MagicMock()
-        ctx.session.state = {}
-        
-        # Robustly mock ADK internal plugin manager for A2A bridging
-        ctx.plugin_manager = AsyncMock()
-        ctx.plugin_manager.run_before_agent_callback.return_value = None
-        ctx.plugin_manager.run_after_agent_callback.return_value = None
-        ctx.plugin_manager.run_on_agent_event_callback.return_value = None
+        ctx = StubInvocationContext()
 
         # 3. Execution Loop
         target_url = str(request.target_agent_url)

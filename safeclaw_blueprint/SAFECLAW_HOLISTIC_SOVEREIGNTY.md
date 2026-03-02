@@ -141,7 +141,7 @@ graph LR
 
 ---
 
-## 4. The Future Role of Agentic Evaluation
+## 5. The Future Role of Agentic Evaluation
 
 Agentic Evaluation is not just a "unit test" for models; it is a **Continuous Security Auditor** and a **Pragmatic Alignment Validator**.
 
@@ -152,7 +152,7 @@ Agentic Evaluation is not just a "unit test" for models; it is a **Continuous Se
 
 ---
 
-## 5. Subtle Logic Flows
+## 6. Subtle Logic Flows
 
 SafeClaw performs non-trivial logic for data retrieval and multi-turn state management to ensure accuracy and safety.
 
@@ -184,7 +184,7 @@ stateDiagram-v2
 
 ---
 
-## 6. Testing & Reliability Invariants
+## 7. Testing & Reliability Invariants
 
 The SafeClaw test suite is designed for **"Zero-Friction" CI/CD**, ensuring that security never prevents rapid iteration.
 

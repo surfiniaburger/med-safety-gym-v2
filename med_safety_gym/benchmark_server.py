@@ -57,7 +57,7 @@ def main():
     args = parser.parse_args()
 
     app = create_app(host=args.host, port=args.port)
-    print(f"🚀 Benchmark Server serving on {args.host}:{args.port}")
+    logger.info(f"🚀 Benchmark Server serving on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
 
 if __name__ == "__main__":
