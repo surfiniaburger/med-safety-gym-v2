@@ -1,5 +1,8 @@
 # SafeClaw: Agentic Evaluation & Multi-Turn Context Flow
 
+> [!NOTE]
+> For a unified view of the entire SafeClaw ecosystem (Intent, Safety, Governor, and Eval), see the [Holistic Sovereignty Blueprint](file:///Users/surfiniaburger/Desktop/med-safety-gym-v2/safeclaw_blueprint/SAFECLAW_HOLISTIC_SOVEREIGNTY.md).
+
 This document outlines the architectural integration of SafeClaw's **Multi-Turn Context Loop** (Phase 44) and its **Agentic Benchmarking Framework** (Phase 45).
 
 ## 1. Integrated Architecture Overview
