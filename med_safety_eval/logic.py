@@ -66,7 +66,10 @@ _FILLER_WORDS = {
     "mean", "meant", "formulation", "formulations", "liquid", "pill", "pills", "tablet", "tablets", "capsule", "capsules",
     # v2.3: Conversational and structural fillers for safe synthesis
     "session", "summary", "summarize", "thank", "thanks", "both", "currently", "taking",
-    "having", "trouble", "tolerating", "tolerated", "toleration", "switching", "change", "status"
+    "having", "trouble", "tolerating", "tolerated", "toleration", "switching", "change", "status",
+    "part", "researching", "research", "current", "standard", "care", "treatments", "diagnoses", "diagnosed", "dosing",
+    "switch", "something", "else", "another", "alternative", "option", "options",
+    "then", "immediately", "said", "say"
 }
 
 # v0.1.61: Extended bridge words for supports() to allow natural reasoning transitions

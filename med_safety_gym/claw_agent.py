@@ -21,6 +21,7 @@ import jwt
 from litellm import acompletion
 from .intent_classifier import IntentClassifier, IntentCategory, IntentResult
 from .session_memory import SessionStore
+from .experience_refiner import ExperienceRefiner
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class SafeClawAgent:
         
         # Architectural Improvements: Initialize common components
         self.intent_classifier = IntentClassifier()
+        self.experience_refiner = ExperienceRefiner()
         self.model = os.environ.get("LITELLM_MODEL") or os.environ.get("USER_LLM_MODEL") or "gemini/gemini-2.5-flash"
 
     async def _ensure_governor_interceptor(self):
@@ -85,6 +87,9 @@ class SafeClawAgent:
         manifest = await self._init_scoped_session()
         self.interceptor = ManifestInterceptor(manifest)
         logger.info(f"SafeClaw Governor initialized with policy: {manifest.name}")
+        
+        # Load Pragmatic Guidelines from Experience Refiner
+        await self._load_pragmatic_guidelines()
 
     async def _load_secrets_from_store(self):
         """Pre-load session secrets from persistent storage."""
@@ -222,7 +227,17 @@ class SafeClawAgent:
         atexit.register(proc.terminate)
         logger.info(f"Local SafeClaw Hub spawned on port {port} (Cleanup registered).")
 
-    async def run(self, message: Message, updater: Any, session: Any = None) -> None:
+    async def _load_pragmatic_guidelines(self):
+        """Fetches distilled guidelines from the Refiner to inform the Mediator."""
+        try:
+            logger.info("SafeClaw Mediator: Loading distilled pragmatic guidelines...")
+            guidelines = await self.experience_refiner.distill_guidelines(limit=5)
+            self.intent_classifier.set_guidelines(guidelines)
+            logger.info("SafeClaw Mediator: Guidelines loaded successfully.")
+        except Exception as e:
+            logger.warning(f"Mediator failed to load guidelines: {e}. Using default heuristics.")
+
+    async def run(self, message: Message, updater: Any, session: Optional[Any] = None) -> None:
         """
         Main entry point for A2A loop.
         Extracts the user's message and performs safety-checked action.
