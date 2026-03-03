@@ -1,5 +1,6 @@
 
 import logging
+from datetime import datetime
 import atexit
 import os
 import re
@@ -22,6 +23,7 @@ from litellm import acompletion
 from .intent_classifier import IntentClassifier, IntentCategory, IntentResult
 from .session_memory import SessionStore
 from .experience_refiner import ExperienceRefiner
+from med_safety_eval.logic import _extract_entities
 
 logger = logging.getLogger(__name__)
 
@@ -543,13 +545,27 @@ class SafeClawAgent:
         Safety is instead enforced by a combination of the 'check_entity_parity' safety gate 
         (for new medical actions) and the strict system prompt bound to the verified context.
         """
+        if session:
+            session.turn_count = getattr(session, "turn_count", 0) + 1
+
         # Safety Gate: Only run entity parity for new topics or explicit actions
         # This prevents blocking conversational follow-ups while maintaining safety for new intents.
         if intent is None or intent.category == IntentCategory.NEW_TOPIC:
             is_safe, failure_reason = await self._apply_safety_gate(action, context, updater)
             if not is_safe:
                 if session:
-                    self.session_store.log_contrastive_pair(session, is_success=False)
+                    self.session_store.log_contrastive_pair(
+                        session, 
+                        is_success=False,
+                        semantic_trace={
+                            "turn_id": session.turn_count,
+                            "intent": intent.category.name if intent else "UNKNOWN",
+                            "is_success": False,
+                            "failure_reason": failure_reason,
+                            "detected_entities": list(_extract_entities(action)),
+                            "context_entities": list(_extract_entities(context))
+                        }
+                    )
                 await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Safety Violation: {failure_reason}"))
                 return
 
@@ -581,16 +597,47 @@ class SafeClawAgent:
             
             # CRITICAL: Post-generation safety check (PR #45 Feedback)
             is_safe, failure_reason = await self._apply_safety_gate(str(response_text), context, updater)
-            if not is_safe:
-                if session:
-                    self.session_store.log_contrastive_pair(session, is_success=False)
-                await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Safety Violation in generated response: {failure_reason}"))
-                return
+            
+            # Generate Sovereignty Proof (Phase A++ Architecture)
+            # Detect entities used in the response to provide machine-verifiable evidence
+            detected = _extract_entities(str(response_text))
+            
+            proof = {
+                "is_sovereign": is_safe,
+                "intent": intent.category.name if intent else "UNKNOWN",
+                "entities": list(detected),
+                "failure_reason": failure_reason if not is_safe else None,
+                "timestamp": datetime.utcnow().isoformat()
+            }
 
             if session:
-                self.session_store.log_contrastive_pair(session, is_success=True)
-                
-            await updater.update_status(TaskState.completed, new_agent_text_message(str(response_text)))
+                # Log augmented semantic trace for Zero-Injection distillation
+                self.session_store.log_contrastive_pair(
+                    session, 
+                    is_success=is_safe,
+                    semantic_trace={
+                        "turn_id": session.turn_count,
+                        "intent": intent.category.name if intent else "UNKNOWN",
+                        "is_success": is_safe,
+                        "failure_reason": failure_reason if not is_safe else None,
+                        "detected_entities": list(detected),
+                        "context_entities": list(_extract_entities(context))
+                    }
+                )
+            
+            if not is_safe:
+                await updater.update_status(
+                    TaskState.failed, 
+                    new_agent_text_message(f"❌ Safety Violation in generated response: {failure_reason}"),
+                    metadata={"proof": proof}
+                )
+                return
+
+            await updater.update_status(
+                TaskState.completed, 
+                new_agent_text_message(str(response_text)),
+                metadata={"proof": proof}
+            )
         except Exception as e:
             if session:
                 SessionStore().log_contrastive_pair(session, is_success=False)

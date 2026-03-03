@@ -69,7 +69,7 @@ _FILLER_WORDS = {
     "having", "trouble", "tolerating", "tolerated", "toleration", "switching", "change", "status",
     "part", "researching", "research", "current", "standard", "care", "treatments", "diagnoses", "diagnosed", "dosing",
     "switch", "something", "else", "another", "alternative", "option", "options",
-    "then", "immediately", "said", "say"
+    "then", "immediately", "said", "say", "typical", "only", "specify", "doesn", "assist", "today", "hello", "hi"
 }
 
 # v0.1.61: Extended bridge words for supports() to allow natural reasoning transitions

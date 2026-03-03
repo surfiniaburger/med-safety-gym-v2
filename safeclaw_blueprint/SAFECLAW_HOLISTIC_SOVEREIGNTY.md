@@ -45,6 +45,8 @@ Every incoming message undergoes a multi-layer verification process before any t
 2.  **Mediator Injection**: The intent is used to enrich the LLM's context, mitigating "Intent Mismatch" (Lost in Conversation).
 3.  **Scoped Interception**: If the LLM requests a tool call, the `ManifestInterceptor` ensures the tool is within the Governor-approved scope.
 4.  **Clinical Safety Gate**: For medical tools, the **Guardian** verifies **Entity Parity** (ensuring no unauthorized medical entities are introduced).
+5.  **Sovereignty Proof Generation**: After LLM response generation, a machine-readable **Sovereignty Proof** is created, containing detected entities and safety evidence.
+6.  **Zero-Injection Trace Logging**: The clinical outcome is logged as an abstracted semantic trace (no raw text) for downstream learning.
 
 ```mermaid
 sequenceDiagram
@@ -83,12 +85,25 @@ This diagram shows how live execution data is streamed to the Governor for real-
 ```mermaid
 graph LR
     Agent["🤖 SafeClaw Agent"] --> |"Stream Snapshots (WS)"| Hub["🏰 Hub/Governor"]
-    Hub --> |"Persist"| DB[(Evolution DB)]
+    Agent --> |"Log Semantic Trace"| DB[(Evolution DB)]
     DB --> |"Scan & Pair"| Refiner["🧪 Experience Refiner"]
     Refiner --> |"Distill"| Guidelines["📝 Pragmatic Guidelines"]
     Guidelines --> |"Inject"| Mediator["🧠 Intent Mediator"]
     DB --> |"Semantic Search"| RAG["🔍 RAG Service"]
     RAG --> |"Safety Context"| Agent
+```
+
+### Evidence-Based Safety (The Super Proof)
+SafeClaw attaches verifiable evidence to every clinical response, allowing clients to independently audit the safety claim.
+
+```mermaid
+graph TD
+    Response["📝 LLM Response"] --> Extract["🔍 Entity Extraction"]
+    Extract --> Proof["🛡️ Sovereignty Proof<br/>(Entities, TurnID, Sig)"]
+    Proof --> Auditor["⚖️ Client Auditor"]
+    Auditor --> |"Fuzzy Match"| Context["📂 Verified Context"]
+    Context --> |"Match: Pass"| UI["✅ Safe View"]
+    Context --> |"No Match: Fail"| UI2["🚫 Blocked View"]
 ```
 
 ### The Agentic Evaluation Loop

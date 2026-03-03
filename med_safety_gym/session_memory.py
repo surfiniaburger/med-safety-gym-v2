@@ -36,6 +36,7 @@ class SessionMemory:
         self.escalated_tools: Dict[str, float] = {}  # tool_name -> expiration_timestamp
         self.audit_log: List[Dict[str, Any]] = []   # Session-scoped audit log
         self.pending_action: Optional[Dict[str, Any]] = None  # HITL pending tool
+        self.turn_count = 0  # Sequence tracer
 
     def escalate_tool(self, tool_name: str, ttl: int = 300) -> None:
         """Unlock an admin tool for this session for a limited time (default 5 mins)."""
@@ -181,6 +182,7 @@ class SessionStore:
                 messages = json.loads(db_session.messages_json)
                 session = SessionMemory(user_id, messages=messages, github_repo=db_session.github_repo, scope=scope)
                 session.pending_action = json.loads(db_session.pending_action_json) if db_session.pending_action_json else None
+                session.turn_count = db_session.turn_count or 0
                 
                 raw_escalated = json.loads(db_session.escalated_tools_json) if db_session.escalated_tools_json else {}
                 # Legacy Migration: if it's a list (from Phase 32), convert to dict with default TTL
@@ -217,6 +219,7 @@ class SessionStore:
             db_session.github_repo = session.github_repo
             db_session.pending_action_json = json.dumps(session.pending_action) if session.pending_action else None
             db_session.escalated_tools_json = json.dumps(session.escalated_tools)
+            db_session.turn_count = session.turn_count
             db_session.last_active = datetime.utcnow()
             
             db.commit()
@@ -246,9 +249,9 @@ class SessionStore:
         finally:
             db.close()
 
-    def log_contrastive_pair(self, session: SessionMemory, is_success: bool) -> int:
+    def log_contrastive_pair(self, session: SessionMemory, is_success: bool, semantic_trace: Optional[Dict[str, Any]] = None) -> int:
         """
-        Log the current trajectory of the session into the ContrastivePair table.
+        Log the current trajectory and an optional semantic trace for Zero-Injection distillation.
         Returns the ID of the inserted pair.
         """
         db = SessionLocal()
@@ -257,7 +260,9 @@ class SessionStore:
             pair = ContrastivePair(
                 user_id=session.user_id,
                 trajectory_json=messages_json,
-                is_success=1 if is_success else 0
+                semantic_trace_json=json.dumps(semantic_trace) if semantic_trace else None,
+                is_success=1 if is_success else 0,
+                turn_id=session.turn_count
             )
             db.add(pair)
             db.commit()

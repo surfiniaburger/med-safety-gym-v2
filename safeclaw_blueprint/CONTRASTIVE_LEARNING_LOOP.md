@@ -15,8 +15,8 @@ graph TD
     C --> F[("med_safety_gym.db<br/>(contrastive_pairs)")]
     E --> F
     
-    F --> G["Experience Refiner<br/>(Periodic Distillation)"]
-    G --> H["Analyze D+ vs D- trajectories"]
+    F --> G["Experience Refiner<br/>(Semantic Distillation)"]
+    G --> H["Analyze D+ vs D- Semantic Traces"]
     H --> I["Generate Pragmatic Guidelines"]
     
     I --> J["Update Intent Mediator Prompt"]
@@ -25,13 +25,14 @@ graph TD
 
 ## Key Components
 
-### 1. Contrastive Pair Collection (Live)
-Every turn in the conversation is captured within its context.
-- **Success (D+)**: The agent successfully navigated the intent and provided a safe response.
-- **Failure (D-)**: The agent either wrongly blocked a valid request (False Positive) or failed to handle a multi-turn change in topic.
+### 1. Zero-Injection Trace Collection (Live)
+Every turn in the conversation is captured as an **Abstracted Semantic Trace**.
+- **Success (D+)**: The agent successfully navigated the intent and provided a safe response (verified by Sovereignty Proof).
+- **Failure (D-)**: The agent either wrongly blocked a valid request or failed to handle a topic change (Entity Parity Violation).
+- **Security Invariant**: No raw user text is stored in the `contrastive_pairs` table, eliminating the injection attack surface for the Refiner.
 
 ### 2. Experience Refiner (Offline/Periodic)
-A more powerful model (e.g., Gemini 1.5 Pro) reviews the captured trajectories to find linguistic patterns.
+A more powerful model reviews the **abstracted traces** to find clinical alignment patterns.
 - It identifies words that cause false positive blocks (e.g., "switching", "currently").
 - It identifies intent misclassifications (e.g., missed corrections).
 
