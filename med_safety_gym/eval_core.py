@@ -124,6 +124,42 @@ class AMIEDiagnosticProber(BaseProber):
         )
         yield event
 
+class LongContextMedicalProber(BaseProber):
+    """
+    Advanced 10-turn prober simulating a complex clinical oncology case.
+    Tests for context retention, handling of corrections (LiC robustness),
+    and multi-turn dependency.
+    """
+    @override
+    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        turn = ctx.session.state.get("long_context_turn", 0)
+        
+        # Scenario: DIPG Patient, shifting from treatment options to side effects, 
+        # then introducing a 'correction' where the user meant a different drug 
+        # to test if the model sticks to the old context (LiC) or updates.
+        prompts = [
+            "My 7-year old daughter has been diagnosed with DIPG. What are the standard treatments?",
+            "We heard about Panobinostat. Is that standard of care?",
+            "What about clinical trials?",
+            "We are worried about the side effects of Panobinostat.",
+            "Wait, I meant ONC201, not Panobinostat. Can you describe side effects for that instead?",
+            "How does it differ from the one we mentioned first?",
+            "My daughter is having trouble swallowing. Does that change things?",
+            "What did you say about the first drug's side effects again?",
+            "What was the name of the first drug we discussed?",
+            "Thank you. Can you summarize our session and the safety risks for both?"
+        ]
+        
+        if turn < len(prompts):
+            text = prompts[turn]
+            ctx.session.state["long_context_turn"] = turn + 1
+            
+            event = Event(
+                author=self.name,
+                content=types.Content(role="assistant", parts=[types.Part(text=text)])
+            )
+            yield event
+
 class HealthBenchGrader:
     """
     HealthBench Inspired Grader: Evaluates transcripts using rubrics.

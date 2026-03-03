@@ -20,6 +20,8 @@ from .identity.secret_store import SecretStore, KeyringSecretStore
 import jwt
 from litellm import acompletion
 from .intent_classifier import IntentClassifier, IntentCategory, IntentResult
+from .session_memory import SessionStore
+from .experience_refiner import ExperienceRefiner
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,7 @@ class SafeClawAgent:
         
         # Architectural Improvements: Initialize common components
         self.intent_classifier = IntentClassifier()
+        self.experience_refiner = ExperienceRefiner()
         self.model = os.environ.get("LITELLM_MODEL") or os.environ.get("USER_LLM_MODEL") or "gemini/gemini-2.5-flash"
 
     async def _ensure_governor_interceptor(self):
@@ -84,6 +87,9 @@ class SafeClawAgent:
         manifest = await self._init_scoped_session()
         self.interceptor = ManifestInterceptor(manifest)
         logger.info(f"SafeClaw Governor initialized with policy: {manifest.name}")
+        
+        # Load Pragmatic Guidelines from Experience Refiner
+        await self._load_pragmatic_guidelines()
 
     async def _load_secrets_from_store(self):
         """Pre-load session secrets from persistent storage."""
@@ -221,7 +227,17 @@ class SafeClawAgent:
         atexit.register(proc.terminate)
         logger.info(f"Local SafeClaw Hub spawned on port {port} (Cleanup registered).")
 
-    async def run(self, message: Message, updater: Any, session: Any = None) -> None:
+    async def _load_pragmatic_guidelines(self):
+        """Fetches distilled guidelines from the Refiner to inform the Mediator."""
+        try:
+            logger.info("SafeClaw Mediator: Loading distilled pragmatic guidelines...")
+            guidelines = await self.experience_refiner.distill_guidelines(limit=5)
+            self.intent_classifier.set_guidelines(guidelines)
+            logger.info("SafeClaw Mediator: Guidelines loaded successfully.")
+        except Exception as e:
+            logger.warning(f"Mediator failed to load guidelines: {e}. Using default heuristics.")
+
+    async def run(self, message: Message, updater: Any, session: Optional[Any] = None) -> None:
         """
         Main entry point for A2A loop.
         Extracts the user's message and performs safety-checked action.
@@ -295,7 +311,7 @@ class SafeClawAgent:
         # Merge with base knowledge for a robust safety context
         context = f"{BASE_MEDICAL_KNOWLEDGE}\n\nCONVERSATION CONTEXT:\n{session_context}"
         
-        await self.context_aware_action(action, text_content, context, updater, intent=intent)
+        await self.context_aware_action(action, text_content, context, updater, session=session, intent=intent)
 
     async def _get_github_session(self):
         """Persistent GitHub session helper."""
@@ -517,7 +533,7 @@ class SafeClawAgent:
 
         return True
 
-    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any, intent: Optional[IntentResult] = None) -> None:
+    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any, session: Optional[Any] = None, intent: Optional[IntentResult] = None) -> None:
         """
         Executes an action using the LLM. 
         Note: The Entity Parity check has been removed here because it was blocking 
@@ -530,6 +546,8 @@ class SafeClawAgent:
         if intent is None or intent.category == IntentCategory.NEW_TOPIC:
             is_safe, failure_reason = await self._apply_safety_gate(action, context, updater)
             if not is_safe:
+                if session:
+                    SessionStore().log_contrastive_pair(session, is_success=False)
                 await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Safety Violation: {failure_reason}"))
                 return
 
@@ -561,9 +579,14 @@ class SafeClawAgent:
                 response_text = message_obj.content
             else:
                 response_text = message_obj.get("content") if isinstance(message_obj, dict) else str(message_obj)
+            
+            if session:
+                SessionStore().log_contrastive_pair(session, is_success=True)
                 
             await updater.update_status(TaskState.completed, new_agent_text_message(str(response_text)))
         except Exception as e:
+            if session:
+                SessionStore().log_contrastive_pair(session, is_success=False)
             logger.error(f"LLM Generation Failed: {e}", exc_info=True)
             await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Failed to generate response: {e}"))
 
