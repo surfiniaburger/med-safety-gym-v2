@@ -74,7 +74,9 @@ class SafeClawAgent:
         # Architectural Improvements: Initialize common components
         self.intent_classifier = IntentClassifier()
         self.experience_refiner = ExperienceRefiner()
-        self.model = os.environ.get("LITELLM_MODEL") or os.environ.get("USER_LLM_MODEL") or "gemini/gemini-2.5-flash"
+        self.session_store = SessionStore()
+        # Ensure we use environment or fallback to gemma3:1b for local consistency
+        self.model = os.environ.get("LITELLM_MODEL") or os.environ.get("USER_LLM_MODEL") or "gemma3:1b"
 
     async def _ensure_governor_interceptor(self):
         """Fetch the central manifest from the Governor (Hub) and initialize interceptor."""
@@ -547,7 +549,7 @@ class SafeClawAgent:
             is_safe, failure_reason = await self._apply_safety_gate(action, context, updater)
             if not is_safe:
                 if session:
-                    SessionStore().log_contrastive_pair(session, is_success=False)
+                    self.session_store.log_contrastive_pair(session, is_success=False)
                 await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Safety Violation: {failure_reason}"))
                 return
 
@@ -575,13 +577,18 @@ class SafeClawAgent:
             
             # Handle both object and dict responses for robustness
             message_obj = response.choices[0].message
-            if hasattr(message_obj, "content"):
-                response_text = message_obj.content
-            else:
-                response_text = message_obj.get("content") if isinstance(message_obj, dict) else str(message_obj)
+            response_text = message_obj.content if hasattr(message_obj, "content") else (message_obj.get("content") if isinstance(message_obj, dict) else str(message_obj))
             
+            # CRITICAL: Post-generation safety check (PR #45 Feedback)
+            is_safe, failure_reason = await self._apply_safety_gate(str(response_text), context, updater)
+            if not is_safe:
+                if session:
+                    self.session_store.log_contrastive_pair(session, is_success=False)
+                await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Safety Violation in generated response: {failure_reason}"))
+                return
+
             if session:
-                SessionStore().log_contrastive_pair(session, is_success=True)
+                self.session_store.log_contrastive_pair(session, is_success=True)
                 
             await updater.update_status(TaskState.completed, new_agent_text_message(str(response_text)))
         except Exception as e:

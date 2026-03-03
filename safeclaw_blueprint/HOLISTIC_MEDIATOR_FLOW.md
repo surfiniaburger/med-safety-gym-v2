@@ -42,7 +42,7 @@ graph TD
 
 | Component | Responsibility | Implementation |
 | :--- | :--- | :--- |
-| **Intent Mediator** | Classifies intent to scope safety checks. | [intent_classifier.py](file:///Users/surfiniaburger/Desktop/med-safety-gym-v2/med_safety_gym/intent_classifier.py) |
-| **Experience Refiner** | Distills pragmatic rules from logs. | [experience_refiner.py](file:///Users/surfiniaburger/Desktop/med-safety-gym-v2/med_safety_gym/experience_refiner.py) |
-| **Safety Gate** | Enforces strict Entity Parity. | [mcp_server.py](file:///Users/surfiniaburger/Desktop/med-safety-gym-v2/med_safety_gym/mcp_server.py) |
-| **Contrastive DB** | Logs trajectories (D+/D-). | [database.py](file:///Users/surfiniaburger/Desktop/med-safety-gym-v2/med_safety_gym/database.py) |
+| **Intent Mediator** | Classifies intent to scope safety checks. | [intent_classifier.py](intent_classifier.py) |
+| **Experience Refiner** | Distills pragmatic rules from logs. | [experience_refiner.py](experience_refiner.py) |
+| **Safety Gate** | Enforces strict Entity Parity. | [mcp_server.py](mcp_server.py) |
+| **Contrastive DB** | Logs trajectories (D+/D-). | [database.py](database.py) |
