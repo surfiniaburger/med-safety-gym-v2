@@ -20,6 +20,7 @@ from .identity.secret_store import SecretStore, KeyringSecretStore
 import jwt
 from litellm import acompletion
 from .intent_classifier import IntentClassifier, IntentCategory, IntentResult
+from .session_memory import SessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -295,7 +296,7 @@ class SafeClawAgent:
         # Merge with base knowledge for a robust safety context
         context = f"{BASE_MEDICAL_KNOWLEDGE}\n\nCONVERSATION CONTEXT:\n{session_context}"
         
-        await self.context_aware_action(action, text_content, context, updater, intent=intent)
+        await self.context_aware_action(action, text_content, context, updater, session=session, intent=intent)
 
     async def _get_github_session(self):
         """Persistent GitHub session helper."""
@@ -517,7 +518,7 @@ class SafeClawAgent:
 
         return True
 
-    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any, intent: Optional[IntentResult] = None) -> None:
+    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any, session: Optional[Any] = None, intent: Optional[IntentResult] = None) -> None:
         """
         Executes an action using the LLM. 
         Note: The Entity Parity check has been removed here because it was blocking 
@@ -530,6 +531,8 @@ class SafeClawAgent:
         if intent is None or intent.category == IntentCategory.NEW_TOPIC:
             is_safe, failure_reason = await self._apply_safety_gate(action, context, updater)
             if not is_safe:
+                if session:
+                    SessionStore().log_contrastive_pair(session, is_success=False)
                 await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Safety Violation: {failure_reason}"))
                 return
 
@@ -561,9 +564,14 @@ class SafeClawAgent:
                 response_text = message_obj.content
             else:
                 response_text = message_obj.get("content") if isinstance(message_obj, dict) else str(message_obj)
+            
+            if session:
+                SessionStore().log_contrastive_pair(session, is_success=True)
                 
             await updater.update_status(TaskState.completed, new_agent_text_message(str(response_text)))
         except Exception as e:
+            if session:
+                SessionStore().log_contrastive_pair(session, is_success=False)
             logger.error(f"LLM Generation Failed: {e}", exc_info=True)
             await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Failed to generate response: {e}"))
 
