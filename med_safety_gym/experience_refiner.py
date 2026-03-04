@@ -38,7 +38,7 @@ class SemanticTrace(BaseModel):
             return "N/A"
         # Only allow alphanumeric, basic punctuation, and spaces.
         safe_str = _SANITIZE_REGEX.sub('', str(v))
-        safe_str = safe_str.replace("---", "")
+        safe_str = re.sub(r'-{3,}', '', safe_str)
         return " ".join(safe_str.splitlines()).strip()[:500]
 
     @field_validator("detected_entities", "context_entities", mode="before")
