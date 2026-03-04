@@ -160,8 +160,8 @@ class TelegramBridge:
             # Send response back to Telegram
             if final_responses:
                 final_response = "\n\n".join(final_responses)
-            elif responses:
-                final_response = responses[-1] # Fallback to last message if everything was filtered
+            elif updater.responses:
+                final_response = updater.responses[-1] # Fallback to last message if everything was filtered
             else:
                 final_response = "✅ Request processed."
             

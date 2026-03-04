@@ -62,7 +62,6 @@ class TestLoggingIntegration:
     @pytest.mark.asyncio
     async def test_logging_and_fetching(self):
         """Full loop: log a pair, then fetch it with refiner."""
-        from med_safety_gym.session_memory import SessionStore
         import uuid
         uid = f"user_refine_{uuid.uuid4().hex}"
         store = SessionStore()
