@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from med_safety_gym.experience_refiner import ExperienceRefiner
+from med_safety_gym.experience_refiner import ExperienceRefiner, SemanticTrace
 
 @pytest.mark.asyncio
 async def test_distill_guidelines_from_semantic_traces():
@@ -13,20 +13,20 @@ async def test_distill_guidelines_from_semantic_traces():
     # Mock semantic traces (The 'Anatomy of the Failure' or 'Anatomy of Success')
     # This structure is what we want to transition to, removing raw messages.
     mock_traces = [
-        {
-            "turn_id": 1,
-            "intent": "REFINEMENT",
-            "is_success": False,
-            "failure_reason": "EntityParityViolation: Found ONC201 not in context",
-            "detected_entities": ["ONC201"],
-            "context_entities": ["Panobinostat"]
-        },
-        {
-            "turn_id": 2,
-            "intent": "FOLLOW_UP",
-            "is_success": True,
-            "detected_entities": ["Panobinostat"]
-        }
+        SemanticTrace(
+            turn_id=1,
+            intent="REFINEMENT",
+            is_success=False,
+            failure_reason="EntityParityViolation: Found ONC201 not in context",
+            detected_entities=["ONC201"],
+            context_entities=["Panobinostat"]
+        ),
+        SemanticTrace(
+            turn_id=2,
+            intent="FOLLOW_UP",
+            is_success=True,
+            detected_entities=["Panobinostat"]
+        )
     ]
     
     # Mock database call to return these traces

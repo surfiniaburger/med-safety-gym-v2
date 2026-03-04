@@ -10,7 +10,38 @@ from typing import List, Dict, Any, Optional
 from litellm import acompletion
 from .database import SessionLocal, ContrastivePair
 
+from pydantic import BaseModel, Field, field_validator
+
 logger = logging.getLogger(__name__)
+
+class SemanticTrace(BaseModel):
+    """
+    Sovereign Type-Safety for Zero-Injection Traces.
+    Enforces a strict schema to prevent malicious text from entering the learning loop.
+    """
+    turn_id: Optional[int] = Field(default=None)
+    intent: str = Field(default="UNKNOWN")
+    is_success: bool = Field(default=False)
+    failure_reason: str = Field(default="N/A")
+    detected_entities: List[str] = Field(default_factory=list)
+    context_entities: List[str] = Field(default_factory=list)
+
+    @field_validator("intent", "failure_reason", mode="before")
+    @classmethod
+    def sanitize_strings(cls, v: Any) -> str:
+        """Sanitize string fields to reach 99% Zero-Trust confidence."""
+        if v is None:
+            return "N/A"
+        # Remove newlines and spoof markers
+        return " ".join(str(v).splitlines()).replace("---", "").strip()
+
+    @field_validator("detected_entities", mode="before")
+    @classmethod
+    def sanitize_list(cls, v: Any) -> List[str]:
+        """Sanitize entity lists."""
+        if not isinstance(v, list):
+            return []
+        return [" ".join(str(item).splitlines()).replace("---", "").strip() for item in v]
 
 class ExperienceRefiner:
     """
@@ -47,7 +78,7 @@ class ExperienceRefiner:
             logger.error(f"Guideline distillation failed: {e}")
             return "Unable to distill guidelines at this time."
 
-    def _get_user_traces(self, user_id: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    def _get_user_traces(self, user_id: Optional[str], limit: int) -> List[SemanticTrace]:
         """Fetch abstracted semantic traces from the DB (Zero-Injection source)."""
         db = SessionLocal()
         try:
@@ -60,19 +91,21 @@ class ExperienceRefiner:
             
             traces = []
             for p in pairs:
-                if p.semantic_trace_json:
-                    traces.append(json.loads(p.semantic_trace_json))
-                else:
-                    # Fallback for legacy data (extract minimal semantic info if possible)
-                    traces.append({
-                        "is_success": bool(p.is_success),
-                        "legacy": True
-                    })
+                try:
+                    if p.semantic_trace_json:
+                        data = json.loads(p.semantic_trace_json)
+                        traces.append(SemanticTrace(**data))
+                    else:
+                        # Fallback for legacy data
+                        traces.append(SemanticTrace(is_success=bool(p.is_success), intent="LEGACY_FALLBACK"))
+                except Exception as e:
+                    logger.warning(f"Failed to parse trace record {p.id}: {e}")
+                    continue
             return traces
         finally:
             db.close()
 
-    def _build_distillation_prompt(self, traces: List[Dict[str, Any]]) -> str:
+    def _build_distillation_prompt(self, traces: List[SemanticTrace]) -> str:
         """Construct the prompt for distilling guidelines from abstracted traces."""
         trace_summaries = "\n".join([self._format_semantic_trace(t, i) for i, t in enumerate(traces)])
 
@@ -86,23 +119,13 @@ class ExperienceRefiner:
             "Guidelines:"
         )
 
-    def _format_semantic_trace(self, trace: Dict[str, Any], index: int) -> str:
+    def _format_semantic_trace(self, trace: SemanticTrace, index: int) -> str:
         """Farley Habit: Small, focused function for formatting."""
-        status = "SUCCESS" if trace.get("is_success") else "FAILURE"
-        
-        # Robust sanitization for all embedded fields to prevent prompt injection
-        def sanitize(val: Any) -> str:
-            val_str = str(val if val is not None else "N/A")
-            # Remove newlines and the '---' trace separator
-            return " ".join(val_str.splitlines()).replace("---", "").strip()
-
-        intent = sanitize(trace.get("intent", "UNKNOWN"))
-        reason = sanitize(trace.get("failure_reason", "N/A"))
-        entities = sanitize(", ".join(trace.get("detected_entities", [])))
+        status = "SUCCESS" if trace.is_success else "FAILURE"
         
         return (
             f"--- Trace {index+1} [{status}] ---\n"
-            f"Intent: {intent}\n"
-            f"Outcome Reason: {reason}\n"
-            f"Entities Targeted: {entities}\n"
+            f"Intent: {trace.intent}\n"
+            f"Outcome Reason: {trace.failure_reason}\n"
+            f"Entities Targeted: {', '.join(trace.detected_entities)}\n"
         )

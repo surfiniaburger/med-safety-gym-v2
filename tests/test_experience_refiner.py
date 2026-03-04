@@ -5,7 +5,7 @@ Following Canon TDD
 import pytest
 import json
 from unittest.mock import AsyncMock, patch
-from med_safety_gym.experience_refiner import ExperienceRefiner
+from med_safety_gym.experience_refiner import ExperienceRefiner, SemanticTrace
 from med_safety_gym.session_memory import SessionMemory, SessionStore
 from med_safety_gym.database import init_db
 
@@ -27,11 +27,11 @@ class TestExperienceRefinerAnalysis:
     def test_build_prompt_includes_traces(self):
         """Verify the prompt template includes trace information."""
         refiner = ExperienceRefiner()
-        traces = [{
-            "intent": "CLINICAL_ACTION",
-            "detected_entities": ["panobinostat"],
-            "is_success": True
-        }]
+        traces = [SemanticTrace(
+            intent="CLINICAL_ACTION",
+            detected_entities=["panobinostat"],
+            is_success=True
+        )]
         prompt = refiner._build_distillation_prompt(traces)
         assert "panobinostat" in prompt
         assert "SUCCESS" in prompt
@@ -41,11 +41,11 @@ class TestExperienceRefinerAnalysis:
     async def test_distillation_llm_call(self):
         """Mock the LLM call and verify the result."""
         refiner = ExperienceRefiner()
-        traces = [{
-            "intent": "CLINICAL_ACTION",
-            "is_success": False,
-            "failure_reason": "Entity mismatch"
-        }]
+        traces = [SemanticTrace(
+            intent="CLINICAL_ACTION",
+            is_success=False,
+            failure_reason="Entity mismatch"
+        )]
         
         mock_resp = AsyncMock()
         mock_resp.choices = [AsyncMock()]
@@ -75,5 +75,5 @@ class TestLoggingIntegration:
         traces = refiner._get_user_traces(user_id=uid, limit=1)
         
         assert len(traces) == 1
-        assert traces[0]["is_success"] is True
-        assert traces[0]["intent"] == "TEST"
+        assert traces[0].is_success is True
+        assert traces[0].intent == "TEST"
