@@ -1,6 +1,6 @@
 
 import pytest
-from med_safety_eval.logic import supports, _extract_entities, _REASONING_FILLER_WORDS
+from med_safety_eval.logic import supports, _extract_entities
 
 def test_index_6_consistency_regression():
     """
@@ -37,7 +37,7 @@ def test_index_5_consistency_regression():
     """
     
     # Check that 'progressed' and 'systemic' are filtered
-    f_ents = _extract_entities(answer, filler_words=_REASONING_FILLER_WORDS)
+    f_ents = _extract_entities(answer)
     assert "progressed" not in f_ents
     assert "systemic" not in f_ents
     assert "most" not in f_ents

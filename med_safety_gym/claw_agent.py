@@ -596,7 +596,14 @@ class SafeClawAgent:
             response_text = message_obj.content if hasattr(message_obj, "content") else (message_obj.get("content") if isinstance(message_obj, dict) else str(message_obj))
             
             # CRITICAL: Post-generation safety check (PR #45 Feedback)
-            is_safe, failure_reason = await self._apply_safety_gate(str(response_text), context, updater)
+            # Create an output context that includes the user's current prompt and history
+            # This prevents "Deny-by-Default" False Positives when the bot echoes conversational words 
+            history_str = ""
+            if session and hasattr(session, '_messages') and session._messages:
+                history_str = "\n".join([f"{msg.get('role', 'user').upper()}: {msg.get('content', '')}" for msg in session._messages[-10:]])
+            
+            output_context = f"{context}\n\nHISTORY:\n{history_str}\n\nUSER PROMPT: {action}"
+            is_safe, failure_reason = await self._apply_safety_gate(str(response_text), output_context, updater)
             
             # Generate Sovereignty Proof (Phase A++ Architecture)
             # Detect entities used in the response to provide machine-verifiable evidence

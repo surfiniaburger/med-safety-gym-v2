@@ -147,7 +147,16 @@ class TelegramBridge:
             if updater.is_failed:
                 session.pop_message()
             elif updater.responses:
-                session.add_message("assistant", "\n\n".join(updater.responses))
+                # CRITICAL: Filter out internal logs/icons before saving to session history
+                # This prevents the Experience Refiner from learning from internal safety alerts
+                session_responses = [r for r in updater.responses if not any(marker in r for marker in ["🛡️", "✅", "Checking"])]
+                if session_responses:
+                    session.add_message("assistant", "\n\n".join(session_responses))
+                else:
+                    # Fallback only if absolutely necessary and clean
+                    last_msg = updater.responses[-1]
+                    if not any(marker in last_msg for marker in ["🛡️", "✅"]):
+                        session.add_message("assistant", last_msg)
             
             # Final response formatting
             # Filter out status updates ("Checking...", "🛡️ Running...") and only send clinical results
