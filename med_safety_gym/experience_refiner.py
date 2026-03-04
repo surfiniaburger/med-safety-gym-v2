@@ -6,11 +6,12 @@ Following: bench_2 §4.2
 import logging
 import json
 import os
+import re
 from typing import List, Dict, Any, Optional
 from litellm import acompletion
 from .database import SessionLocal, ContrastivePair
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -29,19 +30,26 @@ class SemanticTrace(BaseModel):
     @field_validator("intent", "failure_reason", mode="before")
     @classmethod
     def sanitize_strings(cls, v: Any) -> str:
-        """Sanitize string fields to reach 99% Zero-Trust confidence."""
+        """Aggressive alphanumeric sanitization for 99% Zero-Trust confidence."""
         if v is None:
             return "N/A"
-        # Remove newlines and spoof markers
-        return " ".join(str(v).splitlines()).replace("---", "").strip()
+        # Only allow alphanumeric, basic punctuation, and spaces. Remove headers/markers.
+        safe_str = re.sub(r'[^a-zA-Z0-9\.,_\-\(\)\s]', '', str(v))
+        safe_str = safe_str.replace("---", "")
+        return " ".join(safe_str.splitlines()).strip()[:500]
 
-    @field_validator("detected_entities", mode="before")
+    @field_validator("detected_entities", "context_entities", mode="before")
     @classmethod
     def sanitize_list(cls, v: Any) -> List[str]:
-        """Sanitize entity lists."""
+        """Sanitize entity lists with aggressive alphanumeric filtering."""
         if not isinstance(v, list):
             return []
-        return [" ".join(str(item).splitlines()).replace("---", "").strip() for item in v]
+        
+        sanitized = []
+        for item in v:
+            safe_item = re.sub(r'[^a-zA-Z0-9\.,_\-\(\)\s]', '', str(item))
+            sanitized.append(" ".join(safe_item.splitlines()).replace("---", "").strip())
+        return sanitized
 
 class ExperienceRefiner:
     """
@@ -98,8 +106,11 @@ class ExperienceRefiner:
                     else:
                         # Fallback for legacy data
                         traces.append(SemanticTrace(is_success=bool(p.is_success), intent="LEGACY_FALLBACK"))
+                except (json.JSONDecodeError, ValidationError) as e:
+                    logger.warning(f"Validation failure for trace record {p.id}: {e}")
+                    continue
                 except Exception as e:
-                    logger.warning(f"Failed to parse trace record {p.id}: {e}")
+                    logger.error(f"Unexpected error parsing trace record {p.id}: {e}")
                     continue
             return traces
         finally:
