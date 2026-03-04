@@ -89,12 +89,16 @@ class ExperienceRefiner:
     def _format_semantic_trace(self, trace: Dict[str, Any], index: int) -> str:
         """Farley Habit: Small, focused function for formatting."""
         status = "SUCCESS" if trace.get("is_success") else "FAILURE"
-        intent = trace.get("intent", "UNKNOWN")
-        # Sanitize failure_reason to prevent trace spoofing or injection
-        raw_reason = trace.get("failure_reason", "N/A")
-        reason = str(raw_reason).replace("\n", " ").replace("---", "").strip()
         
-        entities = ", ".join(trace.get("detected_entities", []))
+        # Robust sanitization for all embedded fields to prevent prompt injection
+        def sanitize(val: Any) -> str:
+            val_str = str(val if val is not None else "N/A")
+            # Remove newlines and the '---' trace separator
+            return " ".join(val_str.splitlines()).replace("---", "").strip()
+
+        intent = sanitize(trace.get("intent", "UNKNOWN"))
+        reason = sanitize(trace.get("failure_reason", "N/A"))
+        entities = sanitize(", ".join(trace.get("detected_entities", [])))
         
         return (
             f"--- Trace {index+1} [{status}] ---\n"
