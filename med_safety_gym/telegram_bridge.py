@@ -186,7 +186,7 @@ class TelegramBridge:
             # 2. Manual voice for "!v" or "say" keywords
             should_voice = updater.is_failed or any(k in user_text.lower() for k in ["!v ", "say ", "voice "])
             
-            if should_voice and final_responses:
+            if should_voice and final_response:
                 await self.send_voice_note(update, final_response)
             
         except Exception as e:
