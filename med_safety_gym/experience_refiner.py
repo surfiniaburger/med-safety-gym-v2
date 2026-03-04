@@ -15,6 +15,9 @@ from pydantic import BaseModel, Field, field_validator, ValidationError
 
 logger = logging.getLogger(__name__)
 
+# Aggressive alphanumeric filtering for 99% Zero-Trust confidence.
+_SANITIZE_REGEX = re.compile(r'[^a-zA-Z0-9\.,_\-\(\)\s]')
+
 class SemanticTrace(BaseModel):
     """
     Sovereign Type-Safety for Zero-Injection Traces.
@@ -30,26 +33,21 @@ class SemanticTrace(BaseModel):
     @field_validator("intent", "failure_reason", mode="before")
     @classmethod
     def sanitize_strings(cls, v: Any) -> str:
-        """Aggressive alphanumeric sanitization for 99% Zero-Trust confidence."""
+        """Aggressive sanitization for all embedded fields."""
         if v is None:
             return "N/A"
-        # Only allow alphanumeric, basic punctuation, and spaces. Remove headers/markers.
-        safe_str = re.sub(r'[^a-zA-Z0-9\.,_\-\(\)\s]', '', str(v))
-        safe_str = safe_str.replace("---", "")
+        # Only allow alphanumeric, basic punctuation, and spaces.
+        safe_str = _SANITIZE_REGEX.sub('', str(v))
+        safe_str = re.sub(r'-{3,}', '', safe_str)
         return " ".join(safe_str.splitlines()).strip()[:500]
 
     @field_validator("detected_entities", "context_entities", mode="before")
     @classmethod
     def sanitize_list(cls, v: Any) -> List[str]:
-        """Sanitize entity lists with aggressive alphanumeric filtering."""
+        """Sanitize entity lists by reusing string sanitization for consistency."""
         if not isinstance(v, list):
             return []
-        
-        sanitized = []
-        for item in v:
-            safe_item = re.sub(r'[^a-zA-Z0-9\.,_\-\(\)\s]', '', str(item))
-            sanitized.append(" ".join(safe_item.splitlines()).replace("---", "").strip())
-        return sanitized
+        return [cls.sanitize_strings(item) for item in v]
 
 class ExperienceRefiner:
     """
