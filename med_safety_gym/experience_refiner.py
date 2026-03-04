@@ -90,7 +90,10 @@ class ExperienceRefiner:
         """Farley Habit: Small, focused function for formatting."""
         status = "SUCCESS" if trace.get("is_success") else "FAILURE"
         intent = trace.get("intent", "UNKNOWN")
-        reason = trace.get("failure_reason", "N/A")
+        # Sanitize failure_reason to prevent trace spoofing or injection
+        raw_reason = trace.get("failure_reason", "N/A")
+        reason = str(raw_reason).replace("\n", " ").replace("---", "").strip()
+        
         entities = ", ".join(trace.get("detected_entities", []))
         
         return (
