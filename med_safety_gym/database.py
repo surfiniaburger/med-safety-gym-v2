@@ -23,6 +23,7 @@ class ConversationSession(Base):
     messages_json = Column(Text, default="[]") # JSON serialized history
     pending_action_json = Column(Text, nullable=True) # HITL state
     escalated_tools_json = Column(Text, default="[]") # Persisted escalation
+    turn_count = Column(Integer, default=0) # Track conversation progress
     last_active = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class ContrastivePair(Base):
@@ -32,7 +33,9 @@ class ContrastivePair(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String) # For linking to a user's habits
     trajectory_json = Column(Text) # The conversation turns leading to the outcome
+    semantic_trace_json = Column(Text, nullable=True) # Abstracted turns (Zero-Injection)
     is_success = Column(Integer) # 1 for D+ (success), 0 for D- (failure)
+    turn_id = Column(Integer, default=0) # Sequence ID for distillation
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class TrajectoryStep(Base):

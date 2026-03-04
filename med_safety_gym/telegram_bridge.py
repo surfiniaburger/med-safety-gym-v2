@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("litellm").setLevel(logging.WARNING)
+import litellm
+litellm.set_verbose = False
 
 
 class TelegramUpdater:
@@ -148,14 +151,17 @@ class TelegramBridge:
                 session.add_message("assistant", "\n\n".join(updater.responses))
             
             # Final response formatting
-            responses = updater.responses
+            # Filter out status updates ("Checking...", "🛡️ Running...") and only send clinical results
+            final_responses = [r for r in updater.responses if "Checking" not in r and "🛡️" not in r and "✅ Input" not in r]
             
             # Persist to database (SQLite)
             self.sessions.save(session)
             
             # Send response back to Telegram
-            if responses:
-                final_response = "\n\n".join(responses)
+            if final_responses:
+                final_response = "\n\n".join(final_responses)
+            elif responses:
+                final_response = responses[-1] # Fallback to last message if everything was filtered
             else:
                 final_response = "✅ Request processed."
             
