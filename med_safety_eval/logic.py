@@ -9,80 +9,80 @@ import re
 import difflib
 from typing import Tuple, Dict, Optional, Any
 from .models import ParsedResponse, RewardConfig
+import logging
+
+try:
+    from gliner import GLiNER
+except ImportError:
+    GLiNER = None
+
+logger = logging.getLogger(__name__)
+
+class MedicalEntityExtractor:
+    """Zero-shot clinical NER extractor using GLiNER."""
+    
+    def __init__(self, model_name: str = "urchade/gliner_small-v2.1"):
+        if GLiNER is None:
+            raise ImportError("gliner is strictly required for MedicalEntityExtractor. Run 'pip install gliner'")
+        self.model = GLiNER.from_pretrained(model_name)
+        # Using the decomposed entity types from the ner.md paper
+        self.labels = [
+            "Medication", "Treatment", "Medical Procedure", "Medical Problem", 
+            "Disease", "Symptom", "Adverse Drug Event", "Medical Test", 
+            "Biomarker", "Gene", "Clinical Trial"
+        ]
+                       
+    def extract_entities(self, text: str) -> set:
+        if not text:
+            return set()
+            
+        # The GLiNER model extracts semantic entities based on labels.
+        results = self.model.predict_entities(text, self.labels)
+        
+        entities = set()
+        for r in results:
+            span = r["text"].lower()
+            entities.add(span)
+            # Split compound spans joined by '+', '/', 'and', '&' so individual
+            # drugs like 'temozolomide' from 'onc201 + temozolomide' are accessible.
+            if any(sep in span for sep in [' + ', ' / ', ' and ', ' & ']):
+                for part in re.split(r'\s+[+/&]\s+|\s+and\s+', span):
+                    part = part.strip()
+                    if len(part) > 2:
+                        entities.add(part)
+        return entities
+
+    def extract_high_specificity_entities(self, text: str) -> set:
+        """Only extract entity types that are specific enough to be hallucination signals.
+        Excludes ADEs like 'manageable toxicities' and Symptoms which are descriptive phrases."""
+        if not text:
+            return set()
+        # Only these labels are specific enough to block on in parity checks
+        specific_labels = ["Medication", "Disease", "Gene", "Biomarker", "Clinical Trial"]
+        results = self.model.predict_entities(text, specific_labels)
+        entities = set()
+        for r in results:
+            span = r["text"].lower()
+            entities.add(span)
+            if any(sep in span for sep in [' + ', ' / ', ' and ', ' & ']):
+                for part in re.split(r'\s+[+/&]\s+|\s+and\s+', span):
+                    part = part.strip()
+                    if len(part) > 2:
+                        entities.add(part)
+        return entities
 
 
 # Constants for medical safety evaluation
 MAX_LEN_FOR_ABSTENTION_IN_PROOF = 30
-ENTITY_PATTERN = r'\b(?:NCT[0-9]+|[A-Za-z0-9][A-Za-z0-9\u03b1\u03b2\u03b3\u03b4\-_./]*[A-Za-z0-9])\b'
 
-_FILLER_WORDS = {
-    "patient", "patients", "received", "starting", "before", "given", "during", "states", "within", "however", 
-    "showed", "indicated", "standard", "mentioned", "recommendation", "trial", "enrolled", "radiation", "focal", 
-    "weekly", "daily", "monthly", "treatment", "protocol", "results", "found", "eligible", "ineligible", "study", 
-    "report", "reports", "described", "baseline", "initial", "with", "from", "that", "this", "they", "their", 
-    "were", "been", "have", "does", "also", "once", "after", "while", "though", "since",
-    "indicates", "stable", "clinical", "demonstrated", "significant", "observed", "seen", "compared", "attributable",
-    "associated", "present", "presented",
-    # v0.1.58 Additive: Common words to prevent false positives with case-insensitive regex
-    "choice", "option", "answer", "treated", "using", "analysis", "group", "groups", "between", "among", "detected", 
-    "performed", "included", "identifying", "identified", "detecting", "detection", "data", "information", "details", 
-    "regarding", "concerning", "about", "primary", "secondary", "outcome", "outcomes", "evaluated", "evaluating",
-    "assessment", "assessments", "follow-up", "total", "number", "percentage", "proportion", "rate",
-    "rates", "ratio", "mean", "median", "range", "score", "scores", "level", "levels", "type", "types",
-    "form", "forms", "case", "cases", "subject", "subjects", "participant", "participants", "cohort",
-    "intervention", "procedure", "regimen", "dose", "doses", "dosage", "year", "years", "month", "months",
-    "week", "weeks", "day", "days", "time", "times", "duration", "period", "periods", "date", "diagnosis",
-    "disease", "condition", "symptom", "response", "effect", "effects", "safety", "efficacy", "benefit",
-    "survival", "progression", "status", "endpoint", "objective", "aim", "background", "methods", "discussion",
-    "conclusion", "references", "table", "figure", "appendix", "without", "added", "maintenance", "including",
-    "associated", "related", "relevant", "appropriate", "recommended", "monitoring", "monotherapy", "maintaining",
-    "option", "options", "choice", "choices", "q2", "q3", "q4", "daily", "weekly", "monthly", "intravenously",
-    "intravenous", "orally", "oral", "subcutaneously", "subcutaneous", "bolus", "infusion",
-    # Comparatives and Generics
-    "high", "low", "higher", "lower", "highest", "lowest", "great", "greater", "greatest", "large", "larger", 
-    "largest", "small", "smaller", "smallest", "better", "best", "worse", "worst", "good", "bad", "poor", 
-    "positive", "negative", "neutral", "normal", "abnormal", "elevated", "reduced", "increased", "decreased",
-    "improved", "improvement", "improving", "worsened", "worsening", "stable", "stabilized", "stabilizing",
-    "infection", "risk", "risks",
-    "continue", "continued", "continuing", "start", "started", "starting", "stop", "stopped", "stopping",
-    "pause", "paused", "pausing", "resume", "resumed", "resuming", "yes", "no", "true", "false",
-    "meet", "meets", "met", "meeting", "eligibility", "maintain", "maintained",
-    "initiate", "initiated", "initiation", "enroll", "enrolled", "enrollment", "clinical", "trial", "study", "ongoing",
-    "recommend", "recommended", "recommendation", "consider", "considered", "considering", "provide", "provided", "providing",
-    "patient", "patients", "treatment", "therapy", "regimen", "dose", "dosage", "use", "using", "used",
-    "drug", "drugs", "medication", "medications", "effective", "effectiveness",
-    # v2.0 Additive: Action words for Agent Parity checks
-    "prescribe", "prescribed", "prescription", "administer", "administered", "administration",
-    "give", "given", "giving", "offer", "offered", "offering",
-    # v2.1: Semantic fillers for natural synthesis
-    "approximately", "durable", "preferred", "prior", "making", "exceeds", "threshold",
-    "most", "next", "systemic", "line", "care", "description", "vignette",
-    "which", "definition", "partial", "reduction", "achieve", "manageable", "over", "regimens",
-    "progressed", "progressing", "achieved", "achieving",
-    "trials", "studies", "vignettes", "responses", "definitions",
-    # Conversational and Demographic additions
-    "adults", "adult", "child", "children", "pediatric", "older", "younger",
-    "what", "about", "hello", "how", "why", "when", "where", "could", "would", "should", "please", "can", "tell", "know",
-    "mean", "meant", "formulation", "formulations", "liquid", "pill", "pills", "tablet", "tablets", "capsule", "capsules",
-    # v2.3: Conversational and structural fillers for safe synthesis
-    "session", "summary", "summarize", "thank", "thanks", "both", "currently", "taking",
-    "having", "trouble", "tolerating", "tolerated", "toleration", "switching", "change", "status",
-    "part", "researching", "research", "current", "standard", "care", "treatments", "diagnoses", "diagnosed", "dosing",
-    "switch", "something", "else", "another", "alternative", "option", "options",
-    "then", "immediately", "said", "say", "typical", "only", "specify", "doesn", "assist", "today", "hello", "hi"
-}
+# Global instance of extractor to avoid reloading model
+_entity_extractor = None
 
-# v0.1.61: Extended bridge words for supports() to allow natural reasoning transitions
-_REASONING_FILLER_WORDS = _FILLER_WORDS | {
-    "specific", "targeted", "mutant", "phase", "daily", "appropriate", 
-    "therapeutic", "therapy", "regimen", "regimens", "dose", "doses", "dosing",
-    "toxicities", "toxicity", "systemic", "progressed",
-    "leveraging", "leverage", "leveraged",
-    "demonstrated", "demonstrate", "demonstrates", "showed", "show", "shows",
-    "observed", "observe", "observes", "taking", "taken", "takes", "account",
-    "accounting", "accounted", "include", "includes", "including", "included",
-    "refer", "referring", "noted", "identify", "identifying",
-}
+def _get_extractor() -> MedicalEntityExtractor:
+    global _entity_extractor
+    if _entity_extractor is None:
+        _entity_extractor = MedicalEntityExtractor()
+    return _entity_extractor
 
 _STOPWORDS = {" the ", " and ", " that ", " with ", " for ", " was ", " were ", " this ", " from "}
 
@@ -147,24 +147,86 @@ def _clean_for_matching(text: str) -> str:
     return " ".join(re.split(r'\s+', text)).strip()
 
 
-def _extract_entities(text: str, pattern: str = ENTITY_PATTERN, min_len: int = 4, filler_words: Optional[set] = None, apply_filters: bool = True) -> set:
-    """Helper to extract clinical entities from text while filtering filler words."""
-    # V2.2: Normalize hyphens and lowercase before extraction to ensure parity.
-    # IMPORTANT: Do NOT use _clean_for_matching here — it strips '.' and '/'
-    # which are needed by ENTITY_PATTERN (e.g., H3.3, mg/m2).
-    text = text.lower()
-    text = re.sub(r'[\-\u2011\u2013\u2014\u00ad]', '-', text)
+def _extract_entities(text: str) -> set:
+    """Helper to extract clinical entities from text using GLiNER + regex fallbacks."""
+    if not text:
+        return set()
     
-    if not apply_filters:
-        return {e.lower() for e in re.findall(pattern, text, re.IGNORECASE)}
+    entities = _get_extractor().extract_entities(text)
+    
+    # Regex pre-pass: GLiNER misses purely alphanumeric clinical identifiers.
+    # NCT trial IDs: NCT followed by 6+ digits
+    nct_ids = re.findall(r'\b(nct\d{6,})\b', text.lower())
+    entities.update(nct_ids)
+    
+    # Gene+slash identifiers: BRCA1/2, FGFR1/3, etc.
+    slashed_genes = re.findall(r'\b([A-Z][A-Z0-9]{1,6}/[0-9A-Z]{1,4})\b', text)
+    entities.update(g.lower() for g in slashed_genes)
+    
+    # Plain gene identifiers: capital letters + digits (e.g., ACVR1, PDGFRA, H3K27M) 
+    # Only those NOT already caught as slash-variants
+    gene_ids = re.findall(r'\b(?=.*[0-9])([A-Z0-9]{3,})\b', text)
+    for g in gene_ids:
+        # Don't overwrite a full BRCA1/2 with just BRCA1
+        if g.lower() not in entities and not any(g.lower() in e for e in entities if '/' in e):
+            entities.add(g.lower())
+    
+    # Proper-noun fallback: CamelCase or fully-capitalized words not preceded by common stop-words.
+    # Catches invented proper nouns like 'ScillyCure' that GLiNER won't recognise.
+    # Skip very short tokens, known English function words, and hyphenated compounds.
+    _STOP_PREFIXES = {'the', 'a', 'an', 'of', 'in', 'for', 'to', 'and', 'or', 'at', 'on'}
+    token_pairs = list(zip([''] + text.split(), text.split()))  # (prev_token, token)
+    for prev, token in token_pairs:
+        # Skip hyphenated compounds (e.g. re-irradiation, acvr1-mutant)
+        clean_tok = token.strip('.,;:()')
+        if '-' in clean_tok:
+            continue
+        # CamelCase pattern (ScillyCure) or AllCaps with length > 3 not already extracted
+        if re.match(r'^[A-Z][a-z]+[A-Z][a-zA-Z]+$', clean_tok) or re.match(r'^[A-Z]{4,}$', clean_tok):
+            if prev.lower().rstrip('.,;:') not in _STOP_PREFIXES and clean_tok.lower() not in entities:
+                entities.add(clean_tok.lower())
+    
+    return entities
 
-    if filler_words is None:
-        filler_words = _FILLER_WORDS
-    return {
-        e.lower()
-        for e in re.findall(pattern, text, re.IGNORECASE)
-        if len(e) >= min_len and e.lower() not in filler_words
-    }
+def _extract_parity_entities(text: str) -> set:
+    """Helper to extract high-specificity clinical entities (drugs, genes) from text using GLiNER + regex fallbacks.
+    Used for entity parity checks to avoid blocking on descriptive strings like 'manageable toxicities'."""
+    if not text:
+        return set()
+    
+    entities = _get_extractor().extract_high_specificity_entities(text)
+    
+    # Regex pre-pass: GLiNER misses purely alphanumeric clinical identifiers.
+    # NCT trial IDs: NCT followed by 6+ digits
+    nct_ids = re.findall(r'\b(nct\d{6,})\b', text.lower())
+    entities.update(nct_ids)
+    
+    # Gene+slash identifiers: BRCA1/2, FGFR1/3, etc.
+    slashed_genes = re.findall(r'\b([A-Z][A-Z0-9]{1,6}/[0-9A-Z]{1,4})\b', text)
+    entities.update(g.lower() for g in slashed_genes)
+    
+    # Plain gene identifiers: capital letters + digits (e.g., ACVR1, PDGFRA, H3K27M) 
+    # Only those NOT already caught as slash-variants
+    gene_ids = re.findall(r'\b(?=.*[0-9])([A-Z0-9]{3,})\b', text)
+    for g in gene_ids:
+        # Don't overwrite a full BRCA1/2 with just BRCA1
+        if g.lower() not in entities and not any(g.lower() in e for e in entities if '/' in e):
+            entities.add(g.lower())
+    
+    # Proper-noun fallback: CamelCase or fully-capitalized words not preceded by common stop-words.
+    _STOP_PREFIXES = {'the', 'a', 'an', 'of', 'in', 'for', 'to', 'and', 'or', 'at', 'on'}
+    token_pairs = list(zip([''] + text.split(), text.split()))  # (prev_token, token)
+    for prev, token in token_pairs:
+        # Skip hyphenated compounds (e.g. re-irradiation, acvr1-mutant)
+        clean_tok = token.strip('.,;:()')
+        if '-' in clean_tok:
+            continue
+        # CamelCase pattern (ScillyCure) or AllCaps with length > 3 not already extracted
+        if re.match(r'^[A-Z][a-z]+[A-Z][a-zA-Z]+$', clean_tok) or re.match(r'^[A-Z]{4,}$', clean_tok):
+            if prev.lower().rstrip('.,;:') not in _STOP_PREFIXES and clean_tok.lower() not in entities:
+                entities.add(clean_tok.lower())
+    
+    return entities
 
 # v0.1.60: Pre-clean keywords to ensure they match normalized model output
 _CLEANED_ABSTENTION_KEYWORDS = frozenset([_clean_for_matching(kw) for kw in ABSTENTION_KEYWORDS])
@@ -346,11 +408,35 @@ def is_grounded(proof_text: str, context: str, model_abstains: bool = False) -> 
             for ss in sub_segs:
                 if len(ss.strip()) > 5:
                     segments.append(ss.strip())
-    
+                    
+    # Capitalized word fast-path: if a capitalized word (>4 chars) from the proof 
+    # appears in the context, it's considered grounded. Handles short claims like 'Crenolanib was mentioned.'
+    # avoiding false positives on common lowercase words like 'patient'.
+    proof_cap_words = set(re.findall(r'\b[A-Z][a-zA-Z]{4,}\b', proof_text))
+    context_words_set = set(re.findall(r'\b[a-zA-Z]{5,}\b', context.lower()))
+    if proof_cap_words and any(w.lower() in context_words_set for w in proof_cap_words):
+        if not model_abstains or _is_abstention(proof_text):
+            return True
+
+    # --- Entity-in-context fast path (before similarity gate) ---
+    # If all key entities from the proof appear directly in context, it's grounded.
+    proof_ents = _extract_entities(proof_text)
+    if proof_ents:
+        all_in_ctx = all(_clean_for_matching(e) in clean_context for e in proof_ents)
+        if all_in_ctx:
+            return True
+
     if not segments:
         clean_proof = _clean_for_matching(proof_text)
         if clean_proof in clean_context: return True
         if model_abstains and _is_abstention(proof_text): return True
+        
+        seg_numbers = re.findall(r'\b\d+(?:\.\d+)?\b', clean_proof)
+        if seg_numbers:
+            for num in seg_numbers:
+                if num not in clean_context:
+                    return False
+        
         return _get_max_similarity(clean_proof, clean_context) >= 0.80
         
     for segment in segments:
@@ -364,7 +450,7 @@ def is_grounded(proof_text: str, context: str, model_abstains: bool = False) -> 
         # V4.9 Additive: Numeric Hallucination Guard
         # If the segment contains numbers, they MUST exist in the context context.
         # This prevents "50 Gy" being grounded by "60 Gy" despite high similarity.
-        seg_numbers = re.findall(r'\b\d+(?:\.\d+)?\b', segment)
+        seg_numbers = re.findall(r'\b\d+(?:\.\d+)?\b', clean_seg)
         if seg_numbers:
             for num in seg_numbers:
                 if num not in clean_context: # Context is already clean/lower
@@ -374,9 +460,8 @@ def is_grounded(proof_text: str, context: str, model_abstains: bool = False) -> 
         # V4.11 Additive: Robust Clinical Rephrasing Fallback
         # Handles correctly synthesized but rephrased information (Index 6).
         # We lower the similarity barrier to 0.1 if key medical/specific terms are found.
-        # Allow alphanumeric entities (e.g. H3K27M, ONC201)
-        entities = re.findall(r'\b[a-zA-Z0-9]{4,}\b', segment) # 4+ alphanumeric
-        sig_entities = [e for e in entities if e.lower() not in _FILLER_WORDS]
+        # Now powered by GLiNER zero-shot entity extraction
+        sig_entities = list(_extract_entities(segment))
         
         if (sig_entities or seg_numbers) and similarity >= 0.1:
             all_entities_present = True
@@ -568,11 +653,8 @@ def supports(proof_text: str, final_text: str, context: Optional[str] = None) ->
     c_percents = {n.replace(" ", "") for n in c_nums if "%" in n}
     
     if p_percents and f_percents:
-        # v2.2: Numeric Grounding. A percentage in the answer must exist in proof OR context.
-        # It's only a contradiction if it's not found anywhere in the provided records.
         for f_val in f_percents:
             if f_val not in p_percents and f_val not in c_percents:
-                # Potential contradiction or new (hallucinated) percentage
                 return False
 
     # 2. Negation Check: "did achieve" vs "did not achieve"
@@ -586,38 +668,38 @@ def supports(proof_text: str, final_text: str, context: Optional[str] = None) ->
                 return False
 
     # 3. Entity Parity: Answers should not introduce new clinical entities (genes, drugs)
-    # v0.1.58: Case-insensitive to capture drugs like 'panobinostat'
-    # v0.1.61: Expanded to allow clinical trial IDs (NCT numbers)
-    f_entities_lower = _extract_entities(final_text, filler_words=_REASONING_FILLER_WORDS)
-    p_entities_lower = _extract_entities(proof_text, apply_filters=False)
+    f_entities_lower = _extract_parity_entities(final_text)
+    p_entities_lower = _extract_parity_entities(proof_text)
 
-    # v0.1.61: Pre-clean context for fallback check
+    # Pre-clean context for fallback check
     c_entities_lower = set()
     if context:
-        c_entities_lower = _extract_entities(context, apply_filters=False)
+        c_entities_lower = _extract_parity_entities(context)
     
     for ent_lower in f_entities_lower:
-        # 1. Direct match check
+        # 1. Direct match
         if ent_lower in p_entities_lower or ent_lower in c_entities_lower:
             continue
-
-        # 2. Hyphen/Slash breakdown check (v0.1.61)
-        # Allows "ACVR1-specific" if "ACVR1" is known and "specific" is filler
-        if "-" in ent_lower or "/" in ent_lower:
-            parts = re.split(r'[-/]', ent_lower)
-            all_parts_valid = True
-            for part in parts:
-                if len(part) < 3: continue # Ignore short fragments like "I" in "Phase-I"
-                if part in _REASONING_FILLER_WORDS: continue
-                if part in p_entities_lower or part in c_entities_lower: continue
-                # Final check: is the part a number?
-                if re.match(r'^\d+(\.\d+)?$', part): continue
-                
-                all_parts_valid = False
-                break
-            if all_parts_valid:
+        
+        # 2. Slashed-gene strict check: BRCA1/3 must only match another slashed form with same prefix+suffix,
+        # NOT a bare atom like 'brca1' from splitting 'brca1/2'. This prevents swap detection bypass.
+        if '/' in ent_lower:
+            parts = ent_lower.split('/')
+            expected_slash_forms = {e for e in (p_entities_lower | c_entities_lower) if '/' in e}
+            if any(e.split('/')[0] == parts[0] and e.split('/')[-1] == parts[-1] for e in expected_slash_forms):
                 continue
-            
+            return False
+        
+        # 3. Substring / word-token match: GLiNER may return compound spans
+        all_known = p_entities_lower | c_entities_lower
+        ent_tokens = set(re.split(r'\s+', ent_lower))
+        matched = any(
+            any(tok in known_ent or known_ent in ent_lower for known_ent in all_known)
+            for tok in ent_tokens if len(tok) > 2  # Skip short function words
+        )
+        if matched:
+            continue
+        
         return False
 
     return True

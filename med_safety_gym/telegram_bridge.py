@@ -150,8 +150,13 @@ class TelegramBridge:
                 session.add_message("assistant", "\n\n".join(updater.responses))
             
             # Final response formatting
-            # Filter out status updates ("Checking...", "🛡️ Running...") and only send clinical results
-            final_responses = [r for r in updater.responses if "Checking" not in r and "🛡️" not in r and "✅ Input" not in r]
+            # Filter out status updates but keep legitimate conversational responses
+            final_responses = [
+                r for r in updater.responses 
+                if not r.startswith("Checking...") 
+                and not r.startswith("🛡️") 
+                and not r.startswith("✅ Input received")
+            ]
             
             # Persist to database (SQLite)
             self.sessions.save(session)

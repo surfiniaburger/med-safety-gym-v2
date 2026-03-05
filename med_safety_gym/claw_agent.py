@@ -20,9 +20,7 @@ from .identity.scoped_identity import verify_delegation_token
 from .identity.secret_store import SecretStore, KeyringSecretStore
 import jwt
 from litellm import acompletion
-from .intent_classifier import IntentClassifier, IntentCategory, IntentResult
-from .session_memory import SessionStore
-from .experience_refiner import ExperienceRefiner
+from .intent_classifier import IntentCategory, IntentResult
 from med_safety_eval.logic import _extract_entities
 
 logger = logging.getLogger(__name__)
@@ -46,6 +44,8 @@ class SafeClawAgent:
         self, 
         client_factory: Optional[Callable[[], Any]] = None,
         github_client_factory: Optional[Callable[[], Any]] = None,
+        intent_client_factory: Optional[Callable[[], Any]] = None,
+        experience_client_factory: Optional[Callable[[], Any]] = None,
         secret_store: Optional[SecretStore] = None
     ):
         # Default safety factory
@@ -62,10 +62,24 @@ class SafeClawAgent:
                 args=["run", "python", "-m", "med_safety_gym.github_tools"]
             )
         )
+        # Intent factory (Sentinel)
+        self.intent_client_factory = intent_client_factory or (
+            lambda: MCPClientAdapter(
+                command="uv", 
+                args=["run", "python", "-m", "med_safety_gym.intent_server"]
+            )
+        )
+        # Experience factory (Refiner)
+        self.experience_client_factory = experience_client_factory or (
+            lambda: MCPClientAdapter(
+                command="uv", 
+                args=["run", "python", "-m", "med_safety_gym.experience_server"]
+            )
+        )
         self._github_client = None
         self._github_session = None
         
-        # SafeClaw Governor Configuration
+        # Architectural Improvements: Delegated to MCP
         self.hub_url = os.environ.get("SAFECLAW_HUB_URL", "http://localhost:8000")
         self.interceptor = None # Will be initialized on first run or boot
         self.auth_token = None
@@ -73,10 +87,6 @@ class SafeClawAgent:
         self.secret_store = secret_store or KeyringSecretStore()
         self.session_id = "agent_session_" + os.urandom(4).hex()
         
-        # Architectural Improvements: Initialize common components
-        self.intent_classifier = IntentClassifier()
-        self.experience_refiner = ExperienceRefiner()
-        self.session_store = SessionStore()
         # Ensure we use environment or fallback to gemma3:1b for local consistency
         self.model = os.environ.get("LITELLM_MODEL") or os.environ.get("USER_LLM_MODEL") or "gemma3:1b"
 
@@ -235,8 +245,12 @@ class SafeClawAgent:
         """Fetches distilled guidelines from the Refiner to inform the Mediator."""
         try:
             logger.info("SafeClaw Mediator: Loading distilled pragmatic guidelines...")
-            guidelines = await self.experience_refiner.distill_guidelines(limit=5)
-            self.intent_classifier.set_guidelines(guidelines)
+            async with self.experience_client_factory() as client:
+                guidelines = await client.call_tool("distill_guidelines", {"limit": 5})
+                
+                async with self.intent_client_factory() as intent_client:
+                    await intent_client.call_tool("update_intent_rules", {"guidelines": guidelines})
+            
             logger.info("SafeClaw Mediator: Guidelines loaded successfully.")
         except Exception as e:
             logger.warning(f"Mediator failed to load guidelines: {e}. Using default heuristics.")
@@ -272,15 +286,22 @@ class SafeClawAgent:
             )
             return
         
-        # 1. Classify Intent
-        intent = self.intent_classifier.classify(text_content)
+        # 1. Classify Intent (Sentinel MCP)
+        async with self.intent_client_factory() as intent_client:
+            intent_data = await intent_client.call_tool("classify_intent", {"text": text_content})
+            # Category name to enum for internal logic compatibility
+            category = IntentCategory[intent_data["category"]]
+            is_correction = intent_data["is_correction"]
         
         # 2. Apply Mediator Pattern (Structural enrichment for context injection)
         # We also pass the intent to context_aware_action to help with safety gating
-        if intent.category != IntentCategory.NEW_TOPIC or intent.is_correction:
-            action = f"[{intent.category.name} | Correction: {intent.is_correction}] {text_content}"
+        if category != IntentCategory.NEW_TOPIC or is_correction:
+            action = f"[{category.name} | Correction: {is_correction}] {text_content}"
         else:
             action = text_content
+        
+        # Intent object wrapper for downstream usage
+        intent = IntentResult(category=category, is_correction=is_correction)
         
         # ROUTING LOGIC:
         # We classify if this is a GitHub operation or a Clinical action.
@@ -442,10 +463,14 @@ class SafeClawAgent:
         if session:
             session.escalate_tool(tool_name)
             
-            # Persist to DB
-            from .session_memory import SessionStore
-            store = SessionStore()
-            store.save(session)
+            # Persist to DB via Refiner MCP (Phase G Modularization)
+            async with self.experience_client_factory() as exp_client:
+                # Note: SessionStore is still used for basic session retrieval, 
+                # but escalation logic should be atomic. 
+                # For now, we still use SessionStore for session structure.
+                from .session_memory import SessionStore
+                store = SessionStore()
+                store.save(session)
         
         async with self.github_client_factory() as session_client:
             # Restore repo from session
@@ -554,18 +579,20 @@ class SafeClawAgent:
             is_safe, failure_reason = await self._apply_safety_gate(action, context, updater)
             if not is_safe:
                 if session:
-                    self.session_store.log_contrastive_pair(
-                        session, 
-                        is_success=False,
-                        semantic_trace={
-                            "turn_id": session.turn_count,
-                            "intent": intent.category.name if intent else "UNKNOWN",
+                    async with self.experience_client_factory() as exp_client:
+                        await exp_client.call_tool("log_contrastive_pair", {
+                            "session_id": session.session_id,
                             "is_success": False,
-                            "failure_reason": failure_reason,
-                            "detected_entities": list(_extract_entities(action)),
-                            "context_entities": list(_extract_entities(context))
-                        }
-                    )
+                            "semantic_trace": {
+                                "turn_id": session.turn_count,
+                                "intent": intent.category.name if intent else "UNKNOWN",
+                                "is_success": False,
+                                "failure_reason": failure_reason,
+                                "detected_entities": list(_extract_entities(action)),
+                                "context_entities": list(_extract_entities(context))
+                            },
+                            "trajectory": session.get_messages()
+                        })
                 await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Safety Violation: {failure_reason}"))
                 return
 
@@ -596,7 +623,14 @@ class SafeClawAgent:
             response_text = message_obj.content if hasattr(message_obj, "content") else (message_obj.get("content") if isinstance(message_obj, dict) else str(message_obj))
             
             # CRITICAL: Post-generation safety check (PR #45 Feedback)
-            is_safe, failure_reason = await self._apply_safety_gate(str(response_text), context, updater)
+            # Create an output context that includes the user's current prompt and history
+            # This prevents "Deny-by-Default" False Positives when the bot echoes conversational words 
+            history_str = ""
+            if session and hasattr(session, '_messages') and session._messages:
+                history_str = "\n".join([f"{msg.get('role', 'user').upper()}: {msg.get('content', '')}" for msg in session._messages[-10:]])
+            
+            output_context = f"{context}\n\nHISTORY:\n{history_str}\n\nUSER PROMPT: {action}"
+            is_safe, failure_reason = await self._apply_safety_gate(str(response_text), output_context, updater)
             
             # Generate Sovereignty Proof (Phase A++ Architecture)
             # Detect entities used in the response to provide machine-verifiable evidence
@@ -611,19 +645,21 @@ class SafeClawAgent:
             }
 
             if session:
-                # Log augmented semantic trace for Zero-Injection distillation
-                self.session_store.log_contrastive_pair(
-                    session, 
-                    is_success=is_safe,
-                    semantic_trace={
-                        "turn_id": session.turn_count,
-                        "intent": intent.category.name if intent else "UNKNOWN",
+                # Log augmented semantic trace via Refiner MCP
+                async with self.experience_client_factory() as exp_client:
+                    await exp_client.call_tool("log_contrastive_pair", {
+                        "session_id": session.user_id,
                         "is_success": is_safe,
-                        "failure_reason": failure_reason if not is_safe else None,
-                        "detected_entities": list(detected),
-                        "context_entities": list(_extract_entities(context))
-                    }
-                )
+                        "trajectory": session.get_messages(),
+                        "semantic_trace": {
+                            "turn_id": session.turn_count,
+                            "intent": intent.category.name if intent else "UNKNOWN",
+                            "is_success": is_safe,
+                            "failure_reason": failure_reason if not is_safe else None,
+                            "detected_entities": list(detected),
+                            "context_entities": list(_extract_entities(context))
+                        }
+                    })
             
             if not is_safe:
                 await updater.update_status(
@@ -640,7 +676,13 @@ class SafeClawAgent:
             )
         except Exception as e:
             if session:
-                SessionStore().log_contrastive_pair(session, is_success=False)
+                async with self.experience_client_factory() as exp_client:
+                     await exp_client.call_tool("log_contrastive_pair", {
+                        "session_id": session.user_id,
+                        "is_success": False,
+                        "trajectory": session.get_messages(),
+                        "semantic_trace": {"error": str(e)}
+                     })
             logger.error(f"LLM Generation Failed: {e}", exc_info=True)
             await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Failed to generate response: {e}"))
 

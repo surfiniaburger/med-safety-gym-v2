@@ -38,6 +38,11 @@ class SessionMemory:
         self.pending_action: Optional[Dict[str, Any]] = None  # HITL pending tool
         self.turn_count = 0  # Sequence tracer
 
+    @property
+    def session_id(self) -> str:
+        """Unique identifier for this specific session (user + scope)."""
+        return f"{self.user_id}:{self.scope}"
+
     def escalate_tool(self, tool_name: str, ttl: int = 300) -> None:
         """Unlock an admin tool for this session for a limited time (default 5 mins)."""
         import time
