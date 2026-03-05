@@ -1,5 +1,6 @@
 import pytest
 import unittest.mock as mock
+from unittest.mock import AsyncMock
 import httpx
 from med_safety_gym.claw_agent import SafeClawAgent
 
@@ -12,7 +13,8 @@ async def test_agent_starts_local_hub_on_failure():
     # Mock httpx.get to fail for both health check and manifest fetch
     # Mock subprocess.Popen to avoid actually starting a process
     with mock.patch("httpx.AsyncClient.get", side_effect=httpx.ConnectError("Connection failed")), \
-         mock.patch("subprocess.Popen") as mock_popen:
+         mock.patch("subprocess.Popen") as mock_popen, \
+         mock.patch.object(SafeClawAgent, "_load_pragmatic_guidelines", new_callable=AsyncMock):
         
         await agent._ensure_governor_interceptor()
         

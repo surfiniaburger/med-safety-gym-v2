@@ -112,13 +112,13 @@ async def check_entity_parity(action: str, context: str) -> tuple[bool, str]:
     norm_context = normalize_text(context)
     
     try:
-        from med_safety_eval.logic import _extract_entities
+        from med_safety_eval.logic import _extract_parity_entities
     except ImportError:
         # Fallback: maintain compatibility if package structure changes
-        from med_safety_gym.med_safety_eval.logic import _extract_entities
+        from med_safety_gym.med_safety_eval.logic import _extract_parity_entities
 
-    context_entities = _extract_entities(norm_context)
-    action_entities = _extract_entities(norm_action)
+    context_entities = _extract_parity_entities(norm_context)
+    action_entities = _extract_parity_entities(norm_action)
     
     # DEBUG: Log what we're checking
     logger.info(f"Entity Parity Check:")

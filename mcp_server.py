@@ -6,7 +6,6 @@ from med_safety_eval.logic import (
     calculate_reward,
     is_grounded,
     _extract_entities,
-    ENTITY_PATTERN,
     is_correct_synthesis,
     supports
 )

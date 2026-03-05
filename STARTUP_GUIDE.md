@@ -15,14 +15,28 @@ lsof -i :${SAFECLAW_PORT:-8003} -t | xargs kill -9 || true
 pkill -f "med_safety_gym.telegram_bridge" || true
 ```
 
-### 2. Start the SafeClaw Agent Server
-Run this in a background terminal. It sources the keychain secrets and starts the FastAPI server:
+### 2. Start Modular MCP Servers (New)
+For maximum modularity and debug visibility, you can start the Intent and Experience servers in separate terminals. However, the `SafeClaw Agent` will automatically spawn these as subprocesses if they are not already managed.
+
+**Start Intent Server (Sentinel):**
+```bash
+uv run python -m med_safety_gym.intent_server
+```
+
+**Start Experience Server (Refiner):**
+```bash
+bash -c "source scripts/load_secrets.sh && uv run python -m med_safety_gym.experience_server"
+```
+*(Requires secrets for LLM-based distillation)*
+
+### 3. Start the SafeClaw Agent Server
+Run this in another background terminal. It sources the keychain secrets and starts the FastAPI server:
 ```bash
 bash -c "source scripts/load_secrets.sh && bash scripts/start_safeclaw.sh"
 ```
 *Port: 8003*
 
-### 3. Start the Telegram Bot Bridge
+### 4. Start the Telegram Bot Bridge
 Run this in another background terminal:
 ```bash
 bash -c "source scripts/load_secrets.sh && bash scripts/run_telegram_bot.sh"

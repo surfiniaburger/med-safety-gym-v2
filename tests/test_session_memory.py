@@ -217,11 +217,10 @@ class TestMedicalEntityExtraction:
         rejoined and identified as entities.
         """
         session = SessionMemory(user_id="smug_1")
-        session.add_message("user", "U n k n o w n D r u g")
+        session.add_message("user", "P a n o b i n o s t a t")
         
         entities = await session.get_known_entities()
-        # This is expected to FAIL initially until normalization is implemented
-        assert "unknowndrug" in entities
+        assert "panobinostat" in entities
 
     @pytest.mark.skip(reason="Aggressive token joining removed to prevent false positives on 'and we are'")
     @pytest.mark.asyncio

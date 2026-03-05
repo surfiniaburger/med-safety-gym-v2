@@ -19,7 +19,7 @@ class IntentClassifier:
         # Basic heuristic keywords for initial classification
         self.refinement_keywords = ["i meant", "instead", "specifically", "rather", "switching", "switch", "change to"]
         self.expansion_keywords = ["what about", "also", "and for", "how about", "for it"]
-        self.follow_up_keywords = ["what are", "how does", "why is", "is it", "does it", "can it", "having trouble"]
+        self.follow_up_keywords = ["what are", "how does", "why is", "is it", "does it", "can it", "having trouble", "how much"]
         self.recollection_keywords = ["earlier", "previously", "remember", "what did we say"]
         self.correction_keywords = ["no,", "not exactly", "incorrect", "wrong"]
         

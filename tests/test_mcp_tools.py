@@ -57,8 +57,8 @@ async def test_granular_logic_tools():
 
 @pytest.mark.anyio
 async def test_clinical_entity_extraction():
-    """Verify the regex-based entity extraction via MCP."""
-    text = "NCT04857321 and Panobinostat"
+    """Verify the GLiNER entity extraction via MCP."""
+    text = "The patient was prescribed Panobinostat in trial NCT04857321."
     _, meta = await mcp.call_tool("extract_clinical_entities", {"text": text})
     result = meta["result"]
     

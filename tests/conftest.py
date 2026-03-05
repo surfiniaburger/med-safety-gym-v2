@@ -74,3 +74,44 @@ def mock_litellm():
     
     with patch("med_safety_gym.claw_agent.acompletion", AsyncMock(return_value=mock_response)):
         yield
+
+@pytest.fixture(autouse=True)
+def mock_mcp_adapter():
+    """
+    Globally mock MCPClientAdapter to prevent tests from spawning real subprocesses.
+    This fixes the 'Hanging at 39%' issue while keeping unit tests fast.
+    """
+    mock_instance = MagicMock()
+    from med_safety_gym.intent_classifier import IntentClassifier
+    classifier = IntentClassifier()
+    
+    async def mock_call_tool(name, arguments):
+        if name == "classify_intent":
+            text = arguments.get("text", "")
+            res = classifier.classify(text)
+            return {"category": res.category.name, "is_correction": res.is_correction}
+        if name in ["check_entity_parity", "check_grounding_parity", "verify_synthesis_match", "check_trace_support"]:
+            return {"is_safe": True, "reason": "Mocked safety pass"}
+        if name == "extract_clinical_entities":
+            # Return some default entities if needed, or empty list
+            return []
+        return {}
+        
+    mock_instance.call_tool = AsyncMock(side_effect=mock_call_tool)
+    mock_instance.list_tools = AsyncMock(return_value=MagicMock())
+    
+    with patch("med_safety_gym.mcp_client_adapter.MCPClientAdapter.__aenter__", AsyncMock(return_value=mock_instance)), \
+         patch("med_safety_gym.mcp_client_adapter.MCPClientAdapter.__aexit__", AsyncMock()):
+        yield
+
+@pytest.fixture(autouse=True)
+def mock_guidelines_loading(request):
+    """
+    Prevent the agent from attempting to fetch distilled guidelines during every test.
+    """
+    if request.node.get_closest_marker("allow_guidelines_loading"):
+        yield
+        return
+
+    with patch("med_safety_gym.claw_agent.SafeClawAgent._load_pragmatic_guidelines", AsyncMock()):
+        yield

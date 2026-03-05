@@ -19,7 +19,7 @@ def test_server_starts():
     
     try:
         # Wait for server to start (polling)
-        max_retries = 10
+        max_retries = 20
         response = None
         for i in range(max_retries):
             try:

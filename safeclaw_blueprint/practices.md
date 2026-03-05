@@ -122,3 +122,47 @@ Continuous Delivery: Better Software Faster - https://courses.cd.training/course
 *We use Amazon Affiliate links for books. If you use these links to buy a book, Continuous Delivery Ltd. will get a small fee for the
 recommendation with NO increase in cost to you.
 Further Learning, Reading & Viewing
+
+This video provides an expert perspective on **Behavior-Driven Development (BDD)**. It explains how to structure testing code using a "four-layer approach" to make testing more effective, readable, and maintainable.
+
+### Video Transcript
+
+**(00:00) The Core Benefit of BDD**
+"One of the big wins of BDD is that it makes the need to establish a language that describes the problems that we aim to fix more obvious. And if you want to make our specifications executable, it encourages us to regularize that language into an executable form and make it ubiquitous, so we use it everywhere."
+
+**(00:20) Advice: Domain-Specific Languages (DSLs)**
+"My advice is to grasp this opportunity with both hands and consciously work to make a domain-specific language that you can use to define scenarios that exercise your system and steer your development. Then use it to make writing and implementing BDD scenarios easy."
+
+**(00:36) The Four-Layer Approach to Test Code**
+"I confess that I prefer internal DSLs—DSLs built on top of my programming language for this job, but you can do this very effectively in Gherkin too. I think of this as a four-layer approach to your test code, which is equally applicable whether you're doing an internal DSL or an external DSL along the Gherkin kind of model."
+
+**(00:56) The Four Layers**
+*   **Layer 1: Test Cases (Executable Specifications):** "The test cases are focused on what the system needs to do."
+*   **Layer 2: Domain-Specific Language (DSL):** "The DSL layer, defining that the language that is used in those test cases and providing some other helpful tools along the way."
+*   **Layer 3: Protocol Drivers:** "The protocol drivers, which translate between ideas in the language of the problem domain (expressed in the DSL) and the system under test."
+*   **Layer 4: External System Stubs:** "Gives us the glue between our tests and the system that we're evaluating."
+
+***
+
+### Mermaid Diagram for Workflow Exploration
+
+This diagram visualizes the "Four-Layer Approach" to test code as described in the video. The layers progress from abstract requirements (top) to technical implementation (bottom).
+
+```mermaid
+graph TD
+    subgraph Layers ["Four-Layer BDD Testing Model"]
+        L1[<b>Layer 1: Test Cases</b><br/>Executable Specifications<br/><i>'What the system needs to do'</i>]
+        L2[<b>Layer 2: DSL Layer</b><br/>Problem Domain Language<br/><i>'Standardized vocabulary'</i>]
+        L3[<b>Layer 3: Protocol Drivers</b><br/>Translators<br/><i>'Idea to System logic'</i>]
+        L4[<b>Layer 4: External System Stubs</b><br/>Interface/Glue<br/><i>'The system under test'</i>]
+    end
+
+    L1 --> L2
+    L2 --> L3
+    L3 --> L4
+
+    style L1 fill:#e1f5fe,stroke:#01579b
+    style L2 fill:#fff3e0,stroke:#e65100
+    style L3 fill:#e8f5e9,stroke:#1b5e20
+    style L4 fill:#fce4ec,stroke:#880e4f
+```
