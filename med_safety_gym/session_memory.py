@@ -107,7 +107,7 @@ class SessionMemory:
         msgs = self._messages
         if limit is not None:
             msgs = msgs[:limit]
-        return " ".join(msg["content"] for msg in msgs)
+        return ". ".join(msg["content"] for msg in msgs)
     
     async def _extract_medical_entities(self, text: str) -> Set[str]:
         """

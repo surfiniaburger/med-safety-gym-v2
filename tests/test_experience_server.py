@@ -15,7 +15,8 @@ async def test_log_contrastive_pair():
     es._store = MagicMock()
     
     semantic_trace = {"turn_id": 1, "intent": "NEW_TOPIC", "is_success": True}
-    result = await log_contrastive_pair("test_session", True, semantic_trace, ctx)
+    trajectory = [{"role": "user", "content": "hi"}]
+    result = await log_contrastive_pair("test_session", True, semantic_trace, trajectory, ctx)
     
     assert "logged" in result
     es._store.log_contrastive_pair.assert_called_once()

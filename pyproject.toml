@@ -54,6 +54,9 @@ dependencies = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
+markers = [
+    "allow_guidelines_loading: run tests that exercise real guideline loading logic"
+]
 filterwarnings = [
     "ignore::DeprecationWarning:a2a.*",
     "ignore:.*SwigPyPacked.*:DeprecationWarning",

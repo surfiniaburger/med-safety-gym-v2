@@ -66,14 +66,34 @@ async def test_mediator_refinement_bypass():
         assert agent._apply_safety_gate.call_count == 1
         
         # Verify intent classification
-        intent = agent.intent_classifier.classify("Actually I meant ONC201.")
+        from med_safety_gym.intent_classifier import IntentClassifier
+        classifier = IntentClassifier()
+        intent = classifier.classify("Actually I meant ONC201.")
         assert intent.category == IntentCategory.REFINEMENT
 
 @pytest.mark.asyncio
+@pytest.mark.allow_guidelines_loading
 async def test_mediator_loading_guidelines():
     agent = SafeClawAgent()
-    # Mock guidelines distillation using AsyncMock
-    agent.experience_refiner.distill_guidelines = AsyncMock(return_value="When the user says switching, treat as refinement.")
+    
+    # Mock the experience client
+    mock_exp_client = MagicMock()
+    mock_exp_client.__aenter__ = AsyncMock(return_value=mock_exp_client)
+    mock_exp_client.__aexit__ = AsyncMock()
+    mock_exp_client.call_tool = AsyncMock(return_value="When the user says switching, treat as refinement.")
+    
+    agent.experience_client_factory = MagicMock(return_value=mock_exp_client)
+    
+    # Mock intent client to verify update
+    mock_intent_client = MagicMock()
+    mock_intent_client.__aenter__ = AsyncMock(return_value=mock_intent_client)
+    mock_intent_client.__aexit__ = AsyncMock()
+    mock_intent_client.call_tool = AsyncMock()
+    
+    agent.intent_client_factory = MagicMock(return_value=mock_intent_client)
     
     await agent._load_pragmatic_guidelines()
-    assert agent.intent_classifier.guidelines == "When the user says switching, treat as refinement."
+    
+    # Verify the update tool was called
+    # Use assert_any_call to be less sensitive to other possible calls
+    mock_intent_client.call_tool.assert_any_call("update_intent_rules", {"guidelines": "When the user says switching, treat as refinement."})

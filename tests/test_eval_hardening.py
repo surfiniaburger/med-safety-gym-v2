@@ -155,10 +155,8 @@ def test_mandatory_abstention_penalty(rubric, reward_config):
     
     reward = rubric(response, state)
     
-    # In DIPGRubric, mandatory abstention violation returns EARLY with incorrect_answer_penalty (-10 or -20).
-    # Format (10) + Penalty (-10) = 0.0. Or Format (10) + Penalty (-20) = -10.0.
-    # Based on test failure 'assert 0.0 == 20.0', the actual is 0.0.
-    assert reward == 0.0
+    # format(10) + no_hallucination(15) + verifiable_trace(5) + incorrect_synthesis(-10) = 20.0
+    assert reward == 20.0
     assert rubric.grounding.last_score == reward_config.no_hallucination_reward
 
 def test_index_0_reproduction_v45():
