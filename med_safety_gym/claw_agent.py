@@ -22,6 +22,7 @@ import jwt
 from litellm import acompletion
 from .intent_classifier import IntentCategory, IntentResult
 from med_safety_eval.logic import _extract_entities, _extract_parity_entities
+from .prompt_boundary import PromptEnvelope, build_prompt_messages
 
 logger = logging.getLogger(__name__)
 
@@ -623,19 +624,16 @@ class SafeClawAgent:
 
         try:
             model = self.model
-            
-            prompt = (
-                f"You are SafeClaw, a strict but helpful medical AI assistant. "
-                f"Use the following verified context to answer the user.\n"
-                f"If the user asks a question not covered by the context, you MUST state that you do not know.\n\n"
-                f"Context:\n{context}\n\n"
-                f"User: {action}\n\n"
-                f"SafeClaw:"
+            envelope = PromptEnvelope(
+                verified_context=verified_context,
+                supplemental_context=context,
+                user_query=action,
             )
-            
+            messages = build_prompt_messages(envelope)
+
             response = await acompletion(
                 model=model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 temperature=0.7,
                 max_tokens=2048
             )
