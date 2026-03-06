@@ -40,4 +40,4 @@ The Renaissance continues. 🎨🛡️
 
 ---
 
-![The Intent Mediator blends Da Vinci's precision with Picasso's abstraction to bridge the gap between chaotic data and crystalline intent.](/Users/surfiniaburger/Desktop/med-safety-gym-v2/docs/blog_posts/images/renaissance_intent.png)
+![The Intent Mediator blends Da Vinci's precision with Picasso's abstraction to bridge the gap between chaotic data and crystalline intent.](images/renaissance_intent.png)

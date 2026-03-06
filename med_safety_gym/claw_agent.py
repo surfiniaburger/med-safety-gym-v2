@@ -631,31 +631,51 @@ class SafeClawAgent:
             
             output_context = f"{context}\n\nHISTORY:\n{history_str}\n\nUSER PROMPT: {action}"
             is_safe, failure_reason = await self._apply_safety_gate(str(response_text), output_context, updater)
-            
+            soft_abstained = False
+            unknown_entities: list[str] = []
+            trace_success = is_safe
+            trace_failure_reason = failure_reason if not is_safe else None
+
+            if not is_safe:
+                unknown_entities = self._extract_unknown_entities(
+                    str(response_text),
+                    output_context,
+                    failure_reason,
+                )
+                if self._should_soft_abstain_followup_gene(intent, unknown_entities):
+                    soft_abstained = True
+                    trace_success = False
+                    trace_failure_reason = f"soft_block_unknown_gene:{','.join(unknown_entities)}"
+                    response_text = self._build_followup_abstention(unknown_entities)
+                    is_safe = True
+                    failure_reason = None
+
             # Generate Sovereignty Proof (Phase A++ Architecture)
-            # Detect entities used in the response to provide machine-verifiable evidence
+            # Detect entities used in the final response to provide machine-verifiable evidence
             detected = _extract_entities(str(response_text))
-            
+
             proof = {
                 "is_sovereign": is_safe,
                 "intent": intent.category.name if intent else "UNKNOWN",
                 "entities": list(detected),
                 "failure_reason": failure_reason if not is_safe else None,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
+                "abstained": soft_abstained,
+                "unknown_entities": unknown_entities if soft_abstained else [],
             }
 
             if session:
                 # Log augmented semantic trace via Refiner MCP
                 async with self.experience_client_factory() as exp_client:
                     await exp_client.call_tool("log_contrastive_pair", {
-                        "session_id": session.user_id,
-                        "is_success": is_safe,
+                        "session_id": session.session_id,
+                        "is_success": trace_success,
                         "trajectory": session.get_messages(),
                         "semantic_trace": {
                             "turn_id": session.turn_count,
                             "intent": intent.category.name if intent else "UNKNOWN",
-                            "is_success": is_safe,
-                            "failure_reason": failure_reason if not is_safe else None,
+                            "is_success": trace_success,
+                            "failure_reason": trace_failure_reason,
                             "detected_entities": list(detected),
                             "context_entities": list(_extract_entities(context))
                         }
@@ -678,13 +698,61 @@ class SafeClawAgent:
             if session:
                 async with self.experience_client_factory() as exp_client:
                      await exp_client.call_tool("log_contrastive_pair", {
-                        "session_id": session.user_id,
+                        "session_id": session.session_id,
                         "is_success": False,
                         "trajectory": session.get_messages(),
                         "semantic_trace": {"error": str(e)}
                      })
             logger.error(f"LLM Generation Failed: {e}", exc_info=True)
             await updater.update_status(TaskState.failed, new_agent_text_message(f"❌ Failed to generate response: {e}"))
+
+    def _extract_unknown_entities(self, action: str, context: str, failure_reason: Optional[str] = None) -> list[str]:
+        """Compute unknown parity entities from action and context for policy decisions."""
+        from med_safety_eval.logic import _extract_parity_entities
+
+        action_entities = _extract_parity_entities(action)
+        context_entities = _extract_parity_entities(context)
+        unknown = sorted(action_entities - context_entities)
+        if unknown:
+            return unknown
+        return self._extract_unknown_from_reason(failure_reason)
+
+    def _extract_unknown_from_reason(self, failure_reason: Optional[str]) -> list[str]:
+        """Fallback parser for unknown entities from parity error message."""
+        if not failure_reason:
+            return []
+        match = re.search(r"\{([^}]*)\}", failure_reason)
+        if not match:
+            return []
+        items = []
+        for raw in match.group(1).split(","):
+            clean = raw.strip().strip("'\"").lower()
+            if clean:
+                items.append(clean)
+        return sorted(set(items))
+
+    def _is_gene_like(self, entity: str) -> bool:
+        """Heuristic for gene/mutation-like symbols (ACVR1, BRCA1/3, H3K27M)."""
+        normalized = entity.lower().strip()
+        normalized = re.sub(r"\s+mutation$", "", normalized)
+        return bool(re.fullmatch(r"(?=.*\d)[a-z0-9]{2,8}(?:/[a-z0-9]{1,4})?", normalized))
+
+    def _should_soft_abstain_followup_gene(self, intent: Optional[IntentResult], unknown_entities: list[str]) -> bool:
+        """Allow bounded abstention on FOLLOW_UP when unknown entities are gene-like only."""
+        if not intent or intent.category != IntentCategory.FOLLOW_UP:
+            return False
+        if not unknown_entities:
+            return False
+        return all(self._is_gene_like(e) for e in unknown_entities)
+
+    def _build_followup_abstention(self, unknown_entities: list[str]) -> str:
+        """Safe response template for follow-up unknown genes."""
+        joined = ", ".join(unknown_entities)
+        return (
+            f"I do not have verified context for {joined} in this session. "
+            "I can only discuss entities already verified in context. "
+            "If you want, I can continue with baseline DIPG options currently in context."
+        )
 
     async def _apply_safety_gate(self, action: str, context: str, updater: Any) -> tuple[bool, str]:
         """
@@ -702,6 +770,21 @@ class SafeClawAgent:
             if not safety_check.get("is_safe", False):
                 reason = safety_check.get("reason", "Unknown safety violation.")
                 logger.warning(f"Safety Gate Blocked Action: {reason}")
+                try:
+                    from med_safety_eval.logic import _extract_parity_entities
+
+                    action_entities = _extract_parity_entities(action)
+                    context_entities = _extract_parity_entities(context)
+                    unknown_entities = sorted(action_entities - context_entities)
+                    logger.warning(
+                        "Safety Gate Diagnostics | action_preview=%r | action_entities=%s | context_entities=%s | unknown=%s",
+                        action[:300],
+                        sorted(action_entities),
+                        sorted(context_entities),
+                        unknown_entities,
+                    )
+                except Exception as diag_err:
+                    logger.debug("Safety diagnostics failed: %s", diag_err)
                 return False, reason
                 
         return True, ""
