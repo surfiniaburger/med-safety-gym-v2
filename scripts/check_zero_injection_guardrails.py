@@ -31,40 +31,55 @@ def check_text_patterns(src: str) -> None:
 
 def check_ast_contract(src: str) -> None:
     tree = ast.parse(src)
-    saw_verified_context_fallback = False
-    saw_output_context_assignment = False
-    apply_safety_with_verified_context = 0
-    apply_safety_with_context = 0
 
-    for node in ast.walk(tree):
-        # verified_context = parity_context if parity_context is not None else context
-        if isinstance(node, ast.Assign):
+    class ContractVisitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.saw_verified_context_fallback = False
+            self.saw_output_context_assignment = False
+            self.apply_safety_with_safe_context = 0
+            self.apply_safety_with_context = 0
+
+        def visit_Assign(self, node: ast.Assign) -> None:
+            # verified_context = parity_context if parity_context is not None else context
             if any(isinstance(t, ast.Name) and t.id == "verified_context" for t in node.targets):
-                if isinstance(node.value, ast.IfExp):
-                    if isinstance(node.value.body, ast.Name) and node.value.body.id == "parity_context":
-                        if isinstance(node.value.orelse, ast.Name) and node.value.orelse.id == "context":
-                            saw_verified_context_fallback = True
+                if (
+                    isinstance(node.value, ast.IfExp)
+                    and isinstance(node.value.body, ast.Name)
+                    and node.value.body.id == "parity_context"
+                    and isinstance(node.value.orelse, ast.Name)
+                    and node.value.orelse.id == "context"
+                ):
+                    self.saw_verified_context_fallback = True
+
             # output_context = verified_context
             if any(isinstance(t, ast.Name) and t.id == "output_context" for t in node.targets):
                 if isinstance(node.value, ast.Name) and node.value.id == "verified_context":
-                    saw_output_context_assignment = True
+                    self.saw_output_context_assignment = True
 
-        # _apply_safety_gate(..., verified_context, ...)
-        if isinstance(node, ast.Call):
+            self.generic_visit(node)
+
+        def visit_Call(self, node: ast.Call) -> None:
+            # _apply_safety_gate(..., safe_context, ...)
             if isinstance(node.func, ast.Attribute) and node.func.attr == "_apply_safety_gate":
                 if len(node.args) >= 2 and isinstance(node.args[1], ast.Name):
-                    if node.args[1].id == "verified_context":
-                        apply_safety_with_verified_context += 1
-                    if node.args[1].id == "context":
-                        apply_safety_with_context += 1
+                    arg_name = node.args[1].id
+                    if arg_name in ("verified_context", "output_context"):
+                        self.apply_safety_with_safe_context += 1
+                    if arg_name == "context":
+                        self.apply_safety_with_context += 1
 
-    if not saw_verified_context_fallback:
+            self.generic_visit(node)
+
+    visitor = ContractVisitor()
+    visitor.visit(tree)
+
+    if not visitor.saw_verified_context_fallback:
         fail("Missing verified_context fallback assignment from parity_context/context.")
-    if not saw_output_context_assignment:
+    if not visitor.saw_output_context_assignment:
         fail("Missing output_context = verified_context assignment.")
-    if apply_safety_with_verified_context < 1:
-        fail("Expected at least one _apply_safety_gate call with verified_context.")
-    if apply_safety_with_context > 0:
+    if visitor.apply_safety_with_safe_context < 2:
+        fail("Expected both pre- and post-generation _apply_safety_gate calls with safe context.")
+    if visitor.apply_safety_with_context > 0:
         fail("Found unsafe _apply_safety_gate(..., context, ...) call.")
 
 
