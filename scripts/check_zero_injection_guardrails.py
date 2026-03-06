@@ -34,14 +34,23 @@ def check_ast_contract(src: str) -> None:
 
     class ContractVisitor(ast.NodeVisitor):
         def __init__(self) -> None:
-            self.saw_verified_context_fallback = False
+            self.saw_verified_context_fallback_to_base = False
+            self.saw_verified_context_fallback_to_context = False
             self.saw_output_context_assignment = False
             self.apply_safety_with_safe_context = 0
             self.apply_safety_with_context = 0
 
         def visit_Assign(self, node: ast.Assign) -> None:
-            # verified_context = parity_context if parity_context is not None else context
+            # verified_context = parity_context if parity_context is not None else BASE_MEDICAL_KNOWLEDGE
             if any(isinstance(t, ast.Name) and t.id == "verified_context" for t in node.targets):
+                if (
+                    isinstance(node.value, ast.IfExp)
+                    and isinstance(node.value.body, ast.Name)
+                    and node.value.body.id == "parity_context"
+                    and isinstance(node.value.orelse, ast.Name)
+                    and node.value.orelse.id == "BASE_MEDICAL_KNOWLEDGE"
+                ):
+                    self.saw_verified_context_fallback_to_base = True
                 if (
                     isinstance(node.value, ast.IfExp)
                     and isinstance(node.value.body, ast.Name)
@@ -49,7 +58,7 @@ def check_ast_contract(src: str) -> None:
                     and isinstance(node.value.orelse, ast.Name)
                     and node.value.orelse.id == "context"
                 ):
-                    self.saw_verified_context_fallback = True
+                    self.saw_verified_context_fallback_to_context = True
 
             # output_context = verified_context
             if any(isinstance(t, ast.Name) and t.id == "output_context" for t in node.targets):
@@ -73,8 +82,10 @@ def check_ast_contract(src: str) -> None:
     visitor = ContractVisitor()
     visitor.visit(tree)
 
-    if not visitor.saw_verified_context_fallback:
-        fail("Missing verified_context fallback assignment from parity_context/context.")
+    if visitor.saw_verified_context_fallback_to_context:
+        fail("Found unsafe verified_context fallback to conversational context.")
+    if not visitor.saw_verified_context_fallback_to_base:
+        fail("Missing verified_context fallback assignment from parity_context/BASE_MEDICAL_KNOWLEDGE.")
     if not visitor.saw_output_context_assignment:
         fail("Missing output_context = verified_context assignment.")
     if visitor.apply_safety_with_safe_context < 2:

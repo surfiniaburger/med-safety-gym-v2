@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from med_safety_gym.claw_agent import SafeClawAgent
+from med_safety_gym.claw_agent import BASE_MEDICAL_KNOWLEDGE, SafeClawAgent
 from med_safety_gym.session_memory import SessionMemory
 from a2a.types import Message, Part, TextPart
 
@@ -31,11 +31,11 @@ async def test_output_parity_uses_verified_context_only():
         await agent.context_aware_action(current_action, current_action, static_context, updater, session=session, intent=None)
     
     # Security invariant: post-generation parity must use only verified context.
-    # Unverified chat history/user prompt must not widen allowed entities.
+    # If explicit parity_context is absent, the fallback must be trusted base knowledge.
     args, _ = agent._apply_safety_gate.call_args
     passed_response, passed_output_context, _ = args
     
-    assert passed_output_context == static_context
+    assert passed_output_context == BASE_MEDICAL_KNOWLEDGE
     assert "Pembrolizumab" not in passed_output_context
 
 
