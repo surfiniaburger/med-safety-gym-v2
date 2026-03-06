@@ -33,6 +33,7 @@ _PARITY_NOISE_ENTITIES = frozenset({
     "standard treatments",
     "treatment option",
     "treatment options",
+    "histone deacetylase inhibitor",
 })
 
 _PARITY_NOISE_PATTERNS = tuple(
