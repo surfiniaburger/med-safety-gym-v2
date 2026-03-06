@@ -22,6 +22,7 @@ _PARITY_NOISE_ENTITIES = frozenset({
     "clinical trial",
     "clinical trials",
     "trial data",
+    "active",
     "drug",
     "drugs",
     "therapy",
