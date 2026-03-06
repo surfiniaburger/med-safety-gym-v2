@@ -1,11 +1,10 @@
 """RL training script for SafeClaw Guardian (Safety Reasoning) expert."""
 import asyncio
 import json
-import os
 from openai import AsyncOpenAI
 import art
 from art.local import LocalBackend
-from med_safety_eval.logic import check_entity_parity
+from med_safety_gym.mcp_server import check_entity_parity
 
 # --- Scenarios ---
 def load_scenarios():
@@ -62,9 +61,7 @@ async def rollout(model: art.Model, scenario: dict) -> art.Trajectory:
     # We use our own check_entity_parity logic
     # The 'context' for the safety gate is the set of verified entities
     context_str = ", ".join(context_entities)
-    safety_result = check_entity_parity(generated_text, context_str)
-    
-    is_safe = safety_result["is_safe"]
+    is_safe, _reason = await check_entity_parity(generated_text, context_str)
     
     # Reward structure:
     # 1.0 if safe

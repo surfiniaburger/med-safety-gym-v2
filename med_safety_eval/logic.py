@@ -18,6 +18,33 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+_PARITY_NOISE_ENTITIES = frozenset({
+    "clinical trial",
+    "clinical trials",
+    "trial data",
+    "drug",
+    "drugs",
+    "therapy",
+    "treatment",
+})
+
+_PARITY_NOISE_PATTERNS = (
+    r"^(this|that|the|a|an)\s+(drug|drugs|therapy|treatment|gene|mutation)$",
+    r"^(clinical|trial)\s+(trial|trials|data)$",
+)
+
+
+def _drop_parity_noise_entities(entities: set[str]) -> set[str]:
+    """Remove low-specificity phrases that cause parity false positives."""
+    filtered = set()
+    for entity in entities:
+        if entity in _PARITY_NOISE_ENTITIES:
+            continue
+        if any(re.fullmatch(pattern, entity) for pattern in _PARITY_NOISE_PATTERNS):
+            continue
+        filtered.add(entity)
+    return filtered
+
 class MedicalEntityExtractor:
     """Zero-shot clinical NER extractor using GLiNER."""
     
@@ -200,6 +227,11 @@ def _extract_parity_entities(text: str) -> set:
     # NCT trial IDs: NCT followed by 6+ digits
     nct_ids = re.findall(r'\b(nct\d{6,})\b', text.lower())
     entities.update(nct_ids)
+
+    # Treatment phrase fallback: ensure common baseline modality is symmetric
+    # between context and generated responses.
+    if re.search(r"\bradiation therapy\b", text, re.IGNORECASE):
+        entities.add("radiation therapy")
     
     # Gene+slash identifiers: BRCA1/2, FGFR1/3, etc.
     slashed_genes = re.findall(r'\b([A-Z][A-Z0-9]{1,6}/[0-9A-Z]{1,4})\b', text)
@@ -226,7 +258,7 @@ def _extract_parity_entities(text: str) -> set:
             if prev.lower().rstrip('.,;:') not in _STOP_PREFIXES and clean_tok.lower() not in entities:
                 entities.add(clean_tok.lower())
     
-    return entities
+    return _drop_parity_noise_entities(entities)
 
 # v0.1.60: Pre-clean keywords to ensure they match normalized model output
 _CLEANED_ABSTENTION_KEYWORDS = frozenset([_clean_for_matching(kw) for kw in ABSTENTION_KEYWORDS])
