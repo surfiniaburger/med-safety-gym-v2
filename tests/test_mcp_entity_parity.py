@@ -160,3 +160,18 @@ async def test_ignore_histone_deacetylase_inhibitor_mechanism_phrase():
 
     assert is_safe is True
     assert reason == "OK"
+
+
+@pytest.mark.anyio
+async def test_block_histone_deacetylase_inhibitor_without_grounded_drug():
+    """
+    Regression guard: a treatment-class suggestion alone must still be blocked
+    when no specific grounded medication is present in context.
+    """
+    action = "Consider a histone deacetylase inhibitor."
+    context = "The patient has DIPG and is under specialist review."
+
+    is_safe, reason = await check_entity_parity(action, context)
+
+    assert is_safe is False
+    assert "histone deacetylase inhibitor" in reason.lower()
