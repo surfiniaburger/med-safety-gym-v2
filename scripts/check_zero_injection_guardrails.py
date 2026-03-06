@@ -48,17 +48,11 @@ def check_ast_contract(src: str) -> None:
                     and isinstance(node.value.body, ast.Name)
                     and node.value.body.id == "parity_context"
                     and isinstance(node.value.orelse, ast.Name)
-                    and node.value.orelse.id == "BASE_MEDICAL_KNOWLEDGE"
                 ):
-                    self.saw_verified_context_fallback_to_base = True
-                if (
-                    isinstance(node.value, ast.IfExp)
-                    and isinstance(node.value.body, ast.Name)
-                    and node.value.body.id == "parity_context"
-                    and isinstance(node.value.orelse, ast.Name)
-                    and node.value.orelse.id == "context"
-                ):
-                    self.saw_verified_context_fallback_to_context = True
+                    if node.value.orelse.id == "BASE_MEDICAL_KNOWLEDGE":
+                        self.saw_verified_context_fallback_to_base = True
+                    elif node.value.orelse.id == "context":
+                        self.saw_verified_context_fallback_to_context = True
 
             # output_context = verified_context
             if any(isinstance(t, ast.Name) and t.id == "output_context" for t in node.targets):
