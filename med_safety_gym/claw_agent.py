@@ -333,10 +333,21 @@ class SafeClawAgent:
         if session:
             session_context = await session.get_medical_context(exclude_latest=True)
         
-        # Merge with base knowledge for a robust safety context
-        context = f"{BASE_MEDICAL_KNOWLEDGE}\n\nCONVERSATION CONTEXT:\n{session_context}"
-        
-        await self.context_aware_action(action, text_content, context, updater, session=session, intent=intent)
+        # Separate contexts:
+        # - generation_context can include conversational memory for fluency
+        # - parity_context must stay verified-only to prevent history taint
+        generation_context = f"{BASE_MEDICAL_KNOWLEDGE}\n\nCONVERSATION CONTEXT:\n{session_context}"
+        parity_context = BASE_MEDICAL_KNOWLEDGE
+
+        await self.context_aware_action(
+            action,
+            text_content,
+            generation_context,
+            updater,
+            session=session,
+            intent=intent,
+            parity_context=parity_context,
+        )
 
     async def _get_github_session(self):
         """Persistent GitHub session helper."""
@@ -562,7 +573,16 @@ class SafeClawAgent:
 
         return True
 
-    async def context_aware_action(self, action: str, raw_text: str, context: str, updater: Any, session: Optional[Any] = None, intent: Optional[IntentResult] = None) -> None:
+    async def context_aware_action(
+        self,
+        action: str,
+        raw_text: str,
+        context: str,
+        updater: Any,
+        session: Optional[Any] = None,
+        intent: Optional[IntentResult] = None,
+        parity_context: Optional[str] = None,
+    ) -> None:
         """
         Executes an action using the LLM. 
         Note: The Entity Parity check has been removed here because it was blocking 
@@ -573,10 +593,12 @@ class SafeClawAgent:
         if session:
             session.turn_count = getattr(session, "turn_count", 0) + 1
 
+        verified_context = parity_context if parity_context is not None else context
+
         # Safety Gate: Only run entity parity for new topics or explicit actions
         # This prevents blocking conversational follow-ups while maintaining safety for new intents.
         if intent is None or intent.category == IntentCategory.NEW_TOPIC:
-            is_safe, failure_reason = await self._apply_safety_gate(action, context, updater)
+            is_safe, failure_reason = await self._apply_safety_gate(action, verified_context, updater)
             if not is_safe:
                 if session:
                     async with self.experience_client_factory() as exp_client:
@@ -589,7 +611,7 @@ class SafeClawAgent:
                                 "is_success": False,
                                 "failure_reason": failure_reason,
                                 "detected_entities": list(_extract_entities(action)),
-                                "context_entities": list(_extract_entities(context))
+                                "context_entities": list(_extract_entities(verified_context))
                             },
                             "trajectory": session.get_messages()
                         })
@@ -624,7 +646,7 @@ class SafeClawAgent:
             
             # Post-generation parity check must only use verified context.
             # Unverified user text/history must never widen the allowed entity set.
-            output_context = context
+            output_context = verified_context
             is_safe, failure_reason = await self._apply_safety_gate(str(response_text), output_context, updater)
             soft_abstained = False
             unknown_entities: list[str] = []
@@ -672,7 +694,7 @@ class SafeClawAgent:
                             "is_success": trace_success,
                             "failure_reason": trace_failure_reason,
                             "detected_entities": list(detected),
-                            "context_entities": list(_extract_entities(context))
+                            "context_entities": list(_extract_entities(verified_context))
                         }
                     })
             
