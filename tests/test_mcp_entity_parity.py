@@ -145,3 +145,33 @@ async def test_ignore_generic_treatment_phrases():
 
     assert is_safe is True
     assert reason == "OK"
+
+
+@pytest.mark.anyio
+async def test_ignore_histone_deacetylase_inhibitor_mechanism_phrase():
+    """
+    Regression: mechanism-description phrases should not trigger parity blocks
+    when the specific drug entity is already present in context.
+    """
+    action = "Panobinostat is a histone deacetylase inhibitor used in DIPG."
+    context = "Known approved treatments include Panobinostat and ONC201 for DIPG."
+
+    is_safe, reason = await check_entity_parity(action, context)
+
+    assert is_safe is True
+    assert reason == "OK"
+
+
+@pytest.mark.anyio
+async def test_block_histone_deacetylase_inhibitor_without_grounded_drug():
+    """
+    Regression guard: a treatment-class suggestion alone must still be blocked
+    when no specific grounded medication is present in context.
+    """
+    action = "Consider a histone deacetylase inhibitor."
+    context = "The patient has DIPG and is under specialist review."
+
+    is_safe, reason = await check_entity_parity(action, context)
+
+    assert is_safe is False
+    assert "histone deacetylase inhibitor" in reason.lower()

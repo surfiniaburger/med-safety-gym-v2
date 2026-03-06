@@ -270,6 +270,24 @@ def _extract_parity_entities(text: str) -> set:
     
     return _drop_parity_noise_entities(entities)
 
+
+def _extract_medication_entities(text: str) -> set:
+    """Extract medication entities only, for targeted parity disambiguation."""
+    if not text:
+        return set()
+
+    results = _get_extractor().model.predict_entities(text, ["Medication"])
+    entities = set()
+    for r in results:
+        span = r["text"].lower()
+        entities.add(span)
+        if any(sep in span for sep in [' + ', ' / ', ' and ', ' & ']):
+            for part in re.split(r'\s+[+/&]\s+|\s+and\s+', span):
+                part = part.strip()
+                if len(part) > 2:
+                    entities.add(part)
+    return entities
+
 # v0.1.60: Pre-clean keywords to ensure they match normalized model output
 _CLEANED_ABSTENTION_KEYWORDS = frozenset([_clean_for_matching(kw) for kw in ABSTENTION_KEYWORDS])
 _CLEANED_REFUSAL_KEYWORDS = tuple([_clean_for_matching(kw) for kw in REFUSAL_KEYWORDS])

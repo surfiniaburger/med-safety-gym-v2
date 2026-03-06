@@ -2,6 +2,9 @@
 
 This specification defines hard constraints for safety-critical paths.
 
+Related implementation overview:
+- `safeclaw_blueprint/SAFETY_HARDENING_OVERVIEW_2026-03.md`
+
 ## Scope
 
 These invariants apply to:

@@ -112,10 +112,10 @@ async def check_entity_parity(action: str, context: str) -> tuple[bool, str]:
     norm_context = normalize_text(context)
     
     try:
-        from med_safety_eval.logic import _extract_parity_entities
+        from med_safety_eval.logic import _extract_medication_entities, _extract_parity_entities
     except ImportError:
         # Fallback: maintain compatibility if package structure changes
-        from med_safety_gym.med_safety_eval.logic import _extract_parity_entities
+        from med_safety_gym.med_safety_eval.logic import _extract_medication_entities, _extract_parity_entities
 
     context_entities = _extract_parity_entities(norm_context)
     action_entities = _extract_parity_entities(norm_action)
@@ -130,6 +130,15 @@ async def check_entity_parity(action: str, context: str) -> tuple[bool, str]:
     
     # Check if action entities are a subset of context entities
     unknown_entities = action_entities - context_entities
+
+    # Targeted mechanism-phrase handling:
+    # Allow mechanism descriptors only when a specific medication in the action
+    # is also grounded in the verified context.
+    if "histone deacetylase inhibitor" in unknown_entities:
+        action_meds = _extract_medication_entities(norm_action)
+        context_meds = _extract_medication_entities(norm_context)
+        if action_meds & context_meds:
+            unknown_entities.discard("histone deacetylase inhibitor")
     
     if unknown_entities:
         logger.warning(f"  ❌ Unknown entities: {unknown_entities}")
