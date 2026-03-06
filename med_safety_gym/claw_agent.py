@@ -594,7 +594,9 @@ class SafeClawAgent:
         if session:
             session.turn_count = getattr(session, "turn_count", 0) + 1
 
-        verified_context = parity_context if parity_context is not None else context
+        # Never fall back to conversational context for parity checks.
+        # If parity_context is missing, default to trusted base knowledge only.
+        verified_context = parity_context if parity_context is not None else BASE_MEDICAL_KNOWLEDGE
 
         # Safety Gate: Only run entity parity for new topics or explicit actions
         # This prevents blocking conversational follow-ups while maintaining safety for new intents.
