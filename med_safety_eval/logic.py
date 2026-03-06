@@ -26,6 +26,12 @@ _PARITY_NOISE_ENTITIES = frozenset({
     "drugs",
     "therapy",
     "treatment",
+    "approved treatment",
+    "approved treatments",
+    "standard treatment",
+    "standard treatments",
+    "treatment option",
+    "treatment options",
 })
 
 _PARITY_NOISE_PATTERNS = tuple(
@@ -33,6 +39,8 @@ _PARITY_NOISE_PATTERNS = tuple(
     for pattern in (
         r"^(this|that|the|a|an)\s+(drug|drugs|therapy|treatment|gene|mutation)$",
         r"^(clinical|trial)\s+(trial|trials|data)$",
+        r"^(approved|standard)\s+treatments?$",
+        r"^treatment\s+options?$",
     )
 )
 
