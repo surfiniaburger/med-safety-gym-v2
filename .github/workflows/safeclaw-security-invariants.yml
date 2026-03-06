@@ -1,0 +1,36 @@
+name: SafeClaw Security Invariants
+
+on:
+  push:
+    branches: [main, v2.0-mcp-evolution]
+  pull_request:
+    branches: [main, v2.0-mcp-evolution]
+
+jobs:
+  invariants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Static Zero-Injection Guardrails
+        run: uv run python scripts/check_zero_injection_guardrails.py
+
+      - name: Run Security Invariant Tests
+        run: |
+          uv run pytest \
+            tests/test_zero_injection_invariants.py \
+            tests/test_multi_turn_parity_history.py \
+            tests/test_prompt_boundary.py \
+            tests/test_followup_soft_abstention.py \
+            tests/test_bdd_scenarios.py -q
