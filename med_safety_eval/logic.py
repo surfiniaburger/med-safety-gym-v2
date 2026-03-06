@@ -28,22 +28,23 @@ _PARITY_NOISE_ENTITIES = frozenset({
     "treatment",
 })
 
-_PARITY_NOISE_PATTERNS = (
-    r"^(this|that|the|a|an)\s+(drug|drugs|therapy|treatment|gene|mutation)$",
-    r"^(clinical|trial)\s+(trial|trials|data)$",
+_PARITY_NOISE_PATTERNS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"^(this|that|the|a|an)\s+(drug|drugs|therapy|treatment|gene|mutation)$",
+        r"^(clinical|trial)\s+(trial|trials|data)$",
+    )
 )
 
 
 def _drop_parity_noise_entities(entities: set[str]) -> set[str]:
     """Remove low-specificity phrases that cause parity false positives."""
-    filtered = set()
-    for entity in entities:
-        if entity in _PARITY_NOISE_ENTITIES:
-            continue
-        if any(re.fullmatch(pattern, entity) for pattern in _PARITY_NOISE_PATTERNS):
-            continue
-        filtered.add(entity)
-    return filtered
+    return {
+        entity
+        for entity in entities
+        if entity not in _PARITY_NOISE_ENTITIES
+        and not any(pattern.fullmatch(entity) for pattern in _PARITY_NOISE_PATTERNS)
+    }
 
 class MedicalEntityExtractor:
     """Zero-shot clinical NER extractor using GLiNER."""

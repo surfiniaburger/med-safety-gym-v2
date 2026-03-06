@@ -21,7 +21,7 @@ from .identity.secret_store import SecretStore, KeyringSecretStore
 import jwt
 from litellm import acompletion
 from .intent_classifier import IntentCategory, IntentResult
-from med_safety_eval.logic import _extract_entities
+from med_safety_eval.logic import _extract_entities, _extract_parity_entities
 
 logger = logging.getLogger(__name__)
 
@@ -622,14 +622,9 @@ class SafeClawAgent:
             message_obj = response.choices[0].message
             response_text = message_obj.content if hasattr(message_obj, "content") else (message_obj.get("content") if isinstance(message_obj, dict) else str(message_obj))
             
-            # CRITICAL: Post-generation safety check (PR #45 Feedback)
-            # Create an output context that includes the user's current prompt and history
-            # This prevents "Deny-by-Default" False Positives when the bot echoes conversational words 
-            history_str = ""
-            if session and hasattr(session, '_messages') and session._messages:
-                history_str = "\n".join([f"{msg.get('role', 'user').upper()}: {msg.get('content', '')}" for msg in session._messages[-10:]])
-            
-            output_context = f"{context}\n\nHISTORY:\n{history_str}\n\nUSER PROMPT: {action}"
+            # Post-generation parity check must only use verified context.
+            # Unverified user text/history must never widen the allowed entity set.
+            output_context = context
             is_safe, failure_reason = await self._apply_safety_gate(str(response_text), output_context, updater)
             soft_abstained = False
             unknown_entities: list[str] = []
@@ -708,8 +703,6 @@ class SafeClawAgent:
 
     def _extract_unknown_entities(self, action: str, context: str, failure_reason: Optional[str] = None) -> list[str]:
         """Compute unknown parity entities from action and context for policy decisions."""
-        from med_safety_eval.logic import _extract_parity_entities
-
         action_entities = _extract_parity_entities(action)
         context_entities = _extract_parity_entities(context)
         unknown = sorted(action_entities - context_entities)
@@ -771,8 +764,6 @@ class SafeClawAgent:
                 reason = safety_check.get("reason", "Unknown safety violation.")
                 logger.warning(f"Safety Gate Blocked Action: {reason}")
                 try:
-                    from med_safety_eval.logic import _extract_parity_entities
-
                     action_entities = _extract_parity_entities(action)
                     context_entities = _extract_parity_entities(context)
                     unknown_entities = sorted(action_entities - context_entities)
