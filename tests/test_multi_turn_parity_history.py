@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from med_safety_gym.claw_agent import SafeClawAgent
 from med_safety_gym.session_memory import SessionMemory
 from a2a.types import Message, Part, TextPart
@@ -12,11 +12,9 @@ async def test_output_parity_uses_verified_context_only():
     agent._apply_safety_gate = AsyncMock(return_value=(True, ""))
     
     # Mock liteLLM
-    import med_safety_gym.claw_agent
     mock_resp = MagicMock()
     mock_resp.choices = [MagicMock()]
     mock_resp.choices[0].message.content = "I remember we discussed Pembrolizumab."
-    med_safety_gym.claw_agent.acompletion = AsyncMock(return_value=mock_resp)
 
     # Setup session with history containing the drug
     session = SessionMemory(user_id="123")
@@ -29,7 +27,8 @@ async def test_output_parity_uses_verified_context_only():
     static_context = "This is a generic DIPG context without specific drug names."
     current_action = "Can you summarize our conversation?"
     
-    await agent.context_aware_action(current_action, current_action, static_context, updater, session=session, intent=None)
+    with patch("med_safety_gym.claw_agent.acompletion", AsyncMock(return_value=mock_resp)):
+        await agent.context_aware_action(current_action, current_action, static_context, updater, session=session, intent=None)
     
     # Security invariant: post-generation parity must use only verified context.
     # Unverified chat history/user prompt must not widen allowed entities.
@@ -52,9 +51,6 @@ async def test_run_prevents_history_taint_in_parity_context():
     mock_resp = MagicMock()
     mock_resp.choices = [MagicMock()]
     mock_resp.choices[0].message.content = "I can discuss Panobinostat for DIPG."
-    import med_safety_gym.claw_agent
-    med_safety_gym.claw_agent.acompletion = AsyncMock(return_value=mock_resp)
-
     original_gate = agent._apply_safety_gate
     agent._apply_safety_gate = AsyncMock(side_effect=original_gate)
 
@@ -65,7 +61,8 @@ async def test_run_prevents_history_taint_in_parity_context():
         parts=[Part(root=TextPart(kind="text", text="What is DIPG?"))],
     )
 
-    await agent.run(msg, updater, session=session)
+    with patch("med_safety_gym.claw_agent.acompletion", AsyncMock(return_value=mock_resp)):
+        await agent.run(msg, updater, session=session)
 
     # NEW_TOPIC path calls gate twice: input and output.
     first_ctx = agent._apply_safety_gate.call_args_list[0].args[1]
