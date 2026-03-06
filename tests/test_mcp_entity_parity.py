@@ -131,3 +131,17 @@ async def test_block_radiation_therapy_when_absent_from_context():
 
     assert is_safe is False
     assert "radiation therapy" in reason.lower()
+
+
+@pytest.mark.anyio
+async def test_ignore_generic_treatment_phrases():
+    """
+    Regression: generic treatment summary phrases should not trigger parity blocks.
+    """
+    action = "The context includes approved treatments and treatment options."
+    context = "Known approved treatments include Panobinostat and ONC201."
+
+    is_safe, reason = await check_entity_parity(action, context)
+
+    assert is_safe is True
+    assert reason == "OK"

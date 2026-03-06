@@ -4,7 +4,7 @@ from med_safety_gym.claw_agent import SafeClawAgent
 from med_safety_gym.session_memory import SessionMemory
 
 @pytest.mark.asyncio
-async def test_multi_turn_history_parity():
+async def test_output_parity_uses_verified_context_only():
     agent = SafeClawAgent()
     agent.model = 'test_model'
     # Mock LLM to return an answer containing a drug mentioned in history
@@ -30,9 +30,10 @@ async def test_multi_turn_history_parity():
     
     await agent.context_aware_action(current_action, current_action, static_context, updater, session=session, intent=None)
     
-    # The safety gate SHOULD be called with a context string that includes the history!
-    # Otherwise, "Pembrolizumab" in the response will trigger a false positive.
+    # Security invariant: post-generation parity must use only verified context.
+    # Unverified chat history/user prompt must not widen allowed entities.
     args, _ = agent._apply_safety_gate.call_args
     passed_response, passed_output_context, _ = args
     
-    assert "Pembrolizumab" in passed_output_context, "Session history was NOT included in the safety gate context!"
+    assert passed_output_context == static_context
+    assert "Pembrolizumab" not in passed_output_context
