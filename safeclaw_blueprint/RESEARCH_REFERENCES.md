@@ -15,6 +15,7 @@ This document serves as the authoritative list of external research, repositorie
 - **Source**: [https://github.com/pi-mono/pi-mono](https://github.com/pi-mono/pi-mono)
 - **Key Concept**: Subagent spawning logic and the "Skills System" (self-building tools).
 - **Artifacts**: [skills.md](file:///Users/surfiniaburger/Desktop/med-safety-gym-v2/tmp_pimono/packages/coding-agent/docs/skills.md), [runSubagent](file:///Users/surfiniaburger/Desktop/med-safety-gym-v2/tmp_pimono/packages/coding-agent/examples/extensions/subagent/index.ts)
+- **SafeClaw Position**: `skills.md` is retained as declarative skill contract (intent/scope/policy hints), while execution rights are enforced via MCP tools + tiered manifests + interceptor checks.
 
 ### 3. OpenEnv
 - **Source**: RFC 005 (Harness Wrapping)

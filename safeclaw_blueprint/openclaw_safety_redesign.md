@@ -26,7 +26,7 @@ Based on the `project_context_digest.md` and `outside.md`, OpenClaw's failures a
 Our analysis of `.agents/skills` reveals a critical flaw: **Skills are just Prompts**.
 *   Files like `merge-pr/SKILL.md` are natural language instructions telling the agent to run generic tools (e.g., `bash`).
 *   **Risk**: There is no code-level enforcement. An injected prompt can ignore the `SKILL.md` instructions and use the same `bash` access to execute malicious commands.
-*   **Conclusion**: We must deprecate Prompt-based Skills in favor of **Code-based Tools** (MCP).
+*   **Conclusion**: We do **not** deprecate `skills.md`; we re-scope it. `skills.md` remains a **declarative intent/policy contract** (what the skill is for), while executable authority is enforced by **Code-based Tools** (MCP + manifest + interceptor).
 
 ---
 
@@ -58,12 +58,13 @@ graph TD
     *   In SafeClaw, we check **Action Entities**.
     *   *Example*: If a "Weather Skill" tries to `read_file('/etc/passwd')`, the **Entity Parity** logic sees that `/etc/passwd` is NOT in the "Weather Context." **BLOCKED.**
 
-### Phase 2: Replacing `SKILL.md` with MCP & Invariants
-We move from "Prompt Instructions" to "Strictly Typed Tools".
+### Phase 2: Hardening `skills.md` with MCP & Invariants
+We keep skills as declarative metadata and move executable control to strictly typed tools.
 
-1.  **Deprecate `SKILL.md`**: No more "Please run git".
+1.  **Retain `skills.md` as intent metadata**: Skill docs define scope, guardrails, and expected outcomes, not privileged execution rights.
 2.  **Adopt FastMCP**: Create granular tools like `git_merge_pr` that *only* execute specific logic.
-3.  **Apply Rubrics**: Port `DIPGRubric` to check these tools.
+3.  **Bind skills to manifests**: Each skill maps to explicit tiered permissions (`user`/`write`/`admin`) and allowlists.
+4.  **Apply Rubrics and Parity**: Port `DIPGRubric` and parity checks to gate tool arguments and outcomes.
 
 We port the `DIPGRubric` logic to general purpose actions.
 
@@ -133,7 +134,7 @@ A `.zip` or Git repo containing:
 | Feature | OpenClaw (Current) | Our Proposal (SafeClaw) |
 | :--- | :--- | :--- |
 | **Tool Execution** | Direct, Trusted | **Intercepted, Rubric-Checked** |
-| **Skills** | Arbitrary Python/Bash Scripts | **Sandboxed MCP Tools** |
+| **Skills** | Prompt-first instructions with implicit power | **Retained `skills.md` + sandboxed MCP tools (explicit policy-bound execution)** |
 | **Safety** | "Prompt System Instructions" | **Code-Level Invariants** |
 | **Marketplace** | Unverified Zip files | **Signed, Parity-Checked Manifests** |
 | **UI** | Custom React App (Vulnerable) | **Telegram/WhatsApp (Secure Platform)** |
