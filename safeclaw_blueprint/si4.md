@@ -1,4 +1,4 @@
-Certainly! Below is the complete transcript for the video followed by a detailed set of Mermaid diagrams illustrating the core security concepts discussed.
+This document contains the complete transcript for a video on the OWASP Top 10 for LLMs, followed by a detailed set of Mermaid diagrams illustrating the core security concepts discussed.
 
 ---
 
